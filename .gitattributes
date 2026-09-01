@@ -1,0 +1,4 @@
+# The released .html files are the deliverable. Keep them byte-for-byte as built
+# (the build writes LF) so a checkout reproduces exactly what was shipped and
+# `git status` stays quiet.
+* -text

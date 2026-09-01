@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+"""Build a Scramble Rush release from the v5 base plus the fragments in frag/.
+
+    python build/build.py
+
+Every version is spliced from `index.html` (v5.0), which is never modified. The
+output filename and the <title> version are both derived from VERSION below, and
+an existing release is never overwritten without --force. A stale VERSION quietly
+eating a released file is how v7 got clobbered, twice.
+"""
+import io, os, sys
+
+VERSION = 8                                   # single source of truth
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
+BASE = os.path.join(ROOT, "index.html")
+OUT  = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
+
+def frag(name):
+    with io.open(os.path.join(FRAG, name), encoding="utf-8") as f:
+        return f.read()
+
+def guard_output():
+    """Released builds are immutable.
+
+    Bumping VERSION is not enough on its own: if the fragments move on to v9
+    while VERSION still says 8, the script would happily relabel v9 content as
+    v8 and eat the released file. So the only safe rule is that an existing
+    output is never touched without saying so explicitly.
+    """
+    if not os.path.exists(OUT) or "--force" in sys.argv:
+        return
+    msg = [
+        "refusing to overwrite " + os.path.basename(OUT) + " -- it already exists.",
+        "  Bump VERSION in build/build.py to cut a new release, or",
+        "  pass --force if you really mean to rebuild this one in place.",
+        "  (Committed versions are recoverable: git checkout -- <file>)",
+    ]
+    sys.exit(chr(10).join(msg))
+
+guard_output()
+
+with io.open(BASE, encoding="utf-8") as f:
+    src = f.read()
+
+errors = []
+
+def cut(start, end, repl, label):
+    """Replace src[start_anchor .. end_anchor) with repl. end_anchor is kept."""
+    global src
+    i = src.find(start)
+    if i < 0:
+        errors.append("START not found: " + label); return
+    j = src.find(end, i + len(start))
+    if j < 0:
+        errors.append("END not found: " + label); return
+    src = src[:i] + repl + src[j:]
+
+def sub(old, new, label, count=1):
+    global src
+    if src.count(old) < count:
+        errors.append("anchor missing (%d found): %s" % (src.count(old), label)); return
+    src = src.replace(old, new, count)
+
+# ---------------------------------------------------------------- title
+sub("<title>Scramble Rush 3D</title>",
+    "<title>Scramble Rush 3D \u2014 v8</title>", "title")
+
+# ---------------------------------------------------------------- CSS
+sub("</style>\n</head>", frag("04_menu.css") + "</style>\n</head>", "css append")
+
+# ---------------------------------------------------------------- HOME + PROFILE markup
+cut('<div id="home" class="screen">',
+    '<div id="settings" class="screen shade hidden">',
+    '<div id="coinPops"></div>\n\n' + frag("03_home.html") + "\n\n",
+    "home/profile markup")
+
+# ---------------------------------------------------------------- data layer
+cut("  const DEFAULT_SETTINGS = {",
+    "  function rankCompare(a,b){",
+    frag("01_data.js") + "\n",
+    "data layer")
+
+# ---------------------------------------------------------------- profile persistence
+cut("  async function loadProfile(){",
+    "  // ============================================================\n  // MULTIPLAYER",
+    """  const SAVE_KEY = 'scrambleRush.profile.v6';
+  async function loadProfile(){
+    try{
+      let raw = null;
+      try{ raw = localStorage.getItem(SAVE_KEY); }catch(e){}
+      if(!raw && window.storage){ const p = await window.storage.get('profile', false); if(p && p.value) raw = p.value; }
+      if(raw){ const d=JSON.parse(raw); Object.assign(custom, d.custom||{}); Object.assign(stats, d.stats||{}); }
+    }catch(e){ /* first run, or storage blocked \u2014 just play unsaved */ }
+    if(!SKIN_BY_ID[custom.skin]) custom.skin='pink';
+    if(!PATTERN_BY_ID[custom.pattern]) custom.pattern='none';
+    stats.owned  = stats.owned  || [];
+    stats.patterns = stats.patterns || [];
+    stats.badges = stats.badges || [];
+    stats.claimed= stats.claimed|| [];
+    syncCustomColor();
+    checkAchievements();
+    refreshCoinChips();
+    refreshPreview();
+  }
+  async function saveProfile(){
+    const payload = JSON.stringify({custom,stats});
+    try{ localStorage.setItem(SAVE_KEY, payload); }catch(e){}
+    try{ if(window.storage) await window.storage.set('profile', payload, false); }catch(e){}
+  }
+
+""",
+    "profile persistence")
+
+# client-side lava reset uses the new mode flag
+sub("      lavaZ = currentMap.isMinigame ? -320 : 0;",
+    "      lavaZ = currentMap.mode==='lava' ? -320 : 0;", "client lavaZ")
+sub("      if(round===1){ stats.races++; saveProfile(); refreshStatsLine(); }",
+    "      if(round===1){ stats.races++; saveProfile(); }", "client races++")
+
+# ---------------------------------------------------------------- skins + makeBlob
+cut("  function makeBlob(opts){",
+    "  // ============================================================\n  // INPUT",
+    frag("02_skinmat.js") + frag("02b_rig.js") + "\n",
+    "skin materials + character rig")
+
+# ---------------------------------------------------------------- course generation
+cut("  function genCourse(n){",
+    "  // ============================================================\n  // COURSE MESHES",
+    frag("08_gencourse.js") + "\n",
+    "genCourse")
+
+# ---------------------------------------------------------------- course mesh hooks
+sub("    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow').sort((a,b)=>a.yStart-b.yStart);",
+    "    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield').sort((a,b)=>a.yStart-b.yStart);",
+    "specials filter")
+
+sub("""      }
+      cursor=o.yEnd;
+    }""",
+    """      } else if(o.type==='tilefield'||o.type==='hexfield'){
+        addGround(0,TRACK_W,o.yStart,o.yEnd,true);
+        addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
+      }
+      cursor=o.yEnd;
+    }""",
+    "tilefield/hexfield ground")
+
+sub("""    lavaMesh=null; lavaGlow=null;
+    if(currentMap.isMinigame){""",
+    """    buildMinigameMeshes();
+
+    lavaMesh=null; lavaGlow=null;
+    if(currentMap.mode==='lava'){""",
+    "minigame meshes + lava mesh guard")
+
+# ---------------------------------------------------------------- racers wear skins
+sub("      list.push(Object.assign(baseRacer(), {isPlayer:true, remoteId:null, _localId:'host', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes, x:pslot, y:-60}));",
+    "      list.push(Object.assign(baseRacer(), {isPlayer:true, remoteId:null, _localId:'host', name:custom.name||'YOU', skinId:custom.skin, color:skinBaseColor(skinOf(custom.skin)), hat:custom.hat, eyes:custom.eyes, x:pslot, y:-60}));",
+    "player racer skin")
+sub("      const n=clamp(settings.botCount,3,15);",
+    "      const n=clamp(settings.botCount,3,19);", "bot clamp")
+sub("      const order=[...Array(15).keys()].sort(()=>Math.random()-0.5);",
+    "      const order=[...Array(BOT_NAMES.length).keys()].sort(()=>Math.random()-0.5);", "bot order")
+sub("        const k=order[i%15];",
+    "        const k=order[i%BOT_NAMES.length];", "bot index")
+sub("      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, hat:s.hat, eyes:s.eyes,",
+    "      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, hat:s.hat, eyes:s.eyes,",
+    "survivor skin carry")
+sub("      const b=makeBlob({color:r.color, hat:r.hat, eyes:r.eyes});",
+    "      const b=makeCharacter(r.skinId ? {skin:skinOf(r.skinId), pattern:patternOf(r.patternId), hat:r.hat, eyes:r.eyes} : {color:r.color, hat:r.hat, eyes:r.eyes});",
+    "racer mesh skin")
+sub("skinId:custom.skin, color:skinBaseColor(skinOf(custom.skin))",
+    "skinId:custom.skin, patternId:custom.pattern, color:skinBaseColor(skinOf(custom.skin))",
+    "player pattern")
+sub("{isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, hat:s.hat, eyes:s.eyes,",
+    "{isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, patternId:s.patternId, hat:s.hat, eyes:s.eyes,",
+    "survivor pattern carry")
+sub("  function buildRacerMeshes(){\n    clearGroup(racerGroup);",
+    "  function buildRacerMeshes(){\n    clearGroup(racerGroup);\n    animatedMats=[];",
+    "reset animated mats")
+
+# ---------------------------------------------------------------- respawn understands tile fields
+cut("  function respawnAfterFall(r){",
+    "  function spawnBurst3D(",
+    frag("11_respawn.js"),
+    "respawnAfterFall")
+
+# ---------------------------------------------------------------- collisions + minigames
+cut("  function checkObstacles(r,t){",
+    "  // ============================================================\n  // RACER vs RACER COLLISION",
+    frag("09_minigames.js") + "\n",
+    "checkObstacles + minigame runtime")
+
+# ---------------------------------------------------------------- update loop
+sub("""  function update(dt,t){
+    if(state==='mapintro'){""",
+    """  function update(dt,t){
+    if(state==='loading'){
+      // the map reel is a CSS transition; we just wait it out, then reveal the course
+      loadTimer-=dt*1000;
+      if(loadTimer<=0){
+        hideMapLoader();
+        state='mapintro'; mapIntroTimer=FLY_MS;
+        $('mapIntro').classList.remove('hidden');
+      }
+      return;
+    }
+    if(state==='mapintro'){""",
+    "loading state")
+
+sub("        showBanner('ROUND '+round,1200);\n        if(mp.role==='host') broadcast({type:'banner',text:'ROUND '+round,ms:1200});",
+    "        showBanner(roundLabel(round),1200);\n        if(mp.role==='host') broadcast({type:'banner',text:roundLabel(round),ms:1200});",
+    "round banner")
+sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt;",
+    "    if(currentMap.mode==='lava'){ lavaZ+=lavaSpeed*dt;", "lava advance")
+sub("      if(currentMap.isMinigame && !r.falling && r.y<lavaZ-40){",
+    "      if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){", "lava catch")
+sub("    racerCollisions();\n    updateParticles(dt);",
+    "    updateMinigames(dt,t);\n    racerCollisions();\n    updateParticles(dt);", "minigame tick")
+
+sub("""    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
+    if(round===2 && fin.length && raceTime-firstFinish>6) allDone=true;                 // winner crowned, short grace
+    if(round===1 && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;   // one straggler left
+    if(round===1 && fin.length>=Math.ceil(racers.length/2) && raceTime-firstFinish>20) allDone=true; // cut-off after leaders
+    if(allDone) endRound();
+    else if(round===1 && fin.length>=Math.ceil(racers.length/2) && !p.finished && raceTime-firstFinish>15 && raceTime-firstFinish<15.1) showBanner('HURRY!',1200);""",
+    """    const isFinal = round===ROUNDS;
+    const keepN = isFinal ? 1 : survivorsAfter(round, racers.length);
+    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
+    if(isFinal && fin.length && raceTime-firstFinish>6) allDone=true;                      // winner crowned, short grace
+    if(!isFinal && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;      // one straggler left
+    if(!isFinal && fin.length>=keepN && raceTime-firstFinish>20) allDone=true;              // cut-off after the leaders
+    if(allDone) endRound();
+    else if(!isFinal && fin.length>=keepN && !p.finished && raceTime-firstFinish>15 && raceTime-firstFinish<15.1) showBanner('HURRY!',1200);""",
+    "round end conditions")
+
+# ---------------------------------------------------------------- obstacle animation
+cut("  function syncObstacles(t){",
+    "  // ============================================================\n  // RACERS",
+    frag("13_syncobs.js") + "\n",
+    "syncObstacles")
+
+# ---------------------------------------------------------------- character animation
+cut("  function syncRacers(t){",
+    "  function syncCamera(snap, dt){",
+    frag("12_charanim.js") + "\n",
+    "syncRacers")
+
+# ---------------------------------------------------------------- jump + dive
+cut("  function doJump(r){",
+    "  // ============================================================\n  // PHYSICS HELPERS",
+    frag("15_actions.js") + "\n",
+    "jump/dive actions")
+
+# ------------------------------------------------- movement, physics, finish area
+cut("""    const p=racers.find(r=>r.isPlayer);
+    if(p&&!p.finished){""",
+    "    racerCollisions();",
+    frag("14_physics.js"),
+    "movement + physics")
+
+# racers carry the new timers
+sub("  function baseRacer(){ return {x:0,y:-60,",
+    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,jumpCut:false,floorH:0,x:0,y:-60,",
+    "baseRacer fields")
+
+# ---------------------------------------------------------------- bot AI must predict the same bar the collision uses
+sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=Math.sin(ang)*o.length/2;",
+    "          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;",
+    "bot spinbar prediction")
+
+# ---------------------------------------------------------------- camera-relative movement
+cut("  function computeInputVec(){",
+    "  // ============================================================\n  // GAME STATE",
+    """  function computeInputVec(){
+    const k=settings.keys; let ix=0, iy=0;
+    if(keys[k.left]||keys['arrowleft']) ix-=1;
+    if(keys[k.right]||keys['arrowright']) ix+=1;
+    if(keys[k.forward]||keys['arrowup']) iy+=1;
+    if(keys[k.back]||keys['arrowdown']) iy-=1;
+    if(touchVec.x||touchVec.y){ ix+=touchVec.x; iy-=touchVec.y; }
+    ix=-ix; // camera looks down +Z, so screen-right is sim -X
+    if(settings.invertX) ix=-ix;
+    if(settings.camRelative && typeof look!=='undefined'){
+      // steer relative to where the camera is pointing, so "forward" is always
+      // away from the camera however far you have swung the view round
+      const a=look.yaw, c=Math.cos(a), s=Math.sin(a);
+      const rx = ix*c - iy*s, ry = ix*s + iy*c;
+      ix=rx; iy=ry;
+    }
+    return {ix,iy};
+  }
+
+""",
+    "computeInputVec")
+
+# ---------------------------------------------------------------- camera
+cut("  function syncCamera(snap, dt){",
+    "  // ============================================================\n  // ROUND FLOW",
+    frag("06_camera.js") + "\n",
+    "camera")
+
+# ---------------------------------------------------------------- round flow (split in two)
+rounds = frag("07_rounds.js")
+split = rounds.find("  function endRound(){")
+assert split > 0, "07_rounds.js: endRound marker missing"
+cut("  function startRound(n, survivors){",
+    "  function showBanner(text,ms){",
+    rounds[:split],
+    "startRound")
+cut("  function endRound(){",
+    "  // ============================================================\n  // MENU: 3D PREVIEW + UI",
+    rounds[split:] + "\n",
+    "endRound + result screens")
+
+# goHome now knows about the profile screen
+sub("    ['results','gameover','pause','settings','customize','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
+    "    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
+    "goHome screens")
+sub("    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    refreshPreview();",
+    "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; refreshPreview(); refreshCoinChips();",
+    "goHome refresh")
+
+# ---------------------------------------------------------------- preview + profile UI
+cut("  function refreshPreview(){",
+    "  function buildSettings(){",
+    frag("05_profile.js") + "\n" + frag("10_wiring.js") + "\n",
+    "preview + profile UI")
+
+# ---------------------------------------------------------------- settings additions
+sub("""    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=3; br.max=15;""",
+    """    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=5; br.max=19;""",
+    "bot slider range")
+sub("""    toggle('shake','Camera shake');""",
+    """    toggle('freeLook','Free look (trackpad / drag)');
+    const ls=document.createElement('div'); ls.className='row'; const lr=document.createElement('input'); lr.type='range'; lr.min=0.4; lr.max=2.2; lr.step=0.1; lr.value=settings.lookSens; const lv=document.createElement('span'); lv.className='lbl'; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; lr.oninput=()=>{ settings.lookSens=+lr.value; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; }; ls.appendChild(lr); ls.appendChild(lv); row('Look sensitivity', ls);
+    toggle('invertLook','Invert look up/down');
+    toggle('camRelative','Move relative to camera');
+    toggle('shake','Camera shake');""",
+    "look settings")
+
+# goHome must also clear the map reel if you bail mid-load
+sub("    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
+    "    ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro'].forEach(id=>$(id).classList.add('hidden'));",
+    "goHome hides loader")
+
+# settings back button returns to whichever screen was open
+sub("""  $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };""",
+    """  $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };""",
+    "settings open")
+
+# ---------------------------------------------------------------- main loop
+sub("""    if(state==='menu'){ syncPreview(t,dt); }
+    else { syncObstacles(t+mp.tOffset); syncRacers(t); syncCamera(false,dt); }
+    renderer.render(scene,camera);""",
+    """    if(state==='menu'){ syncPreview(t,dt); }
+    else { syncObstacles(t+mp.tOffset); syncRacers(t); syncCamera(false,dt); }
+    updateSkinMaterials(t);
+    renderCoinPops(dt);
+    renderer.render(scene,camera);""",
+    "loop hooks")
+
+# HUD progress dots should show the player's colourway
+sub("  updateHint(); goHome(); loadProfile();",
+    "  updateHint(); goHome(); loadProfile();", "boot")
+
+# the HUD comes back once the opening shot is over
+sub("        $('mapIntro').classList.add('hidden');",
+    "        $('mapIntro').classList.add('hidden');"
+    + chr(10) + "        $('hud').classList.remove('hidden'); $('pauseBtn').classList.remove('hidden');",
+    "hud after flyover")
+
+# the finish pen needs floor under it, not just the old 320-unit run-off
+sub("    let cursor=-300; const endZ=trackLength+320;",
+    "    let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;",
+    "finish pen ground")
+
+if errors:
+    print("FAILED:")
+    for e in errors: print("  - " + e)
+    sys.exit(1)
+
+with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    f.write(src)
+print("wrote %s (%d bytes, %d lines)" % (OUT, len(src.encode("utf-8")), src.count("\n")+1))

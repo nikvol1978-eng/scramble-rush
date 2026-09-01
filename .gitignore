@@ -1,0 +1,13 @@
+# dependencies — reinstall with `npm install`
+node_modules
+dist
+
+# throwaway debug build produced by build/mkdebug.py
+__debug.html
+
+# tooling scratch
+.claude-flow
+*.local
+.DS_Store
+Thumbs.db
+__pycache__/

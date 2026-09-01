@@ -1,0 +1,107 @@
+<!-- ================= MAP LOADER ================= -->
+<div id="mapLoader" class="hidden">
+  <div class="loaderTitle">LOADING COURSE</div>
+  <div class="loaderWindow">
+    <div class="loaderStrip" id="loaderStrip"></div>
+    <div class="loaderMarker"></div>
+  </div>
+  <div class="loaderHint">Get ready…</div>
+</div>
+
+<!-- ================= HOME ================= -->
+<div id="home" class="screen menuScreen">
+  <!-- corner icon buttons -->
+  <button class="iconBtn" id="profileBtn" aria-label="Profile" title="Profile">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+  </button>
+  <button class="iconBtn right" id="settingsBtn" aria-label="Settings" title="Settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
+  </button>
+
+  <div class="menuTop">
+    <h1 class="title">SCRAMBLE RUSH</h1>
+    <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
+  </div>
+
+  <div class="menuGrid">
+    <div class="menuCol left">
+      <button class="btn menuBig pink" id="playBtn">PLAY</button>
+      <button class="btn menuBig purple" id="shopBtn">SHOP<span class="pip hidden" id="shopPip"></span></button>
+    </div>
+    <div class="menuStage"><!-- the 3D blob sits behind this --></div>
+    <div class="menuCol right">
+      <button class="btn menuBig" id="mpBtn">FRIENDS</button>
+      <button class="btn menuBig gold" id="badgesBtn">BADGES<span class="pip hidden" id="badgePip"></span></button>
+    </div>
+  </div>
+
+  <div class="menuFoot"><p id="homeTip">Three rounds, one winner. Survive the cuts to reach a six-player final.</p></div>
+</div>
+
+<!-- ================= PROFILE (tabbed) ================= -->
+<div id="profile" class="screen shade hidden">
+  <div class="profWrap panel">
+    <div class="profHead">
+      <div class="profId">
+        <div class="lvlRing"><span id="levelNum">1</span></div>
+        <div class="profIdText">
+          <div class="profName" id="profNameLbl">YOU</div>
+          <div class="xpTrack"><div id="xpBar"></div></div>
+          <div class="xpText" id="xpText">0 / 100 XP</div>
+        </div>
+      </div>
+      <div class="profHeadRight">
+        <div class="coinChip" id="profCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
+        <button class="btn small gold" id="profBackBtn">DONE</button>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab sel" data-tab="character" role="tab">CHARACTER</button>
+      <button class="tab" data-tab="stats" role="tab">STATS</button>
+      <button class="tab" data-tab="badges" role="tab">BADGES<span class="pip hidden" id="badgePip2"></span></button>
+      <button class="tab" data-tab="shop" role="tab">SKINS</button>
+      <button class="tab" data-tab="patterns" role="tab">PATTERNS</button>
+    </div>
+
+    <div class="tabBody">
+      <!-- CHARACTER -->
+      <div class="tabPane" data-pane="character">
+        <div class="row"><span class="lbl">Name</span><input type="text" id="nameInput" maxlength="12" placeholder="YOU"></div>
+        <div class="fieldLbl">Colourway <span class="dim" id="equippedName"></span></div>
+        <div class="swatches" id="ownedSwatches"></div>
+        <div class="fieldLbl">Pattern <span class="dim" id="equippedPattern"></span></div>
+        <div class="swatches" id="ownedPatternSwatches"></div>
+        <div class="row"><span class="lbl">Hat</span><div class="seg" id="hatSeg"></div></div>
+        <div class="row"><span class="lbl">Eyes</span><div class="seg" id="eyeSeg"></div></div>
+        <div class="row"><button class="btn small purple" id="randomBlobBtn">RANDOMISE</button></div>
+      </div>
+
+      <!-- STATS -->
+      <div class="tabPane hidden" data-pane="stats">
+        <div class="statGrid" id="statGrid"></div>
+      </div>
+
+      <!-- BADGES -->
+      <div class="tabPane hidden" data-pane="badges">
+        <p class="paneNote">Earn badges to claim coins. Some colourways unlock with the badge itself.</p>
+        <div class="badgeList" id="badgeList"></div>
+      </div>
+
+      <!-- SHOP -->
+      <div class="tabPane hidden" data-pane="shop">
+        <div class="shopBar">
+          <p class="paneNote">Spend coins on colourways. Rarer sets glow, shift and sparkle.</p>
+          <div class="rarityFilter" id="rarityFilter"></div>
+        </div>
+        <div class="shopGrid" id="shopGrid"></div>
+      </div>
+
+      <!-- PATTERNS -->
+      <div class="tabPane hidden" data-pane="patterns">
+        <p class="paneNote">Patterns paint over whatever skin you have equipped, so they mix and match.</p>
+        <div class="shopGrid" id="patternGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>

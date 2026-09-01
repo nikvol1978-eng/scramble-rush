@@ -1,0 +1,222 @@
+  /* ============ MENU (rectangular, character centre stage) ============ */
+  .menuScreen{justify-content:space-between;padding:16px clamp(12px,3vw,34px) 18px;}
+  .menuTop{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;pointer-events:none;}
+  .menuTop .title{font-size:clamp(1.8rem,6.2vw,3.6rem);}
+
+  .iconBtn{
+    position:absolute;top:16px;left:16px;width:60px;height:60px;border-radius:18px;
+    background:var(--gold);border:4px solid var(--line);box-shadow:0 6px 0 var(--line);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;padding:0;
+    transition:transform .08s ease, filter .1s;
+  }
+  .iconBtn.right{left:auto;right:16px;background:var(--blue);}
+  .iconBtn:hover{filter:brightness(1.08);}
+  .iconBtn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--line);}
+  .iconBtn svg{width:32px;height:32px;fill:none;stroke:var(--line);stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;}
+
+  .coinChip{
+    display:inline-flex;align-items:center;gap:8px;background:var(--line);color:var(--gold);
+    font-weight:700;font-size:1.05rem;padding:6px 16px 6px 8px;border-radius:999px;
+    border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);pointer-events:none;
+  }
+  .coinIcon{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#fff3b0,#ffcb3d 55%,#d99a00);border:2px solid #8a6200;flex-shrink:0;}
+
+  .menuGrid{
+    display:grid;grid-template-columns:1fr minmax(140px,1.1fr) 1fr;align-items:center;
+    gap:clamp(8px,2vw,28px);width:100%;max-width:1100px;flex:1;min-height:0;
+  }
+  .menuStage{min-height:180px;}
+  .menuCol{display:flex;flex-direction:column;gap:14px;}
+  .menuCol.left{align-items:stretch;}
+  .menuCol.right{align-items:stretch;}
+  .btn.menuBig{
+    position:relative;width:100%;font-size:clamp(1rem,2.4vw,1.45rem);padding:clamp(14px,2.4vh,22px) 12px;
+    border-radius:18px;letter-spacing:0.5px;
+  }
+  .pip{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;background:var(--red);border:3px solid var(--line);}
+  .menuFoot{width:100%;display:flex;justify-content:center;}
+  .menuFoot p{
+    background:var(--cream);border:4px solid var(--line);border-radius:16px;box-shadow:0 5px 0 var(--line);
+    color:var(--line);font-weight:600;margin:0;padding:10px 20px;max-width:560px;font-size:0.92rem;
+  }
+  @media (max-width:640px){
+    .menuGrid{grid-template-columns:1fr 1fr;grid-template-areas:'stage stage' 'left right';gap:10px;}
+    .menuStage{grid-area:stage;min-height:120px;}
+    .menuCol.left{grid-area:left;} .menuCol.right{grid-area:right;}
+    .iconBtn{width:50px;height:50px;border-radius:15px;} .iconBtn svg{width:26px;height:26px;}
+  }
+
+  /* floating coin reward popups */
+  #coinPops{position:absolute;bottom:78px;left:0;right:0;z-index:70;display:flex;flex-direction:column-reverse;align-items:center;gap:6px;pointer-events:none;}
+  .coinPop{
+    background:var(--line);color:var(--gold);font-weight:700;padding:8px 18px;border-radius:999px;
+    border:3px solid var(--gold);box-shadow:0 4px 0 rgba(0,0,0,0.4);animation:coinIn .35s ease both;
+  }
+  .coinPop .why{color:var(--cream);font-weight:600;font-size:0.82rem;margin-left:8px;}
+  @keyframes coinIn{from{transform:translateY(-14px) scale(0.85);opacity:0}to{transform:none;opacity:1}}
+
+  /* ============ PROFILE (tabbed) ============ */
+  .screen{overflow-x:hidden;}
+  .profWrap{
+    width:min(760px,100%);max-height:92vh;display:flex;flex-direction:column;
+    padding:16px 18px;gap:12px;overflow:hidden;
+  }
+  @media (min-width:980px){
+    /* give the character the left half of the screen and put the card beside it */
+    #profile{justify-content:flex-end;padding-right:4vw;}
+    .profWrap{width:min(660px,56vw);}
+  }
+  .profHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .profId{display:flex;align-items:center;gap:12px;min-width:0;}
+  .lvlRing{
+    width:54px;height:54px;border-radius:50%;background:var(--gold);border:4px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;color:var(--line);
+    box-shadow:0 4px 0 var(--line);flex-shrink:0;
+  }
+  .profIdText{text-align:left;min-width:0;}
+  .profName{font-weight:700;font-size:1.15rem;color:var(--line);line-height:1.1;}
+  .xpTrack{width:min(220px,44vw);height:12px;background:rgba(26,16,51,0.18);border:3px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px;}
+  #xpBar{height:100%;width:0%;background:var(--gold);transition:width .25s;}
+  .xpText{font-size:0.74rem;font-weight:600;color:var(--line);opacity:0.72;margin-top:2px;}
+  .profHeadRight{display:flex;align-items:center;gap:10px;}
+  .profHeadRight .coinChip{pointer-events:auto;}
+
+  .tabs{display:flex;gap:6px;border-bottom:4px solid var(--line);padding-bottom:0;flex-wrap:wrap;}
+  .tab{
+    position:relative;font-family:'Fredoka',sans-serif;font-weight:700;font-size:0.86rem;color:var(--line);
+    background:rgba(26,16,51,0.1);border:3px solid var(--line);border-bottom:none;
+    border-radius:12px 12px 0 0;padding:8px 14px;cursor:pointer;bottom:-4px;
+  }
+  .tab.sel{background:var(--gold);}
+  .tabBody{flex:1;min-height:0;overflow:auto;padding-top:12px;}
+  .tabPane{display:flex;flex-direction:column;gap:12px;}
+  .paneNote{color:var(--line);font-weight:600;font-size:0.85rem;margin:0;opacity:0.8;}
+  .fieldLbl{font-weight:700;color:var(--line);font-size:0.95rem;text-align:left;}
+  .fieldLbl .dim{font-weight:600;opacity:0.6;font-size:0.85rem;}
+
+  /* owned colourway picker */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px;}
+  .sw{
+    width:100%;aspect-ratio:1;border-radius:12px;border:3px solid var(--line);cursor:pointer;
+    box-shadow:0 3px 0 var(--line);transition:transform .08s;background-size:200% 200%;
+  }
+  .sw:hover{transform:scale(1.07);}
+  .sw.sel{outline:4px solid var(--gold);outline-offset:2px;}
+
+  /* stats */
+  .statGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .statCard{
+    background:rgba(26,16,51,0.07);border:3px solid var(--line);border-radius:14px;padding:10px 14px;text-align:left;
+  }
+  .statCard .k{font-size:0.74rem;font-weight:700;color:var(--line);opacity:0.65;text-transform:uppercase;letter-spacing:0.5px;}
+  .statCard .v{font-size:1.5rem;font-weight:700;color:var(--line);line-height:1.15;}
+  .statCard.wide{grid-column:1 / -1;}
+
+  /* badges */
+  .badgeList{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}
+  .badgeCard{
+    display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px;border:3px solid var(--line);
+    background:rgba(26,16,51,0.07);text-align:left;
+  }
+  .badgeCard.got{background:rgba(35,230,201,0.28);}
+  .badgeCard .ico{font-size:1.7rem;line-height:1;filter:grayscale(1);opacity:0.45;flex-shrink:0;}
+  .badgeCard.got .ico{filter:none;opacity:1;}
+  .badgeCard .txt{min-width:0;flex:1;}
+  .badgeCard .bn{font-weight:700;color:var(--line);font-size:0.92rem;}
+  .badgeCard .bd{font-weight:600;color:var(--line);opacity:0.7;font-size:0.76rem;}
+  .badgeCard .claim{
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:0.78rem;color:var(--line);background:var(--gold);
+    border:3px solid var(--line);border-radius:10px;padding:6px 10px;cursor:pointer;box-shadow:0 3px 0 var(--line);flex-shrink:0;
+  }
+  .badgeCard .claim:disabled{background:#d9d9e0;cursor:default;box-shadow:none;opacity:0.7;}
+  .badgeCard .paid{font-size:0.72rem;font-weight:700;color:var(--line);opacity:0.55;flex-shrink:0;}
+
+  /* shop */
+  .shopBar{display:flex;flex-direction:column;gap:8px;}
+  .rarityFilter{display:flex;gap:6px;flex-wrap:wrap;}
+  .rchip{
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:0.72rem;padding:5px 11px;border-radius:999px;
+    border:3px solid var(--line);cursor:pointer;color:var(--line);background:#fff;box-shadow:0 2px 0 var(--line);
+  }
+  .rchip.sel{outline:3px solid var(--line);outline-offset:1px;}
+  .shopGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;}
+  .shopCard{
+    display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:14px;border:3px solid var(--line);
+    background:var(--cream);box-shadow:0 4px 0 var(--line);text-align:center;
+  }
+  .shopCard .orb{
+    width:100%;aspect-ratio:1;border-radius:50%;border:3px solid var(--line);background-size:220% 220%;
+    position:relative;overflow:hidden;
+  }
+  .shopCard .orb::after{
+    content:'';position:absolute;left:18%;top:12%;width:34%;height:26%;border-radius:50%;
+    background:rgba(255,255,255,0.55);filter:blur(3px);
+  }
+  /* Locked items stay recognisable — you should want the thing you cannot afford yet. */
+  .shopCard.locked .orb{filter:brightness(0.86) saturate(0.92);}
+  .shopCard.locked .orb::before{
+    content:'\1F512';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:1.5rem;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.6));
+  }
+  .shopCard .rlab{
+    font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;
+    padding:3px 8px;border-radius:999px;border:2px solid var(--line);align-self:center;
+  }
+  .shopCard .sn{font-weight:700;color:var(--line);font-size:0.82rem;line-height:1.15;}
+  .shopCard .cost{font-weight:700;color:var(--line);font-size:0.76rem;opacity:0.8;}
+  .shopCard button{
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:0.78rem;color:var(--line);background:var(--teal);
+    border:3px solid var(--line);border-radius:10px;padding:6px;cursor:pointer;box-shadow:0 3px 0 var(--line);width:100%;
+  }
+  .shopCard button.buy{background:var(--gold);}
+  .shopCard button.equipped{background:var(--teal);}
+  .shopCard button:disabled{background:#d9d9e0;cursor:default;box-shadow:none;opacity:0.75;}
+  .rainbowSwatch{background:linear-gradient(90deg,#ff004d,#ffcb3d,#3cff8a,#26d5ff,#b026ff,#ff004d);}
+  /* pattern tiles show the motif over a neutral disc */
+  .shopCard .orb.pat{background:#cfd3dd;background-blend-mode:multiply;background-size:64px 64px;}
+  .sw.pat{background-color:#cfd3dd;background-size:34px 34px;}
+
+  /* ============ MAP LOADER ============ */
+  #mapLoader{
+    position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:20px;
+    background:radial-gradient(ellipse at center, rgba(61,26,91,0.92), rgba(12,6,26,0.97));
+  }
+  .loaderTitle{
+    font-weight:700;font-size:clamp(1.1rem,3.4vw,1.7rem);color:var(--cream);letter-spacing:3px;
+    -webkit-text-stroke:2px var(--line);text-shadow:0 4px 0 var(--line);
+  }
+  .loaderWindow{
+    position:relative;width:min(760px,94vw);height:172px;overflow:hidden;
+    border:4px solid var(--line);border-radius:20px;background:rgba(0,0,0,0.35);
+    box-shadow:0 8px 0 var(--line), inset 0 0 40px rgba(0,0,0,0.6);
+  }
+  .loaderStrip{position:absolute;top:14px;left:0;display:flex;gap:14px;will-change:transform;}
+  .loadCard{
+    width:180px;flex:0 0 180px;border:4px solid var(--line);border-radius:14px;overflow:hidden;
+    background:var(--cream);box-shadow:0 4px 0 var(--line);transition:transform .18s ease, box-shadow .18s ease;
+  }
+  .loadCard .loadArt{height:96px;}
+  .loadCard .loadName{
+    font-weight:700;font-size:0.82rem;color:var(--line);padding:6px 8px;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .loadCard.mini .loadName{background:var(--gold);}
+  .loadCard.landed{transform:scale(1.10);box-shadow:0 0 0 5px var(--gold), 0 6px 0 var(--line);}
+  .loaderMarker{
+    position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;
+    background:linear-gradient(180deg,transparent,var(--gold),transparent);opacity:0.55;pointer-events:none;
+  }
+  .loaderHint{font-weight:600;color:var(--cream);opacity:0.8;font-size:0.9rem;}
+  @media (max-width:640px){
+    .loaderWindow{height:150px;}
+    .loadCard{width:150px;flex:0 0 150px;}
+    .loadCard .loadArt{height:78px;}
+  }
+
+  /* the map card rides along with the opening flyover, so keep the view clear */
+  #mapIntro{
+    background:linear-gradient(180deg, rgba(0,0,0,0.40), rgba(0,0,0,0) 26%,
+                                        rgba(0,0,0,0) 62%, rgba(0,0,0,0.55)) !important;
+    justify-content:flex-end !important; padding-bottom:9vh;
+  }

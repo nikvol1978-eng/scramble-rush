@@ -1,0 +1,13 @@
+{
+  "name": "max-game",
+  "private": true,
+  "version": "5.0.0",
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.1.5"
+  }
+}
