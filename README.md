@@ -65,12 +65,36 @@ v6 and v7: coins, skins, patterns, badges, stats). Clearing site data resets it.
 Note: v5 saved via `window.storage`, which only exists inside the Claude
 Artifacts runtime — so running v5 locally never actually persisted anything.
 
-## How v7 was built
+## How the builds work
 
-`scramble-rush-7.0.html` is generated from the v5 file plus fragment files by a
-Python assembler. The source fragments and build script are not in this folder;
-the shipped HTML is the artifact. The build fails loudly if any splice anchor
-stops matching, so the generated file is never silently half-patched.
+v6, v7 and v8 are generated from `index.html` (v5.0) plus the fragments in
+`build/frag/` by a Python assembler. v5 is the base and is never modified.
+
+```
+python build/build.py            # cut a new release (bump VERSION first)
+python build/build.py --force    # rebuild the current one in place
+python build/mkdebug.py          # throwaway __debug.html with window.__dbg
+```
+
+The build fails loudly if any splice anchor stops matching, so a generated file
+is never silently half-patched. It also refuses to overwrite an existing release
+unless you pass `--force` — a stale `VERSION` quietly relabelling newer content
+is how v7 once got clobbered.
+
+## Version control
+
+This folder is a git repository. Every release is committed, so an accidental
+overwrite is one command away from being undone:
+
+```
+git checkout -- scramble-rush-7.0.html
+```
+
+Commit after each release rather than relying on the files alone.
+
+Note: the repo lives inside OneDrive. That works, but OneDrive syncing `.git`
+can occasionally corrupt it. If you ever see strange git errors, moving the
+project somewhere outside OneDrive is the fix.
 
 Every match opens with a flyover of the whole arena, from beyond the finish line
 back to the start. Cross the line and you can walk around the finish pen, but a
