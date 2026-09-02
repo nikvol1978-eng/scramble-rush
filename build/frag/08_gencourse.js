@@ -239,6 +239,21 @@
         obs.push({type:'roller', y, y0:y-46-RADIUS, y1:y+46+RADIUS, r:38,
                   amp: rand(180,300), speed: rand(0.9,1.5)*spd, phase: rand(0,6.28), cx});
         cursor=y+90;
+      } else if(type==='shortcut'){
+        // A narrow raised lane hugging one wall. Ramp on, and it runs you past
+        // whatever is happening on the floor -- but it is barely wider than you.
+        const side = Math.random()<0.5 ? -1 : 1;
+        const len = rand(620, 900);
+        const yStart = cursor+gap+60, yEnd = yStart+len;
+        obs.push({type:'shortcut', yStart, yEnd, y0:yStart-40, y1:yEnd+140,
+                  cx: cx + side*(TRACK_W/2 - 96), w: rand(112,140),
+                  h: 46, rampLen: 170, boost: rand(6.2,7.2)});
+        // something worth skipping, on the floor beside it
+        const midY = (yStart+yEnd)/2;
+        obs.push({type:'pusher', y:midY, d:44, y0:midY-44/2-RADIUS, y1:midY+44/2+RADIUS,
+                  items:[{baseX:cx-side*40, amp:rand(150,230), speed:rand(1.2,1.9)*spd,
+                          phase:rand(0,6.28), width:rand(150,200), d:44}]});
+        cursor = yEnd+170;
       } else if(type==='cannon'){
         // cannons in the side walls, firing across the lane on a fixed beat
         const count = hard?2:1;

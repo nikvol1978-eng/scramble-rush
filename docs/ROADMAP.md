@@ -31,6 +31,7 @@ the version they shipped in.
 - [x] Cannons and boost pads *(v11)*
 - [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
 - [ ] Moving platforms, falling floors
+- [x] Risk-vs-reward shortcut lanes — raised, narrow, faster *(v14)*
 - [ ] Random map events
 - [x] Survival / last blob standing — Tile Trap and Honey Drop *(v13)*
 - [ ] Team, collect, final showdown in a small arena
@@ -55,17 +56,18 @@ the version they shipped in.
 ## Update 5 — Polish
 
 - [ ] Losing should stay fun: dramatic tumbles, funny launches
-- [ ] Spectator mode after elimination — watch the remaining players
+- [x] Spectator mode after elimination — follow a survivor, switch targets *(v14)*
 - [ ] Better sound effects; music that changes per map
 - [ ] Graphics quality settings
 - [ ] Better mobile controls
-- [ ] Camera that handles falling behind objects
+- [x] Camera that handles falling behind objects — occluders fade, auto-tilt on drops *(v14)*
 - [ ] Tutorial for new players
 - [ ] Better countdown, clearer finish line
 
 ## Cosmetics (purely cosmetic — never a gameplay advantage)
 
 - [x] Skins, patterns, hats, eyes *(v6–v7)*
+- [x] Live 3D preview in the shop — browse without equipping *(v14)*
 - [ ] Emotes
 - [ ] Victory animations
 - [ ] Footstep effects and trails
@@ -90,3 +92,4 @@ launch forward. The core game stays about movement and obstacles.
 | v11 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded grid |
 | v12 | Path-based courses; Cannon Climb climbs, Super Slide descends |
 | v13 | Impact physics, slipstream, knockout rounds, 7 shaped maps, 28 badges, special auras |
+| v14 | Live shop preview, smart camera, shortcut lanes, spectator mode |

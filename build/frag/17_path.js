@@ -99,3 +99,36 @@
   const COURSE_PATHS = { climb: PATH_CLIMB, slide: PATH_SLIDE,
                          rolling: PATH_ROLLING, ascent: PATH_ASCENT,
                          descent: PATH_DESCENT, winding: PATH_WINDING };
+
+  // ============================================================
+  // OCCLUSION FADE
+  // ============================================================
+  // Anything between the camera and the racer goes translucent. Materials are
+  // cloned on registration, or fading one wall would fade every mesh sharing it.
+  let fadeables = [];
+  const _occRay = new THREE.Raycaster();
+  const _occDir = new THREE.Vector3();
+  function clearFadeables(){ fadeables = []; }
+  function registerFadeable(mesh){
+    if(!mesh || !mesh.material) return mesh;
+    mesh.material = mesh.material.clone();
+    mesh.material.transparent = true;
+    mesh.material.opacity = 1;
+    fadeables.push(mesh);
+    return mesh;
+  }
+  function updateOcclusion(target){
+    if(!fadeables.length) return;
+    _occDir.subVectors(target, camera.position);
+    const dist = _occDir.length();
+    if(dist < 1) return;
+    _occDir.normalize();
+    _occRay.set(camera.position, _occDir);
+    _occRay.far = Math.max(1, dist - 26);        // do not fade what is behind them
+    const hit = new Set(_occRay.intersectObjects(fadeables, false).map(h=>h.object));
+    for(const m of fadeables){
+      const want = hit.has(m) ? 0.20 : 1;
+      m.material.opacity += (want - m.material.opacity)*0.22;
+      m.material.transparent = m.material.opacity < 0.985;
+    }
+  }

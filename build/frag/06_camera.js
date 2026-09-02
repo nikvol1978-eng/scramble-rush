@@ -2,6 +2,7 @@
   // FREE LOOK — one finger, or one drag of the mouse, or a trackpad swipe
   // ============================================================
   const look = { yaw:0, pitch:0, sinceInput:99 };
+  let camAuto = 0;                 // extra downward tilt over drops
   // Yaw is deliberately unbounded: the camera orbits the racer all the way
   // round. Movement is taken relative to it (see computeInputVec), so holding
   // forward always runs away from the camera whichever way you have swung it.
@@ -109,7 +110,8 @@
   }
 
   function syncCamera(snap, dt){
-    const p=racers.find(r=>r.isPlayer); if(!p) return;
+    // whoever the camera is on: the player, or a survivor while spectating
+    const p=camSubject(); if(!p) return;
     if(state==='mapintro'){ dirLight.intensity=1.0; hemi.intensity=0.9; sky.visible=true; flyCamera(); return; }
     dt = dt||0.016;
     // the profile stage dims these; put them back for play
@@ -127,7 +129,12 @@
     const back = 150*settings.camDist, height = 95*settings.camDist;
     const radius = Math.hypot(back, height);
     const baseElev = Math.atan2(height, back);
-    const elev = clamp(baseElev + look.pitch, -0.20, 1.35);
+    // Auto-tilt: look further down when falling, or when the course drops away
+    // ahead, so you can see where you are going to land.
+    const slopeAhead = coursePath ? pathAt(p.y + 260).slope : 0;
+    const dropping = Math.max(0, -p.vh*0.055) + Math.max(0, -slopeAhead*1.7);
+    camAuto += (clamp(dropping, 0, 0.5) - camAuto)*0.07;
+    const elev = clamp(baseElev + look.pitch + camAuto, -0.20, 1.35);
     const azim = look.yaw;
 
     // Orbit about a point on the ribbon a little ahead of the racer. The
@@ -151,6 +158,7 @@
 
     camera.position.set(camPos.x+ox+shx, camPos.y+oy+shy, camPos.z+oz);
     camera.lookAt(camPos.x, camPos.y+14, camPos.z);
+    updateOcclusion(new THREE.Vector3(camPos.x, camPos.y+14, camPos.z));
     const lightAt = toWorld(p.x, p.y, 0);
     dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
     dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);

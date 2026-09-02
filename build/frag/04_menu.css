@@ -266,3 +266,45 @@
     width:52px;height:52px;border-radius:50%;border:3px solid var(--line);background-size:220% 220%;
   }
   #spinResult .pname{font-weight:700;color:var(--line);font-size:0.95rem;}
+
+  /* live preview badge, over the character while browsing the shop */
+  .previewTag{
+    position:absolute;left:4vw;top:14vh;z-index:60;pointer-events:none;
+    background:var(--line);color:var(--gold);font-weight:700;font-size:0.78rem;
+    letter-spacing:0.6px;padding:7px 14px;border-radius:999px;border:3px solid var(--gold);
+    box-shadow:0 4px 0 rgba(0,0,0,0.4);animation:coinIn .25s ease both;max-width:34vw;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  @media (max-width:979px){ .previewTag{ display:none; } }
+
+  /* The profile dims the scene, but the character has to stay legible: keep the
+     shade light over the left third where the model stands. */
+  @media (min-width:980px){
+    #profile.shade{
+      background:radial-gradient(ellipse 46% 78% at 15% 54%,
+                 rgba(21,12,46,0.18), rgba(21,12,46,0.88) 68%) !important;
+    }
+  }
+
+  /* ============ SPECTATOR ============ */
+  #specBar{
+    position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:40;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    background:rgba(21,12,46,0.88);border:4px solid var(--line);border-radius:18px;
+    box-shadow:0 6px 0 var(--line);padding:10px 18px;pointer-events:auto;
+    animation:coinIn .3s ease both;max-width:94vw;
+  }
+  .specTop{font-weight:700;font-size:0.72rem;letter-spacing:1.4px;color:var(--red);}
+  .specRow{display:flex;align-items:center;gap:10px;}
+  .specName{
+    font-weight:700;font-size:1.05rem;color:var(--cream);min-width:150px;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .specArrow{
+    font-family:'Fredoka',sans-serif;font-size:0.9rem;color:var(--line);background:var(--gold);
+    border:3px solid var(--line);border-radius:10px;width:38px;height:34px;cursor:pointer;
+    box-shadow:0 3px 0 var(--line);padding:0;
+  }
+  .specArrow:active{transform:translateY(3px);box-shadow:0 0 0 var(--line);}
+  .specLeft{font-weight:600;font-size:0.8rem;color:var(--track);margin-right:4px;}
+  @media (max-width:640px){ .specName{min-width:100px;font-size:0.9rem;} }

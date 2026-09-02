@@ -2,6 +2,20 @@
   // MENU: 3D PREVIEW + IDLE PERFORMANCE
   // ============================================================
   let stageSpot=null, stageRing=null, stageBackdrop=null;
+  // Browsing the shop shows the item on the model without committing to it.
+  // Cleared on equip, on leaving the tab, and on closing the profile.
+  let previewSkin = null, previewPattern = null;
+  function setPreview(skinId, patternId){
+    previewSkin = skinId || null; previewPattern = patternId || null;
+    refreshPreview();
+    const tag = $('previewTag');
+    if(tag){
+      const on = previewSkin || previewPattern;
+      tag.classList.toggle('hidden', !on);
+      if(on) tag.textContent = 'PREVIEWING ' + (previewSkin ? skinOf(previewSkin).name : patternOf(previewPattern).name);
+    }
+  }
+  function clearPreview(){ if(previewSkin||previewPattern) setPreview(null,null); }
   function refreshPreview(){
     clearGroup(previewGroup);
     animatedMats=[];
@@ -36,7 +50,7 @@
     const rim=new THREE.PointLight(0x8b5cf6, 0.9, 600);
     rim.position.set(-160, 90, 120); previewGroup.add(rim);
 
-    menuBlob=makeCharacter({skin:skinOf(custom.skin), pattern:patternOf(custom.pattern), hat:custom.hat, eyes:custom.eyes});
+    menuBlob=makeCharacter({skin:skinOf(previewSkin||custom.skin), pattern:patternOf(previewPattern||custom.pattern), hat:custom.hat, eyes:custom.eyes});
     previewGroup.add(menuBlob.group);
     previewGroup.visible=true;
     idle = {act:'settle', t:0, dur:0.8, seed:0};
@@ -233,6 +247,7 @@
     buildProfile();
   }
   function switchTab(name){
+    clearPreview();
     profTab=name;
     document.querySelectorAll('#profile .tab').forEach(t=>t.classList.toggle('sel', t.dataset.tab===name));
     document.querySelectorAll('#profile .tabPane').forEach(p=>p.classList.toggle('hidden', p.dataset.pane!==name));
@@ -315,8 +330,14 @@
         ${btn}</div>`;
     }).join('');
 
+    host.querySelectorAll('.shopCard').forEach((card,i)=>{
+      card.onclick = e=>{
+        if(e.target.closest('button')) return;
+        setPreview(null, list[i].id); SFX.click();
+      };
+    });
     host.querySelectorAll('button[data-pequip]').forEach(b=>{ b.onclick=()=>{
-      custom.pattern=b.dataset.pequip; SFX.click(); saveProfile(); refreshPreview(); buildPatternPane(); }; });
+      custom.pattern=b.dataset.pequip; SFX.click(); saveProfile(); setPreview(null,null); buildPatternPane(); }; });
     host.querySelectorAll('button[data-pbuy]').forEach(b=>{ b.onclick=async ()=>{
       const p=patternOf(b.dataset.pbuy);
       if(p.unlock.kind!=='coins' || stats.coins < p.unlock.cost) return;
@@ -325,7 +346,7 @@
       custom.pattern = p.id;
       SFX.win();
       await saveProfile();
-      refreshPreview(); buildPatternPane(); refreshCoinChips();
+      setPreview(null,null); buildPatternPane(); refreshCoinChips();
     }; });
   }
 
@@ -407,8 +428,14 @@
         ${btn}</div>`;
     }).join('');
 
+    host.querySelectorAll('.shopCard').forEach((card,i)=>{
+      card.onclick = e=>{
+        if(e.target.closest('button')) return;         // the buttons do their own thing
+        setPreview(list[i].id, null); SFX.click();
+      };
+    });
     host.querySelectorAll('button[data-equip]').forEach(b=>{ b.onclick=()=>{
-      custom.skin=b.dataset.equip; SFX.click(); saveProfile(); refreshPreview(); buildShopPane(); }; });
+      custom.skin=b.dataset.equip; SFX.click(); saveProfile(); setPreview(null,null); buildShopPane(); }; });
     host.querySelectorAll('button[data-buy]').forEach(b=>{ b.onclick=async ()=>{
       const s=skinOf(b.dataset.buy);
       if(s.unlock.kind!=='coins' || stats.coins < s.unlock.cost) return;
@@ -417,6 +444,6 @@
       custom.skin = s.id;
       SFX.win();
       await saveProfile();
-      refreshPreview(); buildShopPane(); refreshCoinChips();
+      setPreview(null,null); buildShopPane(); refreshCoinChips();
     }; });
   }

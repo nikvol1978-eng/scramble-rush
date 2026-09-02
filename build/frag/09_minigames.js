@@ -53,7 +53,7 @@
             ? new THREE.MeshLambertMaterial({color:0xfff1c9, transparent:true, opacity:0.94})
             : new THREE.MeshPhongMaterial({color:0x5b3aa8, shininess:30});
           const panel=new THREE.Mesh(new THREE.BoxGeometry(it.w, 74, o.d), mat);
-          panel.position.y=37; panel.castShadow=true; g.add(panel);
+          panel.position.y=37; panel.castShadow=true; g.add(panel); registerFadeable(panel);
           const frameMat=new THREE.MeshLambertMaterial({color:0x1a1033});
           [-1,1].forEach(s=>{ const p=new THREE.Mesh(new THREE.BoxGeometry(7,80,o.d+4), frameMat); p.position.set(s*(it.w/2+3),40,0); g.add(p); });
           const lintel=new THREE.Mesh(new THREE.BoxGeometry(it.w+14,8,o.d+4), frameMat); lintel.position.y=80; g.add(lintel);
@@ -100,7 +100,7 @@
         const edgeMat=new THREE.MeshLambertMaterial({color:0x1a1033});
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
-          const b=new THREE.Mesh(new THREE.BoxGeometry(it.w,78,o.d), blockMat); b.position.y=39; b.castShadow=true; g.add(b);
+          const b=new THREE.Mesh(new THREE.BoxGeometry(it.w,78,o.d), blockMat); b.position.y=39; b.castShadow=true; g.add(b); registerFadeable(b);
           const cap=new THREE.Mesh(new THREE.BoxGeometry(it.w+6,8,o.d+6), edgeMat); cap.position.y=80; g.add(cap);
           placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
@@ -234,6 +234,33 @@
         placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.arms3d=arms;
+
+      } else if(o.type==='shortcut'){
+        const deckMat = new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:28});
+        const railMat = new THREE.MeshLambertMaterial({color:0x1a1033});
+        const step = 40;
+        for(let z=o.yStart; z<o.yEnd; z+=step){
+          const k0 = clamp((z-o.yStart)/o.rampLen, 0, 1);
+          const seg = new THREE.Mesh(new THREE.BoxGeometry(o.w, 10, step+2), deckMat);
+          placeAt(seg, o.cx, z+step/2, o.h*k0 - 5);
+          seg.receiveShadow = true; courseGroup.add(seg);
+          // legs, so it reads as a raised deck rather than a floating strip
+          if(k0>=1 && ((z-o.yStart)/step)%3===0){
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(10, o.h, 10), railMat);
+            placeAt(leg, o.cx, z+step/2, o.h/2 - 6); courseGroup.add(leg);
+          }
+          // a rail on the open side only; the other side is the wall
+          const railX = o.cx + (o.cx > TRACK_W/2 ? -o.w/2 : o.w/2);
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(4, 16, step+2), railMat);
+          placeAt(rail, railX, z+step/2, o.h*k0 + 8); courseGroup.add(rail);
+        }
+        // chevrons on the deck, so it reads as the fast line
+        for(let i=0;i<4;i++){
+          const z = o.yStart + o.rampLen + (o.yEnd-o.yStart-o.rampLen)*(i+0.5)/4;
+          const ch = new THREE.Mesh(new THREE.BoxGeometry(o.w*0.5, 3, 12),
+            new THREE.MeshBasicMaterial({color:0xfff8ec}));
+          placeAt(ch, o.cx, z, o.h + 1.5); courseGroup.add(ch);
+        }
 
       } else if(o.type==='ramp'){
         // a wedge: flat at the bottom, `height` at the far lip
@@ -488,8 +515,22 @@
       r.floorH = 0; r.onRamp = null;
     }
 
-    // ---- ground hazards (only when on the ground) ----
-    if(r.h<=0.5){
+    // ---- the raised side lane ----
+    const sc = obstacles.find(o=>o.type==='shortcut' && r.y>=o.yStart && r.y<=o.yEnd
+                                 && Math.abs(r.x-o.cx) < o.w/2);
+    if(sc){
+      const k = clamp((r.y - sc.yStart)/sc.rampLen, 0, 1);
+      r.floorH = sc.h*k;
+      r.onShortcut = sc;
+      if(k >= 1 && r.h<=0.5 && r.vy < sc.boost) r.vy = sc.boost;   // the reward
+    } else if(r.onShortcut){
+      // stepped off the side, or ran out of lane: arc down rather than teleport
+      if(r.h<=0.5){ r.h = Math.max(r.h, r.floorH||0); r.vh = 0.5; }
+      r.floorH = 0; r.onShortcut = null;
+    }
+
+    // ---- ground hazards (only when on the ground, and only at ground level) ----
+    if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
         let onPlat=false;
         for(const p of inPit.platforms){ if(Math.abs(r.x-platX(p,t))<p.width/2+RADIUS-8){ onPlat=true; break; } }
@@ -516,7 +557,7 @@
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut) r.floorH = 0;
 
     if(r.invuln>0) return;
     for(const o of obstacles){

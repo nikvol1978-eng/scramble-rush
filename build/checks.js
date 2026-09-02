@@ -305,6 +305,160 @@
              pass: bad.length===0, detail: bad.length? bad.join('; ') : JSON.stringify(got) };
   }
 
+  // ---------- O: browsing the shop previews on the model, without equipping ----------
+  function checkO(){
+    const bad = [];
+    stats.coins = 9999;
+    $('home').classList.add('hidden'); $('profile').classList.remove('hidden');
+    profTab = 'shop'; buildProfile();
+    const equippedBefore = custom.skin;
+    const cards = document.querySelectorAll('#shopGrid .shopCard');
+    if(cards.length < 3) return { name:'O shop previews live on the model', pass:false, detail:'no shop cards' };
+    // click a card that is NOT the equipped one
+    let target = null, idx = -1;
+    const list = SKINS.filter(x=>shopFilter==='all'||x.rarity===shopFilter)
+                      .sort((a,b)=>RARITY_ORDER.indexOf(a.rarity)-RARITY_ORDER.indexOf(b.rarity));
+    for(let i=0;i<list.length;i++) if(list[i].id !== equippedBefore){ target = list[i]; idx = i; break; }
+    cards[idx].click();
+    const previewedMat = menuBlob.bodyMat;
+    if(custom.skin !== equippedBefore) bad.push('clicking a card changed the equipped skin');
+    // the model should now be built from the previewed skin, not the equipped one
+    const wantColour = new THREE.Color(skinBaseColor(target));
+    const gotColour  = previewedMat.color;
+    const same = Math.abs(gotColour.r-wantColour.r)+Math.abs(gotColour.g-wantColour.g)+Math.abs(gotColour.b-wantColour.b) < 0.05;
+    const usesMap = !!previewedMat.map;
+    if(!same && !usesMap) bad.push('model did not change to the previewed skin');
+    if($('previewTag').classList.contains('hidden')) bad.push('preview badge stayed hidden');
+    // leaving the tab must drop the preview
+    switchTab('stats');
+    if(previewSkin !== null) bad.push('preview survived a tab change');
+    $('profile').classList.add('hidden'); $('home').classList.remove('hidden');
+    return { name:'O shop previews live on the model', pass: bad.length===0,
+             detail: bad.length? bad.join('; ') : 'previewed '+(target?target.name:'?')+', equipped unchanged' };
+  }
+
+  // ---------- P: the camera gets out of its own way ----------
+  function checkP(){
+    const bad = [];
+    // (a) occlusion: stand against a wall, then swing the camera round so the
+    //     wall is between it and the racer. Something must fade.
+    begin('sunny');
+    const p = player();
+    p.x = 26; p.y = 1200; p.vx=0; p.vy=0;            // hard against the left wall
+    look.yaw = 0; look.pitch = 0; window.__dbg.tick(20);
+    const clearMin = Math.min(...fadeables.map(m=>m.material.opacity));
+    // +yaw pushes the camera out past the LEFT wall (world +X reads as screen-left
+    // from this camera, so a negative yaw would swing it into the track instead)
+    look.yaw = Math.PI*0.52; window.__dbg.tick(50);
+    const blockedMin = Math.min(...fadeables.map(m=>m.material.opacity));
+    if(!fadeables.length) bad.push('nothing registered as fadeable');
+    if(clearMin < 0.9)    bad.push('faded with a clear line of sight ('+clearMin.toFixed(2)+')');
+    if(blockedMin > 0.6)  bad.push('nothing faded when the wall blocked the view ('+blockedMin.toFixed(2)+')');
+
+    // (b) auto-tilt: the camera should ride higher on a descent than on the flat
+    begin('sunny'); window.__dbg.tick(30);
+    const flatElev = camera.position.y - (racers.find(r=>r.isPlayer).h);
+    begin('slide');
+    const ps = player(); ps.y = trackLength*0.45; window.__dbg.tick(40);
+    const dropTilt = camAuto;
+    if(dropTilt <= 0.02) bad.push('no auto-tilt on a descent ('+dropTilt.toFixed(3)+')');
+
+    return { name:'P camera fades occluders and tilts over drops',
+             pass: bad.length===0,
+             detail: bad.length? bad.join('; ')
+                   : fadeables.length+' fadeables, clear '+clearMin.toFixed(2)
+                     +' blocked '+blockedMin.toFixed(2)+', drop tilt '+dropTilt.toFixed(3) };
+  }
+
+  // ---------- Q: the shortcut lane lifts you, speeds you up, and drops you ----------
+  function checkQ(){
+    const bad = [];
+    let found = 0, detail = '';
+    for(const key of ['sunny','neon','jungle','sky']){
+      for(let attempt=0; attempt<6 && !found; attempt++){
+        begin(key);
+        const sc = obstacles.find(o=>o.type==='shortcut');
+        if(!sc) continue;
+        found++;
+        const p = player();
+        // ride the lane
+        p.x = sc.cx; p.y = sc.yStart + sc.rampLen + 40; p.h=0; p.vx=0; p.vy=0; p.falling=false;
+        window.__dbg.hold('w',true); window.__dbg.tick(30);
+        const onLane = { floor: p.floorH, speed: p.vy };
+        // step off the side
+        p.x = sc.cx + (sc.cx > TRACK_W/2 ? -1 : 1) * (sc.w/2 + 30);
+        window.__dbg.tick(4);
+        const offLane = { floor: p.floorH, h: p.h };
+        window.__dbg.hold('w',false);
+
+        if(onLane.floor < sc.h - 2)  bad.push(key+': lane did not lift the racer ('+onLane.floor.toFixed(0)+' of '+sc.h+')');
+        if(onLane.speed < sc.boost-0.3) bad.push(key+': no speed reward ('+onLane.speed.toFixed(1)+' of '+sc.boost.toFixed(1)+')');
+        if(offLane.floor > 1)        bad.push(key+': still raised after stepping off');
+        if(offLane.h < sc.h - 6)     bad.push(key+': dropped instantly instead of falling ('+offLane.h.toFixed(0)+')');
+        detail = 'lifted to '+onLane.floor.toFixed(0)+', boost '+onLane.speed.toFixed(1)+', fell from '+offLane.h.toFixed(0);
+      }
+      if(found) break;
+    }
+    if(!found) bad.push('no shortcut generated on any of the four maps offering it');
+    return { name:'Q shortcut lane lifts, rewards and drops', pass: bad.length===0,
+             detail: bad.length? bad.join('; ') : detail };
+  }
+
+  // ---------- R: being knocked out puts you on a survivor, not on your own corpse ----------
+  function checkR(){
+    const bad = [];
+    begin('tiles');
+    if(!currentMap.knockout)
+      return { name:'R spectator follows survivors', pass:false, detail:'tiles is not a knockout map' };
+    const p = player();
+
+    // while you are alive nothing changes
+    updateHud();
+    if(spectating())                                  bad.push('spectating while still alive');
+    if(camSubject() !== p)                             bad.push('camera left the player while alive');
+    if(!$('specBar').classList.contains('hidden'))     bad.push('spectator bar showing while alive');
+
+    // ...then you go out, mid-round, with others still in
+    p.lavaOut = true; p.lavaCatchY = p.y;
+    updateHud();
+    const s1 = camSubject();
+    if(!spectating())                                  bad.push('not spectating after elimination');
+    if(s1 === p)                                       bad.push('camera stayed on the eliminated player');
+    if(s1 && s1.lavaOut)                               bad.push('spectating someone already out');
+    if($('specBar').classList.contains('hidden'))      bad.push('spectator bar stayed hidden');
+    if(s1 && $('specName').textContent !== nameOf(s1))
+      bad.push('bar reads "'+$('specName').textContent+'" but the camera is on "'+nameOf(s1)+'"');
+
+    // the camera travels to them and settles
+    window.__dbg.tick(90);
+    const t1 = camSubject();
+    const w1 = toWorld(t1.x, t1.y, t1.h + RADIUS);
+    const near = camera.position.distanceTo(new THREE.Vector3(w1.x, w1.y, w1.z));
+    const own = toWorld(p.x, p.y, p.h + RADIUS);
+    const fromMe = camera.position.distanceTo(new THREE.Vector3(own.x, own.y, own.z));
+    if(near > 300)     bad.push('camera settled '+near.toFixed(0)+' from the racer it is watching');
+    if(fromMe < near)  bad.push('camera is still nearer the eliminated player than the survivor');
+
+    // switching targets
+    const aliveN = racers.filter(r=>!r.lavaOut && !r.falling).length;
+    const a = camSubject();
+    cycleSpectate(1);
+    const b = camSubject();
+    if(aliveN > 1 && a === b)   bad.push('next did not change target ('+aliveN+' alive)');
+    cycleSpectate(-1);
+    if(camSubject() !== a)      bad.push('prev did not return to the first target');
+
+    // and it goes away when the round does
+    let ticks = 0;
+    while(ticks < 3600 && state === 'racing'){ window.__dbg.tick(60); ticks += 60; }
+    if(state === 'racing')                          bad.push('round never ended');
+    else if(!$('specBar').classList.contains('hidden')) bad.push('spectator bar survived the round');
+
+    return { name:'R spectator follows survivors when you are out', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'watched '+nameOf(a)+' of '+aliveN+' alive, camera '+near.toFixed(0)+' away (own body '+fromMe.toFixed(0)+')' };
+  }
+
   // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
   function checkH(){
     begin('sunny');
@@ -349,7 +503,7 @@
       const all = [
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
-        ['J',checkJ],['K',checkK],['M',checkM],['N',checkN],
+        ['J',checkJ],['K',checkK],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],
         ['I',()=>checkI(!!opts.full)]
       ];
       const results = [];

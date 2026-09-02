@@ -4,7 +4,7 @@
   $('profileBtn').onclick = ()=>{ SFX.click(); openProfile('character'); };
   $('shopBtn').onclick    = ()=>{ SFX.click(); openProfile('shop'); };
   $('badgesBtn').onclick  = ()=>{ SFX.click(); openProfile('badges'); };
-  $('profBackBtn').onclick= ()=>{ SFX.click(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); };
+  $('profBackBtn').onclick= ()=>{ SFX.click(); clearPreview(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); };
   document.querySelectorAll('#profile .tab').forEach(t=>{ t.onclick=()=>{ SFX.click(); switchTab(t.dataset.tab); }; });
   $('nameInput').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12); $('profNameLbl').textContent=custom.name||'YOU'; saveProfile(); });
   $('randomBlobBtn').onclick = ()=>{
@@ -19,3 +19,13 @@
   $('dailyBtn').onclick     = ()=>{ SFX.click(); openDaily(); };
   $('dailyBackBtn').onclick = ()=>{ SFX.click(); closeDaily(); };
   $('spinBtn').onclick      = ()=>{ doSpin(); };
+
+  $('specPrev').onclick  = ()=>cycleSpectate(-1);
+  $('specNext').onclick  = ()=>cycleSpectate(1);
+  $('specAgain').onclick = ()=>{ SFX.click(); leaveSpectate(); goHome(); startRound(1,null); };
+  $('specQuit').onclick  = ()=>{ SFX.click(); leaveSpectate(); goHome(); };
+  window.addEventListener('keydown', e=>{
+    if(!spectating()) return;
+    if(e.key==='ArrowLeft'){ cycleSpectate(-1); e.preventDefault(); }
+    if(e.key==='ArrowRight'){ cycleSpectate(1); e.preventDefault(); }
+  });

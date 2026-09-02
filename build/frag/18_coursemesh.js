@@ -32,6 +32,7 @@
 
   function buildCourseMeshes(){
     clearGroup(courseGroup);
+    clearFadeables();
     const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
@@ -78,13 +79,13 @@
       const d=z1-z0; if(d<=0) return;
       if(!coursePath){
         const mesh=new THREE.Mesh(new THREE.BoxGeometry(8,30,d), wallMat);
-        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh);
+        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerFadeable(mesh);
         const top=new THREE.Mesh(new THREE.BoxGeometry(10,4,d), wallTopMat); top.position.set(toSceneX(xPos),31,(z0+z1)/2); courseGroup.add(top);
         return;
       }
       const face = ribbonStrip(z0, z1, s=>[toWorld(xPos,s,0), toWorld(xPos,s,30)]);
       const fm = new THREE.Mesh(face, wallMat); fm.material.side=THREE.DoubleSide;
-      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm);
+      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm); registerFadeable(fm);
       const cap = ribbonStrip(z0, z1, s=>[toWorld(xPos-5,s,31), toWorld(xPos+5,s,31)]);
       const cm = new THREE.Mesh(cap, wallTopMat); cm.material.side=THREE.DoubleSide; courseGroup.add(cm);
     }
@@ -135,7 +136,7 @@
       if(o.type==='pillars'){
         o.meshes = o.items.map(it=>{
           const mesh=new THREE.Mesh(new THREE.CylinderGeometry(it.r,it.r*1.05,60,18), pillarMat);
-          placeAt(mesh, it.x, o.y, 30); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh);
+          placeAt(mesh, it.x, o.y, 30); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerFadeable(mesh);
           const cap=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.1,it.r*1.1,8,18), pillarCapMat);
           placeAt(cap, it.x, o.y, 62); cap.castShadow=true; courseGroup.add(cap);
           const out=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.1,it.r*1.15,62,18), outlineMat);

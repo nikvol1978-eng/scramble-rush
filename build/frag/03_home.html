@@ -1,3 +1,17 @@
+<div id="specBar" class="hidden">
+  <div class="specTop">YOU'RE OUT — SPECTATING</div>
+  <div class="specRow">
+    <button class="specArrow" id="specPrev" aria-label="Previous player">&#9664;</button>
+    <span class="specName" id="specName">—</span>
+    <button class="specArrow" id="specNext" aria-label="Next player">&#9654;</button>
+  </div>
+  <div class="specRow">
+    <span class="specLeft" id="specLeft"></span>
+    <button class="btn small pink" id="specAgain">NEW MATCH</button>
+    <button class="btn small blue" id="specQuit">MENU</button>
+  </div>
+</div>
+
 <!-- ================= MAP LOADER ================= -->
 <div id="mapLoader" class="hidden">
   <div class="loaderTitle">LOADING COURSE</div>
@@ -63,6 +77,7 @@
 
 <!-- ================= PROFILE (tabbed) ================= -->
 <div id="profile" class="screen shade hidden">
+  <div class="previewTag hidden" id="previewTag"></div>
   <div class="profWrap panel">
     <div class="profHead">
       <div class="profId">

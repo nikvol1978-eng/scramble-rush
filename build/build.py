@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 13                                  # single source of truth
+VERSION = 14                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -64,7 +64,7 @@ def sub(old, new, label, count=1):
 
 # ---------------------------------------------------------------- title
 sub("<title>Scramble Rush 3D</title>",
-    "<title>Scramble Rush 3D \u2014 v8</title>", "title")
+    "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
 # ---------------------------------------------------------------- CSS
 sub("</style>\n</head>", frag("04_menu.css") + "</style>\n</head>", "css append")
@@ -267,6 +267,11 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
     "          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;",
     "bot spinbar prediction")
 
+# ---------------------------------------------------------------- spectator
+sub("  function racerCollisions(){",
+    frag("20_spectate.js") + "\n" + "  function racerCollisions(){",
+    "spectator")
+
 # -------------------------------------------------- impacts + slipstream
 cut("  function racerCollisions(){",
     "  function nextObstacle(r){",
@@ -367,6 +372,10 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     "loop hooks")
 
 # HUD progress dots should show the player's colourway
+sub("  function updateHud(){",
+    "  function updateHud(){" + chr(10) + "    updateSpectator();",
+    "spectator hud tick")
+
 sub("    $('rankBadge').textContent=`Rank ${rank}/${racers.length}`;",
     "    $('rankBadge').textContent = currentMap.knockout"
     + chr(10) + "      ? racers.filter(r=>!r.lavaOut).length+' LEFT'"
