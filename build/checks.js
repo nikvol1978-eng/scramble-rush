@@ -173,27 +173,39 @@
   }
 
   // ---------- G: the minigame mechanics actually tick ----------
-  function checkG(){
+  function checkG(half){
     const bad = [], got = {};
-    begin('cannonc'); window.__dbg.hold('w',true); window.__dbg.tick(480);
-    got.cannonShots = shots.length; window.__dbg.hold('w',false);
+    const doA = half!==2, doB = half!==1;
+    if(doA){
+    // Shots and boulders are transient: a ball crosses the lane in about 1.3s, so
+    // sampling the array once can legitimately catch zero. Take the peak over the
+    // window instead -- a single snapshot made this check flaky, not the game.
+    begin('cannonc'); window.__dbg.hold('w',true);
+    got.cannonShots = 0;
+    for(let i=0;i<6;i++){ window.__dbg.tick(50); got.cannonShots = Math.max(got.cannonShots, shots.length); }
+    window.__dbg.hold('w',false);
     if(got.cannonShots === 0) bad.push('no cannonballs in flight');
 
-    begin('boulder'); window.__dbg.hold('w',true); window.__dbg.tick(420);
-    got.boulders = boulders.length; window.__dbg.hold('w',false);
+    begin('boulder'); window.__dbg.hold('w',true);
+    got.boulders = 0;
+    for(let i=0;i<5;i++){ window.__dbg.tick(50); got.boulders = Math.max(got.boulders, boulders.length); }
+    window.__dbg.hold('w',false);
     if(got.boulders === 0) bad.push('no boulders spawned');
+    }
+    if(doB){
 
-    begin('tiles'); window.__dbg.hold('w',true); window.__dbg.tick(420);
+    begin('tiles'); window.__dbg.hold('w',true); window.__dbg.tick(300);
     const tf = obstacles.find(o=>o.type==='tilefield');
     got.tilesGone = tf ? tf.tiles.filter(x=>x.gone).length : -1;
     window.__dbg.hold('w',false);
     if(got.tilesGone <= 0) bad.push('no tiles crumbled');
 
-    begin('hex'); window.__dbg.hold('w',true); window.__dbg.tick(420);
+    begin('hex'); window.__dbg.hold('w',true); window.__dbg.tick(300);
     const hf = obstacles.find(o=>o.type==='hexfield');
     got.hexGone = hf ? hf.cells.filter(c=>c.gone).length : -1;
     window.__dbg.hold('w',false);
     if(got.hexGone <= 0) bad.push('no hexes crumbled');
+    }
 
     return { name:'G minigame mechanics tick', pass: bad.length===0,
              detail: bad.length? bad.join('; ') : JSON.stringify(got) };
@@ -242,7 +254,7 @@
       const only = opts.only ? new Set(opts.only.split('')) : null;
       const all = [
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
-        ['E',checkE],['F',checkF],['G',checkG],['H',checkH],
+        ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
         ['I',()=>checkI(!!opts.full)]
       ];
       const results = [];

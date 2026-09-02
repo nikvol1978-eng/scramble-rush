@@ -75,8 +75,10 @@
     // travel the length of the arena over the first 80%, then hand over to the chase cam
     const eA = clamp(k/0.80, 0, 1);
     const s  = eA<0.5 ? 2*eA*eA : 1-Math.pow(-2*eA+2,2)/2;
-    const z0 = trackLength + FINISH_ZONE + 200, zEnd = py - 95;
-    const zA = z0 + (zEnd - z0)*s;
+    // Travel in ribbon distance, not world Z, so the shot follows a climb or a
+    // descent instead of flying through the hillside.
+    const s0 = trackLength + FINISH_ZONE + 200, sEnd = p.y;
+    const sA = s0 + (sEnd - s0)*s;
     const hA = 300 + (95 - 300)*s;
     // The lead has to stay ahead of the camera the whole way. If the target
     // interpolated independently it would cross the camera mid-flight and the
@@ -87,17 +89,23 @@
     const b  = clamp((k-0.78)/0.22, 0, 1);
     const bs = b*b*(3-2*b);                       // smoothstep the handover
 
-    const cx = sway + (px - sway)*bs;
-    const cy = hA + (95 - hA)*bs;
-    const tx = sway*0.3 + (px - sway*0.3)*bs;
-    const ty = 20 + (14 - 20)*bs;
-    const tz = (zA - lead) + ((py+55) - (zA - lead))*bs;
+    const camW  = toWorld(TRACK_W/2 + sway, sA, hA);
+    const tgtW  = toWorld(TRACK_W/2 + sway*0.3, sA - lead, 20);
+    // where the chase camera wants to be, so the handover is seamless
+    const restW = toWorld(p.x, p.y - 95, 95);
+    const restT = toWorld(p.x, p.y + 55, 14);
 
-    camera.position.set(cx, cy, zA);
-    camera.lookAt(tx, ty, tz);
-    dirLight.position.set(px+220, 420, zA-160); dirLight.target.position.set(px, 0, zA+150);
+    camera.position.set(camW.x + (restW.x-camW.x)*bs,
+                        camW.y + (restW.y-camW.y)*bs,
+                        camW.z + (restW.z-camW.z)*bs);
+    camera.lookAt(tgtW.x + (restT.x-tgtW.x)*bs,
+                  tgtW.y + (restT.y-tgtW.y)*bs,
+                  tgtW.z + (restT.z-tgtW.z)*bs);
+    dirLight.position.set(camera.position.x+220, camera.position.y+330, camera.position.z-160);
+    dirLight.target.position.set(camW.x, camW.y-100, camW.z+150);
     sky.position.set(camera.position.x, 0, camera.position.z);
-    camPos.x = px; camPos.z = py + 55;             // hand over cleanly
+    const hand = toWorld(p.x, p.y + 55, 0);
+    camPos.x = hand.x; camPos.y = hand.y; camPos.z = hand.z;   // hand over cleanly
   }
 
   function syncCamera(snap, dt){
@@ -122,21 +130,29 @@
     const elev = clamp(baseElev + look.pitch, -0.20, 1.35);
     const azim = look.yaw;
 
-    const targetX = toSceneX(p.x);
-    const pivotZ = p.y + 55*Math.cos(azim);
+    // Orbit about a point on the ribbon a little ahead of the racer. The
+    // azimuth is taken relative to the course heading, so "behind" means back
+    // along the track rather than back along world Z.
+    const base = pathAngle(p.y);
+    const pivotW = toWorld(p.x, p.y + 55*Math.cos(azim), 0);
     const lerp = snap?1:0.12;
-    camPos.x += (targetX-camPos.x)*lerp;
-    camPos.z += (pivotZ-camPos.z)*lerp;
+    if(camPos.y===undefined || snap){ camPos.y = pivotW.y; }
+    camPos.x += (pivotW.x-camPos.x)*lerp;
+    camPos.y += (pivotW.y-camPos.y)*lerp;
+    camPos.z += (pivotW.z-camPos.z)*lerp;
 
-    const ox = -radius*Math.cos(elev)*Math.sin(azim);
+    const aw = azim + base;
+    const ox = -radius*Math.cos(elev)*Math.sin(aw);
     const oy =  radius*Math.sin(elev);
-    const oz = -radius*Math.cos(elev)*Math.cos(azim);
+    const oz = -radius*Math.cos(elev)*Math.cos(aw);
 
     let shx=0, shy=0;
     if(camShake>0 && settings.shake){ shx=rand(-1,1)*camShake; shy=rand(-1,1)*camShake; camShake*= Math.pow(0.02, dt); if(camShake<0.2) camShake=0; }
 
-    camera.position.set(camPos.x+ox+shx, oy+shy, camPos.z+oz);
-    camera.lookAt(camPos.x, 14, camPos.z);
-    dirLight.position.set(targetX+220, 420, p.y-160); dirLight.target.position.set(targetX, 0, p.y+150);
+    camera.position.set(camPos.x+ox+shx, camPos.y+oy+shy, camPos.z+oz);
+    camera.lookAt(camPos.x, camPos.y+14, camPos.z);
+    const lightAt = toWorld(p.x, p.y, 0);
+    dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
+    dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);
     sky.position.set(camera.position.x, 0, camera.position.z);
   }

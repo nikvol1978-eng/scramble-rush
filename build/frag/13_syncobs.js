@@ -7,18 +7,18 @@
           it.mesh.mace.position.set(hx,hy,hz); it.mesh.mace.rotation.y=t*2; it.mesh.maceOut.position.set(hx,hy,hz); it.mesh.maceOut.rotation.y=t*2;
           orientBetween(it.mesh.rod,pv.x,pv.y,pv.z,hx,hy,hz);
         }
-      } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t); }
-      else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ m.position.x=toSceneX(platX(o.platforms[i],t)); }); }
-      else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ m.position.x=toSceneX(platX(o.items[i],t)); }); }
+      } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
+      else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ placeAt(m, platX(o.platforms[i],t), (o.yStart+o.yEnd)/2, -6); }); }
+      else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
         const shift=blockShift(o,t);
-        if(o.meshes) o.meshes.forEach((m,i)=>{ m.position.x=toSceneX(o.items[i].x+shift); });
+        if(o.meshes) o.meshes.forEach((m,i)=>{ placeAt(m, o.items[i].x+shift, o.y, 0); });
       }
-      else if(o.type==='laserbar'){ if(o.mesh) o.mesh.position.z=laserY(o,t); }
+      else if(o.type==='laserbar'){ if(o.mesh) placeAt(o.mesh, TRACK_W/2, laserY(o,t), o.h); }
       else if(o.type==='pendulum'){
         if(o.mesh){
           const a=pendAngle(o,t), pp=pendPos(o,t);
-          o.mesh.position.set(toSceneX(pp.x), pp.h, o.y);
+          placeAt(o.mesh, pp.x, o.y, pp.h);
           o.ball.position.set(0,0,0);
           // the rod runs from the ball back up to the pivot
           o.rod.position.set(Math.sin(-a)*o.armLen/2, o.armLen/2*Math.cos(a), 0);
@@ -36,7 +36,7 @@
       else if(o.type==='roller'){
         if(o.mesh){
           const rx=rollerX(o,t);
-          o.mesh.position.x=toSceneX(rx);
+          placeAt(o.mesh, rx, o.y, o.r);
           // roll about the track axis, in step with how far it has travelled
           if(o.barrel) o.barrel.rotation.y = rx/o.r;
         }

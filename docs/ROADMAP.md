@@ -29,6 +29,7 @@ the version they shipped in.
   - [ ] Space — low gravity
   - [ ] Beach — waves pushing players
 - [x] Cannons and boost pads *(v11)*
+- [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
 - [ ] Moving platforms, falling floors
 - [ ] Random map events
 - [ ] Game modes beyond racing: survival, last blob standing, team, collect,
@@ -87,3 +88,4 @@ launch forward. The core game stays about movement and obstacles.
 | v9 | Character remodelled to the Fall Guys silhouette |
 | v10 | Free-orbit camera, 22 more skins, daily spin wheel |
 | v11 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded grid |
+| v12 | Path-based courses; Cannon Climb climbs, Super Slide descends |

@@ -72,7 +72,7 @@
   function syncRacers(t){
     for(const r of racers){
       const m=r.mesh; if(!m) continue;
-      const sx=toSceneX(r.x), sz=r.y;
+      // position comes from the course path; on a straight course this is the old transform
       let baseY=0, opacity=1;
       if(r.lavaOut){ baseY=-70; opacity=0.15; m.group.rotation.z=2.4; }
       else if(r.falling){ const k=clamp(1-r.fallT/650,0,1); baseY=-90*k*k; opacity=clamp(1-k*1.2,0,1); m.group.rotation.z=k*3; }
@@ -83,10 +83,11 @@
       // a light bob from the run cycle, in step with the legs
       const gait = 8 + clamp(speed,0,7)*1.1;
       const bob = (moving && r.h===0 && !r.diveT && !r.finished) ? Math.abs(Math.sin(t*gait+r.x*0.08))*1.6 : 0;
-      m.group.position.set(sx, RADIUS+baseY+bob+(r.floorH||0)+r.h, sz);
+      const wp = toWorld(r.x, r.y, RADIUS+baseY+bob+(r.floorH||0)+r.h);
+      m.group.position.set(wp.x, wp.y, wp.z);
 
       if(moving){ r.renderFacing=Math.atan2(r.vx,r.vy); }
-      m.group.rotation.y=r.renderFacing||0;
+      m.group.rotation.y=(r.renderFacing||0) + pathAngle(r.y);
 
       // the head leads the turn a little
       let d = (r.renderFacing||0) - (r.lastFacing===undefined ? (r.renderFacing||0) : r.lastFacing);

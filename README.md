@@ -7,7 +7,8 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-11.0.html` | **11.0 (current)** | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
+| `scramble-rush-12.0.html` | **12.0 (current)** | Path-based courses: Cannon Climb climbs, Super Slide descends |
+| `scramble-rush-11.0.html` | 11.0 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
 | `scramble-rush-10.0.html` | 10.0 | Free-orbit camera with mouse look, 65 skins, daily spin wheel |
 | `scramble-rush-9.0.html` | 9.0 | Character remodelled: lathed bean silhouette, small stubby limbs, thin rim |
 | `scramble-rush-8.0.html` | 8.0 | Reworked physics, arena flyover, walkable finish area, longer maps |
@@ -21,6 +22,7 @@ Each version is one self-contained HTML file.
 npm run dev
 ```
 
+- v12: http://localhost:5173/scramble-rush-12.0.html
 - v11: http://localhost:5173/scramble-rush-11.0.html
 - v10: http://localhost:5173/scramble-rush-10.0.html
 - v9: http://localhost:5173/scramble-rush-9.0.html
@@ -85,6 +87,30 @@ python build/build.py            # cut a new release (bump VERSION first)
 python build/build.py --force    # rebuild the current one in place
 python build/mkdebug.py          # throwaway __debug.html with window.__dbg
 ```
+
+## Checks
+
+`build/mkdebug.py` also injects `build/checks.js`. Open `__debug.html` and run:
+
+```
+window.__checks.run()                     // everything
+window.__checks.run({only:'DE'})          // just the named checks
+window.__checks.run({only:'G', half:1})   // G is heavy; run it in halves
+```
+
+They assert that things *happen* — cannonballs in flight, tiles crumbling, a
+climb gaining height — not merely that a round reaches state `racing`. A
+state-only check is what let `updateMinigames()` sit uncalled for three
+versions while every regression pass went green.
+
+## Course paths
+
+Courses are simulated on a flat ribbon: `x` across the track, `y` along it, `h`
+above the surface. A map may declare a `path` (`climb` or `slide`), which bends
+that ribbon into the world **for rendering and the camera only** — collision,
+bot AI, respawn and round flow never see it. A map with no `path` uses the
+straight transform, which reduces exactly to the old one, so corridor maps are
+provably unchanged (check A asserts this to 0.001).
 
 The build fails loudly if any splice anchor stops matching, so a generated file
 is never silently half-patched. It also refuses to overwrite an existing release

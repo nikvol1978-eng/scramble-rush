@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 11                                  # single source of truth
+VERSION = 12                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -125,35 +125,21 @@ cut("  function makeBlob(opts){",
     frag("02_skinmat.js") + frag("02b_rig.js") + "\n",
     "skin materials + character rig")
 
+# ---------------------------------------------------------------- course path
+cut("  function buildCourseMeshes(){",
+    "  function syncObstacles(t){",
+    frag("17_path.js") + "\n" + frag("18_coursemesh.js") + "\n",
+    "course path + course meshes")
+
+
 # ---------------------------------------------------------------- course generation
 cut("  function genCourse(n){",
     "  // ============================================================\n  // COURSE MESHES",
     frag("08_gencourse.js") + "\n",
     "genCourse")
 
-# ---------------------------------------------------------------- course mesh hooks
-sub("    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow').sort((a,b)=>a.yStart-b.yStart);",
-    "    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield').sort((a,b)=>a.yStart-b.yStart);",
-    "specials filter")
 
-sub("""      }
-      cursor=o.yEnd;
-    }""",
-    """      } else if(o.type==='tilefield'||o.type==='hexfield'){
-        addGround(0,TRACK_W,o.yStart,o.yEnd,true);
-        addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
-      }
-      cursor=o.yEnd;
-    }""",
-    "tilefield/hexfield ground")
 
-sub("""    lavaMesh=null; lavaGlow=null;
-    if(currentMap.isMinigame){""",
-    """    buildMinigameMeshes();
-
-    lavaMesh=null; lavaGlow=null;
-    if(currentMap.mode==='lava'){""",
-    "minigame meshes + lava mesh guard")
 
 # ---------------------------------------------------------------- racers wear skins
 sub("      list.push(Object.assign(baseRacer(), {isPlayer:true, remoteId:null, _localId:'host', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes, x:pslot, y:-60}));",
@@ -375,10 +361,6 @@ sub("        $('mapIntro').classList.add('hidden');",
     + chr(10) + "        $('hud').classList.remove('hidden'); $('pauseBtn').classList.remove('hidden');",
     "hud after flyover")
 
-# the finish pen needs floor under it, not just the old 320-unit run-off
-sub("    let cursor=-300; const endZ=trackLength+320;",
-    "    let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;",
-    "finish pen ground")
 
 if errors:
     print("FAILED:")

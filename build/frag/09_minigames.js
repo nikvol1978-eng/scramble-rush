@@ -58,7 +58,7 @@
           const lintel=new THREE.Mesh(new THREE.BoxGeometry(it.w+14,8,o.d+4), frameMat); lintel.position.y=80; g.add(lintel);
           const knob=new THREE.Mesh(new THREE.SphereGeometry(4,8,6), new THREE.MeshPhongMaterial({color:0xffcb3d,shininess:80}));
           knob.position.set(it.w*0.28, 36, -o.d/2-2); g.add(knob);
-          g.position.set(toSceneX(it.x), 0, o.y);
+          placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
           return {group:g, panel};
         });
@@ -72,10 +72,10 @@
           top.receiveShadow=true; g.add(top);
           const under=new THREE.Mesh(new THREE.BoxGeometry(tl.w-14,26,tl.d-14), sideMat);
           under.position.y=-18; g.add(under);
-          g.position.set(toSceneX(tl.x), -6, tl.y);
+          placeAt(g, tl.x, tl.y, -6);
           g.visible = !tl.gone;
           courseGroup.add(g);
-          tl.mesh=g; tl.topMat=top.material;
+          tl.mesh=g; tl.topMat=top.material; tl.baseY=g.position.y;
         }
 
       } else if(o.type==='hexfield'){
@@ -88,10 +88,10 @@
           top.rotation.y=Math.PI/6; top.receiveShadow=true; g.add(top);
           const rim=new THREE.Mesh(new THREE.CylinderGeometry(c.r*0.99,c.r*0.99,6,6), sideMat);
           rim.rotation.y=Math.PI/6; rim.position.y=-8; g.add(rim);
-          g.position.set(toSceneX(c.x), c.hy-6, c.y);
+          placeAt(g, c.x, c.y, c.hy-6);
           g.visible=!c.gone;
           courseGroup.add(g);
-          c.mesh=g; c.topMat=top.material;
+          c.mesh=g; c.topMat=top.material; c.baseY=g.position.y;
         }
 
       } else if(o.type==='blockwall'){
@@ -101,7 +101,7 @@
           const g=new THREE.Group();
           const b=new THREE.Mesh(new THREE.BoxGeometry(it.w,78,o.d), blockMat); b.position.y=39; b.castShadow=true; g.add(b);
           const cap=new THREE.Mesh(new THREE.BoxGeometry(it.w+6,8,o.d+6), edgeMat); cap.position.y=80; g.add(cap);
-          g.position.set(toSceneX(it.x), 0, o.y);
+          placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
           return g;
         });
@@ -118,7 +118,7 @@
         // emitters at each end so the beam reads as machinery
         [-1,1].forEach(s=>{ const e=new THREE.Mesh(new THREE.BoxGeometry(26,34,26), new THREE.MeshLambertMaterial({color:0x1a1033}));
           e.position.set(s*(TRACK_W/2+10), -6, 0); g.add(e); });
-        g.position.set(0, o.h, o.y);
+        placeAt(g, TRACK_W/2, o.y, o.h);
         courseGroup.add(g);
         o.mesh=g;
 
@@ -130,7 +130,7 @@
         const band=new THREE.Mesh(new THREE.CylinderGeometry(o.r*1.04,o.r*1.04,14,14),
           new THREE.MeshLambertMaterial({color:0x1a1033}));
         band.rotation.x=Math.PI/2; g.add(band);
-        g.position.set(toSceneX(o.cx), o.r, o.y);
+        placeAt(g, o.cx, o.y, o.r);
         courseGroup.add(g);
         o.mesh=g; o.barrel=barrel;
 
@@ -146,8 +146,8 @@
           const mount=new THREE.Mesh(new THREE.BoxGeometry(26,30,40), bandMat);
           mount.position.set(it.side*30,-18,0); g.add(mount);
           // muzzle points into the lane
-          g.position.set(toSceneX(it.side<0 ? 30 : TRACK_W-30), 54, it.y);
-          g.rotation.y = it.side<0 ? 0 : Math.PI;
+          placeAt(g, it.side<0 ? 30 : TRACK_W-30, it.y, 54);
+          g.rotation.y += it.side<0 ? 0 : Math.PI;
           courseGroup.add(g);
           return {group:g, barrel};
         });
@@ -156,7 +156,7 @@
         const g=new THREE.Group();
         const barMat=new THREE.MeshLambertMaterial({color:0x1a1033});
         const beam=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W+40,12,12), barMat);
-        beam.position.set(0,o.pivotH,o.y); courseGroup.add(beam);
+        placeAt(beam, TRACK_W/2, o.y, o.pivotH); courseGroup.add(beam);
         const rod=new THREE.Mesh(new THREE.CylinderGeometry(3,3,o.armLen,8), barMat);
         rod.castShadow=true; g.add(rod);
         const ball=new THREE.Mesh(new THREE.SphereGeometry(o.r,16,12),
@@ -177,7 +177,7 @@
           cap.position.y=30; cap.castShadow=true; g.add(cap);
           const ring=new THREE.Mesh(new THREE.TorusGeometry(it.r*0.95,2.4,8,20), ringMat);
           ring.rotation.x=Math.PI/2; ring.position.y=31; g.add(ring);
-          g.position.set(toSceneX(it.x), 0, o.y);
+          placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
           return g;
         });
@@ -199,7 +199,7 @@
             g.add(bar);
           });
         }
-        g.position.set(toSceneX(o.cx), 0, o.y);
+        placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g;
 
@@ -224,7 +224,7 @@
             new THREE.MeshBasicMaterial({color:0xd9f99d}));
           tip.position.x=o.len; arm.add(tip);
         }
-        g.position.set(toSceneX(o.cx), 0, o.y);
+        placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.arms3d=arms;
 
@@ -247,7 +247,7 @@
         const g=new THREE.Group(); g.add(mesh);
         const lip=new THREE.Mesh(new THREE.BoxGeometry(w+8,6,10), new THREE.MeshLambertMaterial({color:0x1a1033}));
         lip.position.set(0,hgt+2,len/2); g.add(lip);
-        g.position.set(toSceneX(o.cx), 0, (o.yStart+o.yEnd)/2);
+        placeAt(g, o.cx, (o.yStart+o.yEnd)/2, 0);
         courseGroup.add(g);
         o.mesh=g;
       }
@@ -261,23 +261,23 @@
     const z = trackLength;
     const line=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2.4,14),
       new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
-    line.position.set(0,0.9,z); courseGroup.add(line);
+    placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);
 
     const postMat=new THREE.MeshPhongMaterial({color:0xff4fa3, shininess:30});
     const barMat =new THREE.MeshLambertMaterial({color:0x1a1033});
     [-1,1].forEach(s=>{
       const post=new THREE.Mesh(new THREE.CylinderGeometry(9,11,120,10), postMat);
-      post.position.set(s*(TRACK_W/2-14), 60, z); post.castShadow=true; courseGroup.add(post);
+      placeAt(post, TRACK_W/2 + s*(TRACK_W/2-14), z, 60); post.castShadow=true; courseGroup.add(post);
     });
     const beam=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-8,20,16), postMat);
-    beam.position.set(0,120,z); beam.castShadow=true; courseGroup.add(beam);
+    placeAt(beam, TRACK_W/2, z, 120); beam.castShadow=true; courseGroup.add(beam);
     const trim=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W+4,6,20), barMat);
-    trim.position.set(0,132,z); courseGroup.add(trim);
+    placeAt(trim, TRACK_W/2, z, 132); courseGroup.add(trim);
     // bunting either side of the pen so the area reads as somewhere to stand
     for(let i=0;i<10;i++){
       const f=new THREE.Mesh(new THREE.ConeGeometry(7,16,4),
         new THREE.MeshLambertMaterial({color:i%2?0xffcb3d:0x23e6c9}));
-      f.position.set((i%2?-1:1)*(TRACK_W/2-24), 96, z + 40 + i*24);
+      placeAt(f, TRACK_W/2 + (i%2?-1:1)*(TRACK_W/2-24), z + 40 + i*24, 96);
       f.rotation.x=Math.PI; courseGroup.add(f);
     }
   }
@@ -290,7 +290,7 @@
     const g = new THREE.Group();
     const ball=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0), rockMat); ball.castShadow=true; g.add(ball);
     const cap=new THREE.Mesh(new THREE.DodecahedronGeometry(r*0.72,0), rockTopMat); cap.position.set(r*0.2,r*0.35,0); g.add(cap);
-    g.position.set(toSceneX(b.x), r-4, b.y);
+    placeAt(g, b.x, b.y, r-4);
     b.mesh=g; b.ball=ball;
     courseGroup.add(g);
     boulders.push(b);
@@ -309,7 +309,7 @@
         const b=boulders[i];
         b.y -= b.speed*dt;
         b.spin += b.speed*dt/b.r;
-        b.mesh.position.set(toSceneX(b.x), b.r-4, b.y);
+        placeAt(b.mesh, b.x, b.y, b.r-4);
         b.ball.rotation.x = -b.spin;
         if(b.y < minY-520){ courseGroup.remove(b.mesh); boulders.splice(i,1); continue; }
         for(const r of racers){
@@ -342,7 +342,7 @@
           const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
                       vx: it.side<0 ? it.speed : -it.speed, spin:0 };
           const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMat);
-          g.castShadow=true; g.position.set(toSceneX(b.x), it.r+26, b.y);
+          g.castShadow=true; placeAt(g, b.x, b.y, it.r+26);
           courseGroup.add(g); b.mesh=g;
           shots.push(b);
           if(o.meshes && o.meshes[i]) o.meshes[i].recoil = 1;
@@ -352,7 +352,7 @@
     for(let i=shots.length-1;i>=0;i--){
       const b=shots[i];
       b.x += b.vx*dt; b.spin += b.vx*dt/b.r;
-      b.mesh.position.x = toSceneX(b.x);
+      placeAt(b.mesh, b.x, b.y, b.r+26);
       b.mesh.rotation.z = -b.spin;
       if(b.x < -60 || b.x > TRACK_W+60){ courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
       for(const r of racers){
@@ -387,21 +387,21 @@
           tl.fuse -= dt;
           if(tl.mesh){
             const wob = Math.sin(t*26)*Math.max(0, 1-tl.fuse/field.fuseTime)*2.2;
-            tl.mesh.position.y = -6 + wob;
+            tl.mesh.position.y = tl.baseY + wob;
             if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(tl.fuse<field.fuseTime*0.4 ? 0xff7a5c : 0xffd166);
           }
           if(tl.fuse<=0){ tl.gone=true; tl.drop=0; tl.back=field.respawnTime; spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
         } else if(tl.gone){
           if(tl.drop<1){
             tl.drop += dt*1.6;
-            if(tl.mesh){ tl.mesh.position.y = -6 - tl.drop*140; tl.mesh.rotation.z = tl.drop*0.5;
+            if(tl.mesh){ tl.mesh.position.y = tl.baseY - tl.drop*140; tl.mesh.rotation.z = tl.drop*0.5;
               if(tl.drop>=1) tl.mesh.visible=false; }
           } else {
             tl.back -= dt;
             if(tl.back<=0){
               // rebuild: rise back into place
               tl.gone=false; tl.touched=false; tl.fuse=-1; tl.drop=0;
-              if(tl.mesh){ tl.mesh.visible=true; tl.mesh.rotation.z=0; tl.mesh.position.y=-6;
+              if(tl.mesh){ tl.mesh.visible=true; tl.mesh.rotation.z=0; tl.mesh.position.y=tl.baseY;
                 if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(0xffffff); }
               spawnBurst3D(tl.x, tl.y, 0xffffff, 4);
             }
@@ -417,20 +417,20 @@
         if(c.touched && !c.gone){
           c.fuse -= dt;
           if(c.mesh){
-            c.mesh.position.y = c.hy - 6 + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
+            c.mesh.position.y = c.baseY + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
             if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hf.fuseTime*0.45 ? 0xff5a4d : 0xffd166);
           }
           if(c.fuse<=0){ c.gone=true; c.drop=0; c.back=hf.respawnTime; spawnBurst3D(c.x,c.y,0xa78bfa,6); }
         } else if(c.gone){
           if(c.drop<1){
             c.drop += dt*1.5;
-            if(c.mesh){ c.mesh.position.y = c.hy-6 - c.drop*160; c.mesh.rotation.x = c.drop*0.6;
+            if(c.mesh){ c.mesh.position.y = c.baseY - c.drop*160; c.mesh.rotation.x = c.drop*0.6;
               if(c.drop>=1) c.mesh.visible=false; }
           } else {
             c.back -= dt;
             if(c.back<=0){
               c.gone=false; c.touched=false; c.fuse=-1; c.drop=0;
-              if(c.mesh){ c.mesh.visible=true; c.mesh.rotation.x=0; c.mesh.position.y=c.hy-6;
+              if(c.mesh){ c.mesh.visible=true; c.mesh.rotation.x=0; c.mesh.position.y=c.baseY;
                 if(c.topMat && c.topMat.color) c.topMat.color.setHex(0xffffff); }
             }
           }
