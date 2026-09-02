@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 14                                  # single source of truth
+VERSION = 15                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -267,6 +267,11 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
     "          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;",
     "bot spinbar prediction")
 
+# ------------------------------------------------------- waves + map events
+sub("  function racerCollisions(){",
+    frag("21_living.js") + "\n" + "  function racerCollisions(){",
+    "living maps")
+
 # ---------------------------------------------------------------- spectator
 sub("  function racerCollisions(){",
     frag("20_spectate.js") + "\n" + "  function racerCollisions(){",
@@ -365,7 +370,7 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     else { syncObstacles(t+mp.tOffset); syncRacers(t); syncCamera(false,dt); }
     renderer.render(scene,camera);""",
     """    if(state==='menu'){ syncPreview(t,dt); }
-    else { syncObstacles(t+mp.tOffset); syncRacers(t); syncCamera(false,dt); }
+    else { syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
     updateSkinMaterials(t);
     renderCoinPops(dt);
     renderer.render(scene,camera);""",

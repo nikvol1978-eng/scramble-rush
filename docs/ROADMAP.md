@@ -25,14 +25,14 @@ the version they shipped in.
   - [x] Lava — rising lava *(v6)*
   - [x] Ice — slippery movement *(v8, `slippery` flag)*
   - [x] Tiles — disappearing floor *(v7)*
-  - [ ] Jungle — swinging logs
-  - [ ] Space — low gravity
-  - [ ] Beach — waves pushing players
+  - [x] Jungle — swinging logs *(v15)*
+  - [x] Space — low gravity, on Orbit Drop *(v15)*
+  - [x] Beach — waves pushing players, on Beach Break *(v15)*
 - [x] Cannons and boost pads *(v11)*
 - [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
-- [ ] Moving platforms, falling floors
+- [x] Moving platforms, falling floors *(v15)*
 - [x] Risk-vs-reward shortcut lanes — raised, narrow, faster *(v14)*
-- [ ] Random map events
+- [x] Random map events — crosswind, frenzy, tremor *(v15)*
 - [x] Survival / last blob standing — Tile Trap and Honey Drop *(v13)*
 - [ ] Team, collect, final showdown in a small arena
 
@@ -93,3 +93,4 @@ launch forward. The core game stays about movement and obstacles.
 | v12 | Path-based courses; Cannon Climb climbs, Super Slide descends |
 | v13 | Impact physics, slipstream, knockout rounds, 7 shaped maps, 28 badges, special auras |
 | v14 | Live shop preview, smart camera, shortcut lanes, spectator mode |
+| v15 | Moving platforms, crumbling bridges, swinging logs, Orbit Drop, Beach Break, map events |

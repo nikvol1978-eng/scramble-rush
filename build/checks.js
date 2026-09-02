@@ -12,7 +12,7 @@
 
   // Four maps stay genuinely flat, so the straight fallback keeps being exercised.
   const CORRIDOR_MAPS = ['sunny','neon','sky','cyber'];
-  const PATH_MAPS     = ['cannonc','slide','honey','candy','jungle','bumperb','frost'];
+  const PATH_MAPS     = ['cannonc','slide','honey','candy','jungle','bumperb','frost','space','beach'];
   const MINIGAME_KEYS = ['lava','boulder','doors','tiles','blockdash','hex','laser','tracer'];
   const TO_RACING     = 700;                 // ticks to clear loader + flyover + countdown
 
@@ -76,6 +76,9 @@
         case 'spinlaser':push(o.cx, o.y, o.mesh, 'spinlaser'); break;
         case 'ramp':    push(o.cx, (o.yStart+o.yEnd)/2, o.mesh, 'ramp'); break;
         case 'spinbar': push(o.cx, o.y, o.mesh, 'spinbar'); break;
+        case 'mover':   push(moverX(o,t), (o.yStart+o.yEnd)/2, o.mesh, 'mover'); break;
+        case 'crumble': (o.meshes||[]).forEach((m,i)=>{ if(!o.slabs[i].gone) push(o.slabs[i].x, o.slabs[i].y, m, 'crumble'); }); break;
+        case 'log':     { const lp=logPos(o,t); push(lp.x, o.y, o.mesh, 'log'); break; }
         case 'tilefield': o.tiles.slice(0,40).forEach(tl=>{ if(tl.mesh) push(tl.x, tl.y, tl.mesh, 'tile'); }); break;
         case 'hexfield':  o.cells.slice(0,40).forEach(c=>{ if(c.mesh) push(c.x, c.y, c.mesh, 'hex'); }); break;
       }
@@ -121,7 +124,8 @@
         const sy = 200 + (trackLength-500)*(i/59);
         // skip anywhere the course is meant to drop you
         const hazard = obstacles.some(o=>
-          (o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield') &&
+          (o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'||
+           o.type==='mover'||o.type==='crumble') &&
           sy > o.yStart-120 && sy < o.yEnd+120);
         if(hazard) continue;
         p.y=sy; p.x=TRACK_W/2; p.h=0; p.vx=0; p.vy=0; p.falling=false; p.floorH=0;
@@ -344,13 +348,30 @@
     //     wall is between it and the racer. Something must fade.
     begin('sunny');
     const p = player();
-    p.x = 26; p.y = 1200; p.vx=0; p.vy=0;            // hard against the left wall
-    look.yaw = 0; look.pitch = 0; window.__dbg.tick(20);
+    // Pick a stretch with nothing in it. Measuring the clear view from a fixed
+    // spot meant that on the odd layout a pillar really was in the way, and the
+    // camera was marked broken for doing its job.
+    let openY = 1200;
+    for(let y=900; y<Math.min(6000, trackLength-600); y+=140){
+      if(!obstacles.some(o=>y > (o.y0??o.yStart)-260 && y < (o.y1??o.yEnd)+260)){ openY = y; break; }
+    }
+    look.yaw = 0; look.pitch = 0;
+    for(let k=0;k<6;k++){ p.x = TRACK_W/2; p.y = openY; p.vx = 0; p.vy = 0; window.__dbg.tick(10); }
     const clearMin = Math.min(...fadeables.map(m=>m.material.opacity));
-    // +yaw pushes the camera out past the LEFT wall (world +X reads as screen-left
-    // from this camera, so a negative yaw would swing it into the track instead)
-    look.yaw = Math.PI*0.52; window.__dbg.tick(50);
-    const blockedMin = Math.min(...fadeables.map(m=>m.material.opacity));
+    p.x = 26;                                        // now hard against the left wall
+    // Swing the camera round behind the wall. One hand-picked angle was too
+    // brittle -- depending on where the racer stands the camera can clear the
+    // wall top -- so sweep and take the best occlusion the arc produces.
+    let blockedMin = 1;
+    for(const yaw of [0.38, 0.52, 0.66, 0.80, 0.94]){
+      // The camera lerps to a new orbit over ~25 frames, so hold long enough for
+      // the fade to settle after it arrives. Re-pin every slice: over a hold this
+      // long the pack barges the racer off the wall, and then of course nothing
+      // is blocking the view any more.
+      look.yaw = Math.PI*yaw;
+      for(let k=0;k<8;k++){ p.x = 26; p.y = openY; p.vx = 0; p.vy = 0; window.__dbg.tick(10); }
+      blockedMin = Math.min(blockedMin, ...fadeables.map(m=>m.material.opacity));
+    }
     if(!fadeables.length) bad.push('nothing registered as fadeable');
     if(clearMin < 0.9)    bad.push('faded with a clear line of sight ('+clearMin.toFixed(2)+')');
     if(blockedMin > 0.6)  bad.push('nothing faded when the wall blocked the view ('+blockedMin.toFixed(2)+')');
@@ -459,6 +480,205 @@
                : 'watched '+nameOf(a)+' of '+aliveN+' alive, camera '+near.toFixed(0)+' away (own body '+fromMe.toFixed(0)+')' };
   }
 
+  // ---------- S: moving platforms carry whoever is standing on them ----------
+  function checkS(){
+    const bad = [];
+    let o = null, key = null;
+    for(const k of ['sky','cyber','sunny']){
+      for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='mover'); key = k; }
+      if(o) break;
+    }
+    if(!o) return { name:'S moving platforms carry a racer', pass:false, detail:'no mover generated on sky, cyber or sunny' };
+
+    const p = player();
+    const t0 = window.__T || 0;
+    const x0 = moverX(o, t0);
+    // stand on the platform, dead centre
+    p.x = x0; p.y = o.y; p.h = o.h; p.vx = 0; p.vy = 0; p.vh = 0; p.falling = false;
+    window.__dbg.tick(1);
+    const supported = p.floorH;
+    // Ride it without touching the controls, watching every step: net
+    // displacement is worthless here, because a platform that swings out and
+    // back over the window reads as having never moved at all.
+    let lo = x0, hi = x0, drift = 0;
+    for(let i=0;i<110;i++){
+      window.__dbg.tick(1);
+      const mx = moverX(o, window.__T || 0);
+      if(mx < lo) lo = mx; if(mx > hi) hi = mx;
+      drift = Math.max(drift, Math.abs(p.x - mx));
+    }
+    const t1 = window.__T || 0;
+    const platMoved = hi - lo;
+    const meMoved = p.x - x0;
+
+    if(supported < o.h - 2)            bad.push('platform did not hold the racer up ('+supported.toFixed(0)+' of '+o.h+')');
+    if(platMoved < 40)                 bad.push('platform barely travelled in 110 ticks ('+platMoved.toFixed(0)+')');
+
+    // carried means the racer never came adrift of the deck, at any point
+    if(drift > o.w/2)
+      bad.push('racer came adrift of the deck by '+drift.toFixed(0)+' (deck half-width '+(o.w/2).toFixed(0)+')');
+
+    // step off over the gap and you should be in the air, falling
+    p.x = clamp(moverX(o, t1) + o.w, 30, TRACK_W-30);
+    p.h = 0; p.falling = false;
+    window.__dbg.tick(3);
+    const offFloor = p.floorH, fell = p.falling;
+    if(offFloor > 1)  bad.push('still supported after stepping off the platform');
+    if(!fell)         bad.push('stepping off into the gap did not drop the racer');
+
+    return { name:'S moving platforms carry a racer', pass: bad.length===0,
+             detail: bad.length ? key+': '+bad.join('; ')
+               : key+': held at '+supported.toFixed(0)+', deck travelled '+platMoved.toFixed(0)+', racer never more than '+drift.toFixed(0)+' off centre' };
+  }
+
+  // ---------- T: falling floors drop you, then rebuild ----------
+  function checkT(){
+    const bad = [];
+    let o = null, key = null;
+    for(const k of ['sky','cyber','sunny']){
+      for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='crumble'); key = k; }
+      if(o) break;
+    }
+    if(!o) return { name:'T falling floors drop and rebuild', pass:false, detail:'no crumble generated on sky, cyber or sunny' };
+
+    const slab = o.slabs.find(s=>!s.gone) || o.slabs[0];
+    const p = player();
+    p.x = slab.x; p.y = slab.y; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.falling = false;
+    window.__dbg.tick(1);
+    const heldAtFirst = p.floorH >= o.h - 2 || !slab.gone;
+    if(!heldAtFirst) bad.push('slab was not solid when stepped on');
+
+    // wait out the fuse
+    const fuseTicks = Math.ceil(o.fuseTime*60) + 20;
+    window.__dbg.tick(fuseTicks);
+    if(!slab.touched) bad.push('standing on the slab did not arm it');
+    if(!slab.gone)    bad.push('slab never fell after '+o.fuseTime+'s of standing on it');
+
+    // and it must come back, or the course runs out of floor
+    window.__dbg.tick(Math.ceil(o.respawnTime*60) + 60);
+    if(slab.gone) bad.push('slab never rebuilt after '+o.respawnTime+'s');
+
+    return { name:'T falling floors drop and rebuild', pass: bad.length===0,
+             detail: bad.length ? key+': '+bad.join('; ')
+               : key+': '+o.slabs.length+' slabs, fell in '+o.fuseTime+'s, back in '+o.respawnTime+'s' };
+  }
+
+  // ---------- U: jungle logs sweep across and knock you back ----------
+  function checkU(){
+    const bad = [];
+    let o = null;
+    for(let a=0; a<10 && !o; a++){ begin('jungle'); o = obstacles.find(x=>x.type==='log'); }
+    if(!o) return { name:'U swinging logs knock racers back', pass:false, detail:'no log generated on jungle' };
+
+    const p = player();
+    let hit = false, pushed = 0, best = 0;
+    // park in the middle of the sweep and let the log come round
+    for(let i=0; i<180 && !hit; i++){
+      p.x = o.cx; p.y = o.y; p.h = 0; p.vx = 0; p.vy = 0; p.stumbleT = 0; p.falling = false;
+      const yBefore = p.y;
+      window.__dbg.tick(2);
+      if(p.stumbleT > 0){ hit = true; pushed = p.y - yBefore; best = p.vy; }
+    }
+    if(!hit) bad.push('the log never connected in 180 ticks of standing in its path');
+    else {
+      if(pushed >= 0 && best >= 0) bad.push('log hit but did not push the racer back (dy '+pushed.toFixed(0)+', vy '+best.toFixed(2)+')');
+    }
+    return { name:'U swinging logs knock racers back', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'log hit, knocked back dy '+pushed.toFixed(0)+' vy '+best.toFixed(2) };
+  }
+
+  // ---------- V: low gravity makes a higher, longer jump ----------
+  function checkV(){
+    const bad = [];
+    function arc(key){
+      begin(key);
+      const p = player();
+      p.x = TRACK_W/2; p.h = 0; p.vh = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
+      doJump(p);
+      let apex = 0, air = 0;
+      for(let i=0; i<200; i++){
+        window.__dbg.tick(1); air++;
+        if(p.h > apex) apex = p.h;
+        if(p.h <= 0 && i > 3) break;
+      }
+      return {apex, air};
+    }
+    const norm = arc('sunny');
+    const low  = arc('space');
+    if(!MAPS.find(m=>m.key==='space')) bad.push('no space map');
+    if(low.apex < norm.apex*1.35) bad.push('space jump is not floaty ('+low.apex.toFixed(0)+' vs '+norm.apex.toFixed(0)+')');
+    if(low.air  < norm.air*1.2)   bad.push('space hang time is not longer ('+low.air+' vs '+norm.air+' ticks)');
+    // ...but it must still come down
+    if(low.air > 200) bad.push('racer never landed on space');
+    return { name:'V low gravity makes a higher, longer jump', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'apex '+norm.apex.toFixed(0)+' -> '+low.apex.toFixed(0)+', airtime '+norm.air+' -> '+low.air+' ticks' };
+  }
+
+  // ---------- W: beach waves shove a standing racer back ----------
+  function checkW(){
+    const bad = [];
+    begin('beach');
+    if(!currentMap.waves) return { name:'W waves push racers back down the beach', pass:false, detail:'beach map has no waves flag' };
+    const p = player();
+    p.x = TRACK_W/2; p.y = 1200; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
+    const y0 = p.y;
+    let hit = false, worst = 0;
+    for(let i=0; i<600; i++){
+      window.__dbg.tick(2);
+      if(p.stumbleT > 0) hit = true;
+      const back = y0 - p.y;
+      if(back > worst) worst = back;
+      if(hit && worst > 60) break;
+    }
+    if(!hit)        bad.push('no wave reached a racer standing still for 1200 ticks');
+    if(worst < 40)  bad.push('waves pushed the racer back only '+worst.toFixed(0));
+    // and they must not push you through the start of the course
+    if(p.y < -50)   bad.push('a wave washed the racer off the back of the course ('+p.y.toFixed(0)+')');
+    return { name:'W waves push racers back down the beach', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'washed back '+worst.toFixed(0)+' and stumbled' };
+  }
+
+  // ---------- X: random map events fire mid-round and actually do something ----------
+  function checkX(){
+    const bad = [], seen = {};
+    for(const kind of ['wind','frenzy','quake']){
+      window.__forceEvent = kind;
+      begin('sunny');
+      const p = player();
+      // let the event arrive
+      let fired = false;
+      for(let i=0; i<60 && !fired; i++){ window.__dbg.tick(10); fired = !!(mapEvent && mapEvent.kind===kind && mapEvent.active); }
+      if(!fired){ bad.push(kind+': never fired'); continue; }
+      if(!$('eventBanner') || $('eventBanner').classList.contains('hidden'))
+        bad.push(kind+': fired with no warning on screen');
+
+      p.x = TRACK_W/2; p.y = 900; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
+      const x0 = p.x, y0 = p.y;
+      window.__dbg.tick(40);
+      if(kind === 'wind'){
+        const drift = Math.abs(p.x - x0);
+        seen.wind = drift.toFixed(0);
+        if(drift < 25) bad.push('wind moved a standing racer only '+drift.toFixed(0));
+      } else if(kind === 'frenzy'){
+        seen.frenzy = eventSpeed().toFixed(2)+'x';
+        if(eventSpeed() <= 1.05) bad.push('frenzy did not speed the obstacles up ('+eventSpeed().toFixed(2)+')');
+      } else if(kind === 'quake'){
+        let shook = false;
+        for(let i=0; i<40 && !shook; i++){ window.__dbg.tick(1); shook = camShake > 0.5 || p.stumbleT > 0; }
+        seen.quake = shook ? 'shook' : 'nothing';
+        if(!shook) bad.push('quake neither shook the camera nor stumbled anyone');
+      }
+      // every event must end on its own
+      let ended = false;
+      for(let i=0; i<80 && !ended; i++){ window.__dbg.tick(10); ended = !(mapEvent && mapEvent.active); }
+      if(!ended) bad.push(kind+': never ended');
+    }
+    window.__forceEvent = null;
+    return { name:'X random map events fire, land and end', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(seen) };
+  }
+
   // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
   function checkH(){
     begin('sunny');
@@ -504,6 +724,7 @@
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
         ['J',checkJ],['K',checkK],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],
+        ['S',checkS],['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['I',()=>checkI(!!opts.full)]
       ];
       const results = [];

@@ -44,8 +44,10 @@
     // Pushing each other apart can shove someone through the arena fence, because
     // this runs after the movement clamp. Put them back.
     if(currentMap.knockout && arenaEnd){
+      // Eliminated racers were exempt, so a knocked-out blob kept its momentum
+      // and sailed straight out through the end wall in full view.
       for(const r of racers){
-        if(!r.lavaOut && r.y > arenaEnd){ r.y = arenaEnd; if(r.vy>0) r.vy = 0; }
+        if(r.y > arenaEnd){ r.y = arenaEnd; if(r.vy>0) r.vy = 0; }
       }
     }
   }

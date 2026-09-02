@@ -42,6 +42,10 @@
   function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
+  function moverX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
+  function logAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
+  function logPos(o,t){ const a=logAngle(o,t);
+    return { x:o.cx + Math.sin(a)*o.armLen, h:o.pivotH - Math.cos(a)*o.armLen, ang:a }; }
 
   function buildMinigameMeshes(){
     const accent = new THREE.Color(currentMap.accent);
@@ -122,6 +126,59 @@
         placeAt(g, TRACK_W/2, o.y, o.h);
         courseGroup.add(g);
         o.mesh=g;
+
+      } else if(o.type==='mover'){
+        const g=new THREE.Group();
+        const deck=new THREE.Mesh(new THREE.BoxGeometry(o.w, 14, o.d),
+          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:34}));
+        deck.position.y=-7; deck.castShadow=true; deck.receiveShadow=true; g.add(deck);
+        // a lip so the edge reads from above, which is where you are looking
+        const lip=new THREE.Mesh(new THREE.BoxGeometry(o.w+10, 5, o.d+10),
+          new THREE.MeshLambertMaterial({color:0x1a1033}));
+        lip.position.y=-16; g.add(lip);
+        for(const sx of [-1,1]){
+          const rail=new THREE.Mesh(new THREE.BoxGeometry(6, 22, o.d),
+            new THREE.MeshLambertMaterial({color:0xfff1c9}));
+          rail.position.set(sx*(o.w/2-3), 5, 0); g.add(rail);
+        }
+        placeAt(g, o.cx, o.y, o.h);
+        courseGroup.add(g);
+        o.mesh=g;
+
+      } else if(o.type==='crumble'){
+        o.meshes = o.slabs.map(sl=>{
+          const g=new THREE.Group();
+          const top=new THREE.Mesh(new THREE.BoxGeometry(sl.w, 12, sl.d),
+            new THREE.MeshLambertMaterial({color:accent.getHex()}));
+          top.position.y=-6; top.castShadow=true; top.receiveShadow=true; g.add(top);
+          const skirt=new THREE.Mesh(new THREE.BoxGeometry(sl.w-14, 26, sl.d-14),
+            new THREE.MeshLambertMaterial({color:0x1a1033}));
+          skirt.position.y=-24; g.add(skirt);
+          placeAt(g, sl.x, sl.y, o.h);
+          courseGroup.add(g);
+          return g;
+        });
+
+      } else if(o.type==='log'){
+        const g=new THREE.Group();
+        const trunk=new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r, o.len, 12),
+          new THREE.MeshPhongMaterial({color:0x9a6533, shininess:14}));
+        trunk.rotation.x=Math.PI/2; trunk.castShadow=true; g.add(trunk);
+        for(const sz of [-1,1]){
+          const cap=new THREE.Mesh(new THREE.CylinderGeometry(o.r*1.03, o.r*1.03, 10, 12),
+            new THREE.MeshLambertMaterial({color:0xd8b47a}));
+          cap.rotation.x=Math.PI/2; cap.position.z=sz*o.len/2; g.add(cap);
+        }
+        // two ropes back up to the canopy, so the swing reads before it arrives
+        o.ropes=[];
+        for(const sz of [-1,1]){
+          const rope=new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, o.armLen, 6),
+            new THREE.MeshLambertMaterial({color:0xcbb26a}));
+          rope.position.set(0, o.armLen/2, sz*o.len*0.34); g.add(rope); o.ropes.push(rope);
+        }
+        placeAt(g, o.cx, o.y, o.pivotH);
+        courseGroup.add(g);
+        o.mesh=g; o.trunk=trunk;
 
       } else if(o.type==='roller'){
         const g=new THREE.Group();
@@ -331,6 +388,24 @@
   }
 
   function updateMinigames(dt,t){
+    for(const o of obstacles){
+      if(o.type==='mover'){
+        const x = moverX(o,t);
+        o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
+        o._px = x;
+      } else if(o.type==='crumble'){
+        for(const sl of o.slabs){
+          if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
+          if(sl.gone){
+            sl.drop = Math.min(1, sl.drop + dt*2.4);
+            sl.back -= dt;
+            if(sl.back <= 0){ sl.gone = false; sl.touched = false; sl.fuse = -1; }
+          } else if(sl.drop > 0){
+            sl.drop = Math.max(0, sl.drop - dt*3.2);
+          }
+        }
+      }
+    }
     if(currentMap.mode==='boulder'){
       boulderTimer-=dt;
       if(boulderTimer<=0){
@@ -529,6 +604,44 @@
       r.floorH = 0; r.onShortcut = null;
     }
 
+    // ---- moving platform: hold the racer up, and carry them with it ----
+    // Up on the raised lane you are above both of these, so neither one may
+    // reach up and overwrite the height the lane is holding you at.
+    const upTop = !!(sc || r.onShortcut);
+    const mv = upTop ? null : obstacles.find(o=>o.type==='mover' && r.y>=o.yStart && r.y<=o.yEnd);
+    if(mv){
+      const mx = moverX(mv, t);
+      if(Math.abs(r.x-mx) < mv.w/2 + RADIUS - 10){
+        r.floorH = mv.h;
+        r.onMover = mv;
+        // carried: the deck takes you with it while your feet are on it
+        if(r.h <= mv.h + 0.5 && mv.dx) r.x += mv.dx;
+      } else if(r.h <= mv.h + 0.5){
+        r.onMover = null; r.floorH = 0; fallDown(r); return;
+      }
+    } else if(r.onMover){
+      if(r.h<=0.5){ r.h = Math.max(r.h, r.floorH||0); r.vh = 0.4; }
+      r.floorH = 0; r.onMover = null;
+    }
+
+    // ---- crumbling bridge: solid until you put your weight on it ----
+    const cr = upTop ? null : obstacles.find(o=>o.type==='crumble' && r.y>=o.yStart && r.y<=o.yEnd);
+    if(cr){
+      let slab = null;
+      for(const sl of cr.slabs){
+        if(!sl.gone && Math.abs(r.x-sl.x) < sl.w/2 + RADIUS - 8 && Math.abs(r.y-sl.y) < sl.d/2 + RADIUS - 6){ slab = sl; break; }
+      }
+      if(slab){
+        r.floorH = cr.h; r.onCrumble = cr;
+        if(r.h <= cr.h + 0.5 && !slab.touched){ slab.touched = true; slab.fuse = cr.fuseTime; }
+      } else if(r.h <= cr.h + 0.5){
+        r.onCrumble = null; r.floorH = 0; fallDown(r); return;
+      }
+    } else if(r.onCrumble){
+      if(r.h<=0.5){ r.h = Math.max(r.h, r.floorH||0); r.vh = 0.4; }
+      r.floorH = 0; r.onCrumble = null;
+    }
+
     // ---- ground hazards (only when on the ground, and only at ground level) ----
     if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
@@ -557,7 +670,7 @@
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr) r.floorH = 0;
 
     if(r.invuln>0) return;
     for(const o of obstacles){
@@ -671,6 +784,20 @@
           if(r.isPlayer && Math.random()<0.30) spawnBurst3D(r.x,r.y,0xffd54f,3);
         }
 
+      } else if(o.type==='log'){
+        const lp = logPos(o,t);
+        if(Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-lp.x) < o.r+RADIUS-2){
+          const top = r.h + (r.diveT>0?18:34);
+          if(top > lp.h-o.r && r.h < lp.h+o.r){
+            // a trunk this size does not nudge you sideways, it sends you back
+            const away = Math.sign(r.x-lp.x) || 1;
+            r.vx += away*7; r.vy = Math.min(r.vy, 0) - 5.4; r.stumbleT=600; r.invuln=750;
+            r.vh=5.2; if(r.h===0) r.h=0.01; r.squash=1;
+            spawnBurst3D(r.x,r.y,0xa3e635,14);
+            if(r.isPlayer){ SFX.hit(); camShake=9; }
+            return;
+          }
+        }
       } else if(o.type==='pendulum'){
         const pp = pendPos(o,t);
         if(Math.abs(r.y-o.y) < o.r+RADIUS && Math.abs(r.x-pp.x) < o.r+RADIUS-4){

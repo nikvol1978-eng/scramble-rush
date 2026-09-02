@@ -2,7 +2,10 @@
   // ACTIONS: jump / dive
   // ============================================================
   const GRAV_UP = 0.36, GRAV_DOWN = 0.68;   // floaty rise, snappy fall
-  const APEX_GRAV = 1.45;                   // extra pull through the top of the arc — reads far better than symmetric
+  const APEX_GRAV = 1.45;
+  // Some maps run at a fraction of normal gravity. The jump impulse is unchanged,
+  // so you simply go higher and hang longer -- which is the whole point of Orbit Drop.
+  function gravK(){ return (currentMap && currentMap.lowGrav) || 1; }                   // extra pull through the top of the arc — reads far better than symmetric
   const JUMP_V = 7.4;
   const ACCEL = 0.68;
   const COYOTE_MS = 110;                    // grace after stepping off an edge

@@ -9,7 +9,7 @@
     r.falling=false; r.h=0; r.vh=0;
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;
-    for(const o of obstacles){ if((o.type==='pit'||o.type==='narrow') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){ ry=o.yStart-90; } }
+    for(const o of obstacles){ if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){ ry=o.yStart-90; } }
     const field=obstacles.find(o=>o.type==='tilefield' && r.y>=o.yStart-5 && r.y<=o.yEnd+5);
     if(field){
       // drop back onto the nearest surviving tile behind us, else in front of the field

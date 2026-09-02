@@ -233,6 +233,39 @@
         obs.push({type:'ramp', yStart, yEnd, y0:yStart, y1:yEnd+90,
                   height: rand(30,52), width: rand(240,400), cx: cx+rand(-140,140)});
         cursor=yEnd+150;
+      } else if(type==='mover'){
+        // A gap with no floor, crossed by a platform sliding side to side. You
+        // have to time getting on, and it carries you while you stand on it.
+        const len = rand(300,400);
+        const yStart = cursor+gap+100, yEnd = yStart+len;
+        obs.push({type:'mover', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-30, y1:yEnd+30,
+                  cx, amp: rand(170,250), speed: rand(0.55,0.9)*spd, phase: rand(0,6.28),
+                  w: rand(180,230), d: len-30, h: 30, dx:0, _px:null});
+        cursor = yEnd+150;
+      } else if(type==='crumble'){
+        // A bridge of slabs over a drop. Each one falls a moment after you put
+        // your weight on it, then rebuilds -- so the bridge is never gone for good.
+        const cols = 3, rows = 3;
+        const len = rand(360,440);
+        const yStart = cursor+gap+100, yEnd = yStart+len;
+        const slabW = 190, rowD = len/rows;
+        const slabs = [];
+        for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
+          slabs.push({ x: cx + (ci-1)*(slabW+26), y: yStart + ri*rowD + rowD/2,
+                       w: slabW, d: rowD-18, touched:false, fuse:-1, gone:false, drop:0, back:0 });
+        }
+        obs.push({type:'crumble', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-30, y1:yEnd+30,
+                  slabs, h: 26, fuseTime: hard?0.6:0.8, respawnTime: hard?4.4:3.6});
+        cursor = yEnd+150;
+      } else if(type==='log'){
+        // A whole tree trunk on ropes, sweeping across the track at chest height.
+        const y = cursor+gap+140;
+        const arm = rand(150,190), lr = rand(30,40);
+        obs.push({type:'log', y, cx, armLen: arm, r: lr, len: rand(240,320),
+                  pivotH: arm + lr + 26, swing: rand(0.80,1.05),
+                  speed: rand(0.9,1.35)*spd, phase: rand(0,6.28),
+                  y0:y-200, y1:y+200});
+        cursor = y+190;
       } else if(type==='roller'){
         // a barrel rolling across the track
         const y=cursor+gap+70;

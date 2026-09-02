@@ -9,6 +9,26 @@
         }
       } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
       else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ placeAt(m, platX(o.platforms[i],t), (o.yStart+o.yEnd)/2, -6); }); }
+      else if(o.type==='mover'){ if(o.mesh) placeAt(o.mesh, moverX(o,t), (o.yStart+o.yEnd)/2, o.h); }
+      else if(o.type==='crumble'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const sl=o.slabs[i];
+          // fallen slabs sink and fade rather than blinking out
+          placeAt(m, sl.x, sl.y, o.h - sl.drop*150);
+          m.visible = sl.drop < 0.99;
+        });
+      }
+      else if(o.type==='log'){
+        if(o.mesh){
+          const a=logAngle(o,t), lp=logPos(o,t);
+          placeAt(o.mesh, lp.x, o.y, lp.h);
+          o.ropes.forEach((rope,i)=>{
+            const sz = i===0?-1:1;
+            rope.position.set(Math.sin(-a)*o.armLen/2, o.armLen/2*Math.cos(a), sz*o.len*0.34);
+            rope.rotation.z = a;
+          });
+        }
+      }
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
         const shift=blockShift(o,t);

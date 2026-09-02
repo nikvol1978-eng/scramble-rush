@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 14
+VERSION = 15
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -82,6 +82,9 @@ hook = """
       y:Math.round(o.y), items:o.items.map(i=>({y:Math.round(i.y), cool:+(i.cool===undefined?-999:i.cool).toFixed(2),
         interval:+(i.interval===undefined?-999:i.interval).toFixed(2), side:i.side, speed:Math.round(i.speed||-999)}))})),
     stumbling:()=>racers.filter(r=>r.stumbleT>0).length,
+    fadeMin:()=>fadeables.length? +Math.min(...fadeables.map(m=>m.material.opacity)).toFixed(3) : null,
+    obsAt:(ty)=>obstacles.filter(o=>o.type===ty).map(o=>({y:Math.round(o.y), y0:Math.round(o.y0), y1:Math.round(o.y1)})),
+    arena:()=>({ arenaEnd, state, over: racers.filter(r=>r.y>arenaEnd+5).map(r=>({ n:r.isPlayer?'YOU':r.name, over:+(r.y-arenaEnd).toFixed(1), out:!!r.lavaOut, fin:!!r.finished, fall:!!r.falling, vy:+r.vy.toFixed(2) })) }),
     knockOut:()=>{ const p=racers.find(r=>r.isPlayer); p.lavaOut=true; p.lavaCatchY=p.y; updateHud(); return racers.filter(r=>!r.lavaOut).length; },
     obsTypes:()=>{ const h={}; for(const o of obstacles) h[o.type]=(h[o.type]||0)+1; return h; },
     wipe:()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} return 'cleared'; },

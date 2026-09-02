@@ -325,7 +325,7 @@
   // new cannon / bumper / pendulum / boost / spinlaser pieces.
   const MAPS = [
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
-      obstacles:['pillars','hammer','pit','ramp','bumper','shortcut'] },
+      obstacles:['pillars','hammer','pit','ramp','bumper','shortcut','crumble'] },
 
     { key:'honey', name:'Honey Hive', tip:'The hive bounces you about — use a bumper to line up the next gap.', ground:'#ffc94a', groundAlt:'#f0a92b', wall:'#6b4310', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffe7a8', accent:'#ffb300',
       path:'rolling', obstacles:['bumper','pendulum','ramp','narrow','bumper'] },
@@ -349,13 +349,19 @@
       path:'descent', obstacles:['cannon','narrow','pit','ramp','spinbar'] },
 
     { key:'jungle', name:'Jungle Jam', tip:'The logs swing on a fixed beat — count it before you commit.', ground:'#4f7f3a', groundAlt:'#3f6a2e', wall:'#2c4a1f', wallTop:'#a3e635', skyTop:'#bde86f', skyMid:'#5ea832', skyBot:'#2f5220', accent:'#a3e635',
-      path:'ascent', obstacles:['pendulum','pillars','roller','narrow','shortcut'] },
+      path:'ascent', obstacles:['log','pillars','roller','log','shortcut'] },
 
     { key:'sky', name:'Cloud Nine', tip:'Nothing below you but sky — take the gaps slowly and land flat.', ground:'#f2f7ff', groundAlt:'#dbe7fb', wall:'#9fb8e8', wallTop:'#ffffff', skyTop:'#6fc0ff', skyMid:'#a5d8ff', skyBot:'#e8f4ff', accent:'#60a5fa',
-      obstacles:['pit','ramp','beam','shortcut','boost'] },
+      obstacles:['pit','ramp','mover','shortcut','crumble'] },
 
     { key:'cyber', name:'Cyber Grid', tip:'The sweeping arms are the real threat — jump the low pass.', ground:'#0e1230', groundAlt:'#141a44', wall:'#0a0d24', wallTop:'#26d5ff', skyTop:'#05030f', skyMid:'#131046', skyBot:'#26d5ff', accent:'#26d5ff',
-      obstacles:['spinlaser','beam','spinbar','pusher','narrow'] }
+      obstacles:['spinlaser','beam','spinbar','pusher','mover','crumble'] },
+
+    { key:'space', name:'Orbit Drop', tip:'You jump twice as high out here, and you come down twice as slowly. Aim before you leap.', ground:'#2a2452', groundAlt:'#332b63', wall:'#151030', wallTop:'#b388ff', skyTop:'#04030d', skyMid:'#160f3a', skyBot:'#5b2a8a', accent:'#b388ff',
+      path:'rolling', lowGrav:0.42, obstacles:['mover','pit','crumble','pillars','boost'] },
+
+    { key:'beach', name:'Beach Break', tip:'Waves roll in on a beat and shove you back down the sand. Move between them.', ground:'#ffe9b8', groundAlt:'#f5d98f', wall:'#c99a52', wallTop:'#4dd0e1', skyTop:'#7fd7ff', skyMid:'#bfeaff', skyBot:'#ffe9b8', accent:'#4dd0e1',
+      path:'ascent', waves:true, obstacles:['bumper','ramp','narrow','pillars','mover'] }
   ];
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [

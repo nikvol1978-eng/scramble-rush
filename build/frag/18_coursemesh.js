@@ -33,7 +33,8 @@
   function buildCourseMeshes(){
     clearGroup(courseGroup);
     clearFadeables();
-    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield')
+    const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'
+                                        ||o.type==='mover'||o.type==='crumble')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
@@ -92,6 +93,14 @@
 
     for(const o of specials){
       if(o.yStart>cursor){ addGround(0,TRACK_W,cursor,o.yStart,false); addWall(0,cursor,o.yStart); addWall(TRACK_W,cursor,o.yStart); }
+      if(o.type==='mover' || o.type==='crumble'){
+        // the drop these two are built over -- the platform and the slabs are
+        // the only way across, and they are made in buildMinigameMeshes
+        addGround(0,TRACK_W,o.yStart,o.yEnd,true);
+        addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
+        cursor=o.yEnd;
+        continue;
+      }
       if(o.type==='pit'){
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
@@ -178,6 +187,7 @@
     }
 
     buildMinigameMeshes();
+    buildWaveMeshes(); resetWaves(); resetEvents();
 
     // decorations flanking the track
     const decoMats=[0xff4fa3,0x23e6c9,0x8b5cf6,0xffcb3d,0x60a5fa].map(c=>new THREE.MeshLambertMaterial({color:c}));

@@ -33,7 +33,7 @@
           if(d>26){ r.facing=Math.atan2(dy,dx); r.vx+=dx/d*0.30*f; r.vy+=dy/d*0.30*f; }
           if(r.h===0 && Math.random()<0.008) doJump(r);
         }
-        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.squash=0.6; } }
+        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*gravK()*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.squash=0.6; } }
         const ffr=Math.pow(0.86,f); r.vx*=ffr; r.vy*=ffr;
         r.x+=r.vx*f; r.y+=r.vy*f;
         r.x=clamp(r.x, RADIUS+6, TRACK_W-RADIUS-6);
@@ -73,7 +73,7 @@
         // Extra pull through the top of the arc: hanging at the apex is what makes
         // a jump feel floaty, so the arc snaps over instead.
         const apex = Math.abs(r.vh) < 1.7 ? APEX_GRAV : 1;
-        r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*apex*f;
+        r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*apex*gravK()*f;
         r.h += r.vh*f;
         if(r.h<=0){
           r.h=0; r.squash=clamp(0.45+Math.abs(r.vh)*0.075,0,1.1); r.vh=0;
@@ -95,7 +95,7 @@
       r.x=clamp(r.x,4,TRACK_W-4);
       r.y=Math.max(r.y,-120);
       if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
-      checkObstacles(r,t);
+      checkObstacles(r, obsTime(t));
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }
       if(r.y>=trackLength&&!r.finished){
         r.finished=true; r.finishTime=raceTime; r.vy*=0.4; r.diveT=0; r.getUpT=0;
@@ -107,4 +107,6 @@
     // other about. Kept inside this fragment on purpose: it used to be injected
     // just before racerCollisions(), which is this cut's end anchor, so the cut
     // deleted the call and every minigame quietly stopped ticking.
-    updateMinigames(dt,t);
+    updateMinigames(dt, obsTime(t));
+    updateWaves(dt);
+    updateEvents(dt);
