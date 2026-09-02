@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 8                                   # single source of truth
+VERSION = 9                                   # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")

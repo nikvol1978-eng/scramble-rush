@@ -13,22 +13,22 @@
       // arms up, legs kicking — the classic wipeout
       setLegs(Math.sin(t*18)*0.8, -Math.sin(t*18)*0.8);
       setArms(-2.5, -2.5); flare(0.6);
-      m.body.rotation.x = -0.4;
+      m.tilt.rotation.x = -0.4;
       return;
     }
-    m.body.rotation.x = 0;
+    m.tilt.rotation.x = 0;
 
     if(r.diveT>0){
       // superman: arms straight out front, legs trailing, whole body pitched flat
       setLegs(-0.95,-1.05); setArms(-2.75,-2.75); flare(0.10);
-      m.body.rotation.x = 1.15;
+      m.tilt.rotation.x = 1.15;
       return;
     }
     if(r.getUpT>0){
       // pushing back upright off the floor
       const k = clamp(r.getUpT/260, 0, 1);
       setLegs(-0.5*k, -0.35*k); setArms(-1.5*k, -1.5*k); flare(0.30);
-      m.body.rotation.x = 1.05*k;
+      m.tilt.rotation.x = 1.05*k;
       return;
     }
     if(r.stumbleT>0){
@@ -55,7 +55,7 @@
     if(moving){
       // the run cycle speeds up and widens with how fast you are actually going
       const gait = 8 + clamp(speed,0,7)*1.1;
-      const amp  = 0.45 + clamp(speed,0,7)*0.075;
+      const amp  = 0.38 + clamp(speed,0,7)*0.060;
       const ph = t*gait + r.x*0.08;               // phase offset so the pack isn't in lockstep
       const swing = Math.sin(ph);
       setLegs(swing*amp, -swing*amp);

@@ -7,7 +7,8 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-8.0.html` | **8.0 (current)** | Fall Guys-style beans, reworked physics, arena flyover, walkable finish area, longer maps |
+| `scramble-rush-9.0.html` | **9.0 (current)** | Character remodelled: lathed bean silhouette, small stubby limbs, thin rim |
+| `scramble-rush-8.0.html` | 8.0 | Reworked physics, arena flyover, walkable finish area, longer maps |
 | `scramble-rush-7.0.html` | 7.0 | Articulated characters, patterns, 7 minigames, per-map obstacles, ramps |
 | `scramble-rush-6.0.html` | 6.0 | 3 rounds, shop + coins, new menu, free-look camera |
 | `index.html` | 5.0 | The original two-round build, kept as-is |
@@ -18,6 +19,7 @@ Each version is one self-contained HTML file.
 npm run dev
 ```
 
+- v9: http://localhost:5173/scramble-rush-9.0.html
 - v8: http://localhost:5173/scramble-rush-8.0.html
 - v7: http://localhost:5173/scramble-rush-7.0.html
 - v6: http://localhost:5173/scramble-rush-6.0.html
