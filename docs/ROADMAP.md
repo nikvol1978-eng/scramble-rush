@@ -12,7 +12,8 @@ the version they shipped in.
 - [ ] Satisfying stumble / fall animations — ragdoll-ish tumbles
 - [ ] Better landing and collision reactions
 - [ ] Collisions that feel deliberate rather than random
-- [ ] Obstacles that push, spin, launch and knock players about
+- [x] Obstacles that push, spin, launch and knock players about — cannons,
+      pendulums, pinball bumpers, boost pads, rotating laser arms *(v11)*
 - [ ] Warning animations before dangerous obstacles
 - [ ] Obstacles readable at a glance
 
@@ -27,7 +28,8 @@ the version they shipped in.
   - [ ] Jungle — swinging logs
   - [ ] Space — low gravity
   - [ ] Beach — waves pushing players
-- [ ] Moving platforms, falling floors, cannons / launch pads
+- [x] Cannons and boost pads *(v11)*
+- [ ] Moving platforms, falling floors
 - [ ] Random map events
 - [ ] Game modes beyond racing: survival, last blob standing, team, collect,
       final showdown in a small arena
@@ -84,3 +86,4 @@ launch forward. The core game stays about movement and obstacles.
 | v8 | Bean characters, reworked physics, arena flyover, walkable finish area, longer maps |
 | v9 | Character remodelled to the Fall Guys silhouette |
 | v10 | Free-orbit camera, 22 more skins, daily spin wheel |
+| v11 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded grid |

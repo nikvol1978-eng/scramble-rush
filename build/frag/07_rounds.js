@@ -51,7 +51,7 @@
       currentMap = (Math.random()<chance) ? pick(MINIGAMES) : pick(MAPS);
     }
     obstacles=genCourse(n);
-    boulders=[]; lasers=[];
+    boulders=[]; lasers=[]; shots=[];
     lavaZ = currentMap.mode==='lava' ? -320 : 0;
     timeLimit = n===1?80 : n===2?70 : 62;
     lavaSpeed = currentMap.mode==='lava' ? trackLength/(timeLimit*0.8) : 0;

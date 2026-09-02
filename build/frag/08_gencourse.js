@@ -82,6 +82,27 @@
       return obs;
     }
 
+    // ---- LASER TRACER: hubs of rotating arms, low enough to jump ----
+    if(mode==='tracer'){
+      const span=Math.min(total, 6400);
+      let z=640;
+      while(z < span-420){
+        obs.push({type:'spinlaser', y:z, cx, arms: hard?4:3, len: rand(300,380),
+                  speed: rand(0.45,0.85)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                  h:14, y0:z-400, y1:z+400});
+        z += rand(430,540);
+      }
+      // a few bumpers so there is something to be knocked into
+      for(let i=0;i<4;i++){
+        const y=760+i*((span-1200)/4);
+        obs.push({type:'bumper', y, y0:y-90, y1:y+90,
+                  items:[{x:cx+rand(-250,250), r:34}]});
+      }
+      trackLength = span+200;
+      obs.sort((a,b)=>a.y0-b.y0);
+      return obs;
+    }
+
     // ---- BLOCK DASH: sliding walls of blocks, one gap each ----
     if(mode==='blockdash'){
       const span=Math.min(total, 7400);
@@ -217,6 +238,46 @@
         obs.push({type:'roller', y, y0:y-46-RADIUS, y1:y+46+RADIUS, r:38,
                   amp: rand(180,300), speed: rand(0.9,1.5)*spd, phase: rand(0,6.28), cx});
         cursor=y+90;
+      } else if(type==='cannon'){
+        // cannons in the side walls, firing across the lane on a fixed beat
+        const count = hard?2:1;
+        const y = cursor+gap+110;
+        const items=[];
+        for(let i=0;i<count;i++){
+          items.push({ y: y+i*170, side: Math.random()<0.5?-1:1, r: rand(26,34),
+                       interval: rand(1.5,2.4)/spd, cool: rand(0,1.6),
+                       speed: rand(430,600)*spd });
+        }
+        obs.push({type:'cannon', y, items, y0:y-140, y1:y+count*170+140});
+        cursor = y + count*170 + 130;
+      } else if(type==='pendulum'){
+        // a wrecking ball on a long arm, sweeping the full width and low in the middle
+        const y = cursor+gap+130;
+        obs.push({type:'pendulum', y, cx, armLen: rand(150,205), r: rand(27,37),
+                  pivotH: 168, swing: rand(0.78,1.02),
+                  speed: rand(1.0,1.5)*spd, phase: rand(0,6.28),
+                  y0:y-120, y1:y+120});
+        cursor = y+150;
+      } else if(type==='bumper'){
+        // pinball posts: they never kill you, they just fling you somewhere else
+        const count = hard?3:2;
+        const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
+        const y = cursor+gap+90;
+        obs.push({type:'bumper', y, y0:y-100, y1:y+100,
+                  items:lanes.map(l=>({x:cx+l+rand(-24,24), r:rand(30,40), hit:0}))});
+        cursor = y+100;
+      } else if(type==='boost'){
+        const y = cursor+gap+80;
+        obs.push({type:'boost', y, cx: cx+rand(-190,190), w: rand(140,210),
+                  len: rand(120,180), power: rand(5.2,7.4),
+                  y0:y-110, y1:y+110});
+        cursor = y+170;
+      } else if(type==='spinlaser'){
+        const y = cursor+gap+320;
+        obs.push({type:'spinlaser', y, cx, arms: hard?4:3, len: rand(280,360),
+                  speed: rand(0.45,0.85)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                  h:14, y0:y-380, y1:y+380});
+        cursor = y+400;
       } else if(type==='beam'){
         const y=cursor+gap+70;
         const low=Math.random()<0.6;

@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 10                                  # single source of truth
+VERSION = 11                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -217,8 +217,9 @@ sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt;",
     "    if(currentMap.mode==='lava'){ lavaZ+=lavaSpeed*dt;", "lava advance")
 sub("      if(currentMap.isMinigame && !r.falling && r.y<lavaZ-40){",
     "      if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){", "lava catch")
-sub("    racerCollisions();\n    updateParticles(dt);",
-    "    updateMinigames(dt,t);\n    racerCollisions();\n    updateParticles(dt);", "minigame tick")
+# The minigame tick now lives at the end of 14_physics.js. It used to be
+# injected here, but this cut's end anchor is racerCollisions(), so the
+# physics splice deleted the call and every minigame stopped ticking.
 
 sub("""    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
     if(round===2 && fin.length && raceTime-firstFinish>6) allDone=true;                 // winner crowned, short grace

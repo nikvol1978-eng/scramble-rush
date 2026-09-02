@@ -264,6 +264,8 @@
       const d=document.createElement('div');
       d.className='sw'+(s.id===custom.skin?' sel':'');
       d.style.background = skinSwatch(s);
+      // border carries the rarity, the way a character-select grid does
+      d.style.borderColor = RARITY[s.rarity].label;
       d.title = s.name+' · '+RARITY[s.rarity].name;
       d.onclick = ()=>{ custom.skin=s.id; SFX.click(); saveProfile(); refreshPreview(); buildCharacterPane(); $('equippedName').textContent='— '+s.name+' ('+RARITY[s.rarity].name+')'; };
       host.appendChild(d);
@@ -276,6 +278,7 @@
       const d=document.createElement('div');
       d.className='sw pat'+(p.id===custom.pattern?' sel':'');
       d.style.backgroundImage = patternPreviewCSS(p);
+      d.style.borderColor = RARITY[p.rarity].label;
       if(p.id==='none'){ d.style.backgroundColor='#f4f5f8'; d.textContent=''; }
       d.title = p.name;
       d.onclick = ()=>{ custom.pattern=p.id; SFX.click(); saveProfile(); refreshPreview(); buildCharacterPane(); };

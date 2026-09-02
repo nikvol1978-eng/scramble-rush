@@ -2,6 +2,8 @@
   // MINIGAME + OBSTACLE RUNTIME
   // ============================================================
   let boulderTimer=0;
+  let shots=[];                     // cannonballs in flight
+  const shotMat = new THREE.MeshPhongMaterial({color:0x2b2140, shininess:50});
   const rockMat = new THREE.MeshPhongMaterial({color:0x6b5545, shininess:8, flatShading:true});
   const rockTopMat = new THREE.MeshLambertMaterial({color:0x8a7060, flatShading:true});
 
@@ -29,6 +31,14 @@
     return null;
   }
   function laserY(o,t){ return o.y + Math.sin(t*o.speed+o.phase)*o.span; }
+  // A pendulum hangs from a pivot above the lane: it sweeps the full width and
+  // rides lowest through the middle, which is exactly where you want to run.
+  function pendAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
+  function pendPos(o,t){
+    const a=pendAngle(o,t);
+    return { x: o.cx + Math.sin(a)*o.armLen, h: o.pivotH - Math.cos(a)*o.armLen };
+  }
+  function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
 
@@ -123,6 +133,100 @@
         g.position.set(toSceneX(o.cx), o.r, o.y);
         courseGroup.add(g);
         o.mesh=g; o.barrel=barrel;
+
+      } else if(o.type==='cannon'){
+        const barrelMat=new THREE.MeshPhongMaterial({color:0xe6c27a, shininess:40});
+        const bandMat=new THREE.MeshLambertMaterial({color:0x1a1033});
+        o.meshes=o.items.map(it=>{
+          const g=new THREE.Group();
+          const barrel=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.45, it.r*1.2, 92, 14), barrelMat);
+          barrel.rotation.z=Math.PI/2; barrel.castShadow=true; g.add(barrel);
+          const rim=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.5, it.r*1.5, 10, 14), bandMat);
+          rim.rotation.z=Math.PI/2; rim.position.x=-it.side*28; g.add(rim);
+          const mount=new THREE.Mesh(new THREE.BoxGeometry(26,30,40), bandMat);
+          mount.position.set(it.side*30,-18,0); g.add(mount);
+          // muzzle points into the lane
+          g.position.set(toSceneX(it.side<0 ? 30 : TRACK_W-30), 54, it.y);
+          g.rotation.y = it.side<0 ? 0 : Math.PI;
+          courseGroup.add(g);
+          return {group:g, barrel};
+        });
+
+      } else if(o.type==='pendulum'){
+        const g=new THREE.Group();
+        const barMat=new THREE.MeshLambertMaterial({color:0x1a1033});
+        const beam=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W+40,12,12), barMat);
+        beam.position.set(0,o.pivotH,o.y); courseGroup.add(beam);
+        const rod=new THREE.Mesh(new THREE.CylinderGeometry(3,3,o.armLen,8), barMat);
+        rod.castShadow=true; g.add(rod);
+        const ball=new THREE.Mesh(new THREE.SphereGeometry(o.r,16,12),
+          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:36}));
+        ball.castShadow=true; g.add(ball);
+        courseGroup.add(g);
+        o.mesh=g; o.rod=rod; o.ball=ball;
+
+      } else if(o.type==='bumper'){
+        const capMat=new THREE.MeshPhongMaterial({color:0xff4fa3, shininess:60});
+        const postMat=new THREE.MeshLambertMaterial({color:0xfff8ec});
+        const ringMat=new THREE.MeshBasicMaterial({color:0xffcb3d});
+        o.meshes=o.items.map(it=>{
+          const g=new THREE.Group();
+          const post=new THREE.Mesh(new THREE.CylinderGeometry(it.r*0.86,it.r,30,16), postMat);
+          post.position.y=15; post.castShadow=true; post.receiveShadow=true; g.add(post);
+          const cap=new THREE.Mesh(new THREE.SphereGeometry(it.r*0.9,16,10,0,Math.PI*2,0,Math.PI/2), capMat);
+          cap.position.y=30; cap.castShadow=true; g.add(cap);
+          const ring=new THREE.Mesh(new THREE.TorusGeometry(it.r*0.95,2.4,8,20), ringMat);
+          ring.rotation.x=Math.PI/2; ring.position.y=31; g.add(ring);
+          g.position.set(toSceneX(it.x), 0, o.y);
+          courseGroup.add(g);
+          return g;
+        });
+
+      } else if(o.type==='boost'){
+        const g=new THREE.Group();
+        const pad=new THREE.Mesh(new THREE.BoxGeometry(o.w,3,o.len),
+          new THREE.MeshBasicMaterial({color:accent.getHex()}));
+        pad.position.y=1.6; g.add(pad);
+        // chevrons pointing down the track
+        const chevMat=new THREE.MeshBasicMaterial({color:0xfff8ec});
+        const n=3;
+        for(let i=0;i<n;i++){
+          const z=-o.len/2 + o.len*(i+0.5)/n;
+          [-1,1].forEach(sd=>{
+            const bar=new THREE.Mesh(new THREE.BoxGeometry(o.w*0.42,4,14), chevMat);
+            bar.position.set(sd*o.w*0.2, 3.2, z);
+            bar.rotation.y = sd*0.62;
+            g.add(bar);
+          });
+        }
+        g.position.set(toSceneX(o.cx), 0, o.y);
+        courseGroup.add(g);
+        o.mesh=g;
+
+      } else if(o.type==='spinlaser'){
+        const g=new THREE.Group();
+        const hub=new THREE.Mesh(new THREE.CylinderGeometry(24,30,52,14),
+          new THREE.MeshPhongMaterial({color:0x1f2937, shininess:30}));
+        hub.position.y=26; hub.castShadow=true; g.add(hub);
+        const lamp=new THREE.Mesh(new THREE.SphereGeometry(11,12,10),
+          new THREE.MeshBasicMaterial({color:0xa3e635}));
+        lamp.position.y=56; g.add(lamp);
+        const arms=new THREE.Group(); arms.position.y=o.h; g.add(arms);
+        for(let i=0;i<o.arms;i++){
+          const arm=new THREE.Group(); arm.rotation.y = i*(Math.PI*2/o.arms); arms.add(arm);
+          const beam=new THREE.Mesh(new THREE.CylinderGeometry(4,4,o.len,8),
+            new THREE.MeshBasicMaterial({color:0xa3e635}));
+          beam.rotation.z=Math.PI/2; beam.position.x=o.len/2; arm.add(beam);
+          const halo=new THREE.Mesh(new THREE.CylinderGeometry(9,9,o.len,8),
+            new THREE.MeshBasicMaterial({color:0xa3e635, transparent:true, opacity:0.20, depthWrite:false}));
+          halo.rotation.z=Math.PI/2; halo.position.x=o.len/2; arm.add(halo);
+          const tip=new THREE.Mesh(new THREE.SphereGeometry(8,10,8),
+            new THREE.MeshBasicMaterial({color:0xd9f99d}));
+          tip.position.x=o.len; arm.add(tip);
+        }
+        g.position.set(toSceneX(o.cx), 0, o.y);
+        courseGroup.add(g);
+        o.mesh=g; o.arms3d=arms;
 
       } else if(o.type==='ramp'){
         // a wedge: flat at the bottom, `height` at the far lip
@@ -219,6 +323,59 @@
             if(r.isPlayer){ SFX.hit(); camShake=8; }
           }
         }
+      }
+    }
+
+    // ---- cannons: fire on a beat, then the ball crosses the lane ----
+    const packBack = racers.reduce((m,r)=>Math.min(m,r.y),  1e9);
+    const packFront= racers.reduce((m,r)=>Math.max(m,r.y), -1e9);
+    for(const o of obstacles){
+      if(o.type!=='cannon') continue;
+      for(let i=0;i<o.items.length;i++){
+        const it=o.items[i];
+        // Live for anyone still coming, not just the leader: gating on the front
+        // runner switched cannons off for the whole pack behind them.
+        if(it.y > packFront+2200 || it.y < packBack-700) continue;
+        it.cool -= dt;
+        if(it.cool<=0){
+          it.cool = it.interval;
+          const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
+                      vx: it.side<0 ? it.speed : -it.speed, spin:0 };
+          const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMat);
+          g.castShadow=true; g.position.set(toSceneX(b.x), it.r+26, b.y);
+          courseGroup.add(g); b.mesh=g;
+          shots.push(b);
+          if(o.meshes && o.meshes[i]) o.meshes[i].recoil = 1;
+        }
+      }
+    }
+    for(let i=shots.length-1;i>=0;i--){
+      const b=shots[i];
+      b.x += b.vx*dt; b.spin += b.vx*dt/b.r;
+      b.mesh.position.x = toSceneX(b.x);
+      b.mesh.rotation.z = -b.spin;
+      if(b.x < -60 || b.x > TRACK_W+60){ courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
+      for(const r of racers){
+        if(r.falling||r.finished||r.invuln>0) continue;
+        if(r.h > b.r*1.9 + 26) continue;                 // jumped it
+        if(Math.hypot(r.x-b.x, r.y-b.y) < b.r+RADIUS-6){
+          const dir=Math.sign(b.vx)||1;
+          r.vx += dir*11; r.vy += rand(-2,2); r.stumbleT=520; r.invuln=700;
+          r.vh=4.2; if(r.h===0) r.h=0.01;
+          spawnBurst3D(r.x,r.y,0x2b2140);
+          if(r.isPlayer){ SFX.hit(); camShake=8; }
+        }
+      }
+    }
+
+    // ---- bumper squash decays ----
+    for(const o of obstacles){
+      if(o.type!=='bumper') continue;
+      for(let i=0;i<o.items.length;i++){
+        const it=o.items[i];
+        if(it.hit>0){ it.hit=Math.max(0,it.hit-dt*3.2);
+          const m=o.meshes && o.meshes[i];
+          if(m){ const k=1+it.hit*0.30; m.scale.set(k,1-it.hit*0.22,k); } }
       }
     }
 
@@ -424,6 +581,68 @@
             spawnBurst3D(r.x,r.y,0xffcb3d,8);
             if(r.isPlayer){ SFX.hit(); camShake=6; }
             return;
+          }
+        }
+
+      } else if(o.type==='bumper'){
+        for(const it of o.items){
+          const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
+          if(d < it.r+RADIUS-2 && r.h < 46){
+            const nx=dx/(d||1), ny=dy/(d||1);
+            r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
+            // pinball: fling outward, harder the faster you hit it
+            const sp = Math.hypot(r.vx,r.vy);
+            const kick = 6.2 + sp*0.55;
+            r.vx = nx*kick; r.vy = ny*kick;
+            r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
+            spawnBurst3D(r.x,r.y,0xff4fa3,8);
+            if(r.isPlayer){ SFX.bump(); camShake=4; }
+            return;
+          }
+        }
+
+      } else if(o.type==='boost'){
+        if(r.h < 30 && Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-o.cx) < o.w/2 + RADIUS - 8){
+          // a speed floor rather than an impulse, so it does not depend on frame rate
+          if(r.vy < o.power) r.vy = o.power;
+          if(r.isPlayer && Math.random()<0.30) spawnBurst3D(r.x,r.y,0xffd54f,3);
+        }
+
+      } else if(o.type==='pendulum'){
+        const pp = pendPos(o,t);
+        if(Math.abs(r.y-o.y) < o.r+RADIUS && Math.abs(r.x-pp.x) < o.r+RADIUS-4){
+          const top = r.h + (r.diveT>0?18:34);
+          if(top > pp.h-o.r && r.h < pp.h+o.r){
+            const dir = Math.sign(Math.cos(pendAngle(o,t))*Math.cos(t*o.speed+o.phase)) || 1;
+            const away = Math.sign(r.x-pp.x) || dir;
+            r.vx += away*10; r.vy -= 3; r.stumbleT=540; r.invuln=700;
+            r.vh=4.6; if(r.h===0) r.h=0.01;
+            spawnBurst3D(r.x,r.y,0xffffff,12);
+            if(r.isPlayer){ SFX.hit(); camShake=8; }
+            return;
+          }
+        }
+
+      } else if(o.type==='spinlaser'){
+        const top = r.h + (r.diveT>0?18:34);
+        if(top > o.h-6 && r.h < o.h+6){
+          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
+          if(dist > 14 && dist < o.len){
+            const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
+            for(let i=0;i<o.arms;i++){
+              let d = ang - (base + i*step);
+              while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+              // perpendicular distance to the arm, and only the half it points down
+              if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 10+RADIUS-8){
+                const away = Math.sign(Math.sin(d)) || 1;
+                const px=-Math.sin(base+i*step)*away, py=Math.cos(base+i*step)*away;
+                r.vx += px*8; r.vy += py*8;
+                r.stumbleT=460; r.invuln=680; r.vh=3.4; if(r.h===0) r.h=0.01;
+                spawnBurst3D(r.x,r.y,0xa3e635,10);
+                if(r.isPlayer){ SFX.hit(); camShake=6; }
+                return;
+              }
+            }
           }
         }
 

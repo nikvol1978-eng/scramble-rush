@@ -96,3 +96,9 @@
         spawnBurst3D(r.x,r.y,0xffcb3d,14); if(r.isPlayer) SFX.win();
       }
     }
+
+    // Runs here, after the racer loop has marked tiles and before racers push each
+    // other about. Kept inside this fragment on purpose: it used to be injected
+    // just before racerCollisions(), which is this cut's end anchor, so the cut
+    // deleted the call and every minigame quietly stopped ticking.
+    updateMinigames(dt,t);

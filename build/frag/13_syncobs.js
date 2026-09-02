@@ -15,6 +15,24 @@
         if(o.meshes) o.meshes.forEach((m,i)=>{ m.position.x=toSceneX(o.items[i].x+shift); });
       }
       else if(o.type==='laserbar'){ if(o.mesh) o.mesh.position.z=laserY(o,t); }
+      else if(o.type==='pendulum'){
+        if(o.mesh){
+          const a=pendAngle(o,t), pp=pendPos(o,t);
+          o.mesh.position.set(toSceneX(pp.x), pp.h, o.y);
+          o.ball.position.set(0,0,0);
+          // the rod runs from the ball back up to the pivot
+          o.rod.position.set(Math.sin(-a)*o.armLen/2, o.armLen/2*Math.cos(a), 0);
+          o.rod.rotation.z = a;
+        }
+      }
+      else if(o.type==='spinlaser'){ if(o.arms3d) o.arms3d.rotation.y = -spinlaserAngle(o,t); }
+      else if(o.type==='boost'){ if(o.mesh) o.mesh.position.y = Math.sin(t*5)*0.8; }
+      else if(o.type==='cannon'){
+        if(o.meshes) o.meshes.forEach(m=>{
+          if(m.recoil>0){ m.recoil=Math.max(0,m.recoil-0.08); }
+          m.barrel.scale.x = 1 - (m.recoil||0)*0.22;
+        });
+      }
       else if(o.type==='roller'){
         if(o.mesh){
           const rx=rollerX(o,t);
