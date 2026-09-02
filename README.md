@@ -7,7 +7,8 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-9.0.html` | **9.0 (current)** | Character remodelled: lathed bean silhouette, small stubby limbs, thin rim |
+| `scramble-rush-10.0.html` | **10.0 (current)** | Free-orbit camera with mouse look, 65 skins, daily spin wheel |
+| `scramble-rush-9.0.html` | 9.0 | Character remodelled: lathed bean silhouette, small stubby limbs, thin rim |
 | `scramble-rush-8.0.html` | 8.0 | Reworked physics, arena flyover, walkable finish area, longer maps |
 | `scramble-rush-7.0.html` | 7.0 | Articulated characters, patterns, 7 minigames, per-map obstacles, ramps |
 | `scramble-rush-6.0.html` | 6.0 | 3 rounds, shop + coins, new menu, free-look camera |
@@ -19,6 +20,7 @@ Each version is one self-contained HTML file.
 npm run dev
 ```
 
+- v10: http://localhost:5173/scramble-rush-10.0.html
 - v9: http://localhost:5173/scramble-rush-9.0.html
 - v8: http://localhost:5173/scramble-rush-8.0.html
 - v7: http://localhost:5173/scramble-rush-7.0.html
@@ -34,10 +36,11 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 
 - **WASD / arrows** move, **SPACE** jump (hold for height), **SHIFT** dive, **ESC** pause
 - Jumps have coyote time and input buffering, so late and early presses still register
-- **Drag anywhere** (one finger, one mouse drag, or a trackpad two-finger swipe)
-  to look around. It recentres about 2s after you stop.
-- Movement follows the camera, so "forward" is always away from the view.
-  Both behaviours have toggles in Settings.
+- **Click to capture the mouse**, then move it to orbit the camera freely — no
+  limit, all the way round. Esc releases it. Trackpad swipe and drag-to-look
+  both still work if you turn mouse look off.
+- Movement follows the camera: forward is always away from the view, whichever
+  way you have swung it. All of this has toggles in Settings.
 
 ## Content
 
@@ -46,8 +49,10 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 - **7 minigames** — Lava Rise, Boulder Barrage, Door Dash, Tile Trap, Block Dash,
   Hex Drop, Laser Dodge. They appear ~30% of the time in the qualifying rounds
   and 55% of the time in the final.
-- **43 colourways × 14 patterns**, bought with coins across six rarities.
+- **65 colourways × 14 patterns**, bought with coins across six rarities.
   Champion Gold is the only skin that cannot be bought — it needs 100 wins.
+- **Daily spin** — one free colourway every 22 hours, weighted so rarer tiers
+  are genuinely rarer (common 40%, special 1%).
 
 ## Dependencies
 

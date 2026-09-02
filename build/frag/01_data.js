@@ -1,7 +1,8 @@
   const DEFAULT_SETTINGS = {
     keys:{ forward:'w', back:'s', left:'a', right:'d', jump:' ', dive:'shift' },
     camDist:1.0, botCount:15, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
-    freeLook:true, lookSens:1.0, invertLook:false, camRelative:true
+    freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
+    mouseLook:true, autoCentre:false
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
@@ -83,6 +84,36 @@
     {id:'solarflare',name:'Solar Flare',   rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}},
     {id:'blackhole', name:'Event Horizon', rarity:'special', type:'galaxy', colors:['#000000','#1c1917','#f59e0b'], unlock:{kind:'coins',cost:1999}},
     {id:'diamond',   name:'Diamond Dust',  rarity:'special', type:'metal', color:'#bfefff', shine:250, unlock:{kind:'coins',cost:1999}}
+,
+
+    // ---- second wave ----
+    {id:'mint',     name:'Spearmint',    rarity:'common', type:'solid', color:'#7ef2c8', unlock:{kind:'coins',cost:60}},
+    {id:'peach',    name:'Peach Fuzz',   rarity:'common', type:'solid', color:'#ffb59e', unlock:{kind:'coins',cost:60}},
+    {id:'sky',      name:'Clear Sky',    rarity:'common', type:'solid', color:'#9cd8ff', unlock:{kind:'coins',cost:80}},
+    {id:'sand',     name:'Sandcastle',   rarity:'common', type:'solid', color:'#e8d3a3', unlock:{kind:'coins',cost:80}},
+    {id:'charcoal', name:'Charcoal',     rarity:'common', type:'solid', color:'#4b4b58', unlock:{kind:'coins',cost:100}},
+
+    {id:'seafoam',  name:'Seafoam',      rarity:'rare', type:'gradient', colors:['#d9fff2','#0f766e'], unlock:{kind:'coins',cost:230}},
+    {id:'ember',    name:'Ember',        rarity:'rare', type:'gradient', colors:['#ffd08a','#7c2d12'], unlock:{kind:'coins',cost:230}},
+    {id:'orchid',   name:'Orchid',       rarity:'rare', type:'gradient', colors:['#fbcfe8','#6d28d9'], unlock:{kind:'coins',cost:250}},
+    {id:'moss',     name:'Mossbank',     rarity:'rare', type:'gradient', colors:['#d9f99d','#3f6212'], unlock:{kind:'coins',cost:250}},
+    {id:'duskfade', name:'Dusk',         rarity:'rare', type:'gradient', colors:['#fca5a5','#1e3a8a'], unlock:{kind:'badge',badge:'ten_races'}},
+
+    {id:'neon_yellow',name:'Neon Zest',  rarity:'superrare', type:'neon', color:'#ffe600', unlock:{kind:'coins',cost:460}},
+    {id:'neon_mint', name:'Neon Mint',   rarity:'superrare', type:'neon', color:'#4dffb8', unlock:{kind:'coins',cost:460}},
+    {id:'neon_rose', name:'Neon Rose',   rarity:'superrare', type:'neon', color:'#ff5ec4', unlock:{kind:'coins',cost:470}},
+    {id:'neon_ice',  name:'Neon Ice',    rarity:'superrare', type:'neon', color:'#7bdfff', unlock:{kind:'badge',badge:'minigames'}},
+
+    {id:'obsidian', name:'Obsidian',     rarity:'epic', type:'metal', color:'#2a2a35', shine:200, unlock:{kind:'coins',cost:820}},
+    {id:'rosegold', name:'Rose Gold',    rarity:'epic', type:'metal', color:'#f0a89a', shine:190, unlock:{kind:'coins',cost:860}},
+    {id:'titanium', name:'Titanium',     rarity:'epic', type:'metal', color:'#9fb3c8', shine:210, unlock:{kind:'coins',cost:860}},
+    {id:'peacock',  name:'Peacock',      rarity:'epic', type:'oil',   unlock:{kind:'badge',badge:'podium'}},
+
+    {id:'glacier',  name:'Glacier',      rarity:'legendary', type:'galaxy',  colors:['#04283d','#0ea5e9','#e0f2fe'], unlock:{kind:'coins',cost:1450}},
+    {id:'supernova',name:'Supernova',    rarity:'legendary', type:'galaxy',  colors:['#1a0330','#f43f5e','#fde047'], unlock:{kind:'coins',cost:1500}},
+    {id:'spectrum', name:'Spectrum',     rarity:'legendary', type:'rainbow', unlock:{kind:'badge',badge:'twenty_wins'}},
+
+    {id:'prismvoid',name:'Prismatic Void', rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}}
   ];
   const SKIN_BY_ID = Object.fromEntries(SKINS.map(s=>[s.id,s]));
   function skinOf(id){ return SKIN_BY_ID[id] || SKIN_BY_ID['pink']; }
@@ -202,7 +233,7 @@
   // LOCAL PROFILE (saved in this browser)
   // ============================================================
   let stats = { races:0, wins:0, xp:0, level:1, badges:[], lavaSurvived:0, noFallFinishes:0, mpRaces:0, dives:0,
-                coins:0, owned:[], patterns:[], podiums:0, finals:0, minigamesWon:0, claimed:[] };
+                coins:0, owned:[], patterns:[], podiums:0, finals:0, minigamesWon:0, claimed:[], lastSpin:0 };
   function xpForLevel(l){ return 100+(l-1)*40; }
 
   function ownedSkins(){

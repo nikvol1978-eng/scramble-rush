@@ -186,7 +186,8 @@
     // character's distance is only about 120 units, so keep the shift well inside that
     const wantX = (profOpen && W>=980) ? 92 : 0;
     previewGroup.position.x += (wantX - previewGroup.position.x)*0.12;
-    previewGroup.visible = !profOpen || W>=980;
+    const dailyOpen = !$('daily').classList.contains('hidden');
+    previewGroup.visible = (!profOpen || W>=980) && !dailyOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
     if(stageSpot) stageSpot.intensity = profOpen ? 1.6 : 0.0;

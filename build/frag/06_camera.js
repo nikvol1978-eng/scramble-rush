@@ -2,13 +2,16 @@
   // FREE LOOK — one finger, or one drag of the mouse, or a trackpad swipe
   // ============================================================
   const look = { yaw:0, pitch:0, sinceInput:99 };
-  const LOOK_YAW_MAX = 2.4, LOOK_PITCH_MIN = -0.45, LOOK_PITCH_MAX = 0.95;
+  // Yaw is deliberately unbounded: the camera orbits the racer all the way
+  // round. Movement is taken relative to it (see computeInputVec), so holding
+  // forward always runs away from the camera whichever way you have swung it.
+  const LOOK_PITCH_MIN = -0.55, LOOK_PITCH_MAX = 1.05;
   function lookActiveState(){ return state==='racing'||state==='countdown'||state==='paused'; }
   function nudgeLook(dx, dy){
     if(!settings.freeLook || !lookActiveState()) return;
     const s = settings.lookSens;
     const inv = settings.invertLook ? -1 : 1;
-    look.yaw   = clamp(look.yaw   - dx*0.0030*s,     -LOOK_YAW_MAX, LOOK_YAW_MAX);
+    look.yaw  -= dx*0.0030*s;
     look.pitch = clamp(look.pitch - dy*0.0026*s*inv, LOOK_PITCH_MIN, LOOK_PITCH_MAX);
     look.sinceInput = 0;
   }
@@ -29,7 +32,7 @@
   }
   canvas.addEventListener('pointerdown', e=>{
     if(!settings.freeLook || !lookActiveState()) return;
-    if(dragId!==null) return;                       // one look-pointer at a time
+    if(dragId!==null || locked()) return;           // one look-pointer at a time
     if(e.pointerType==='touch' && overTouchControls(e)) return;
     dragId=e.pointerId; dragLast={x:e.clientX,y:e.clientY};
     try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
@@ -40,6 +43,23 @@
     nudgeLook((e.clientX-dragLast.x)*3.4, (e.clientY-dragLast.y)*3.4);
     dragLast={x:e.clientX,y:e.clientY};
   });
+  // With mouse look on, a click captures the pointer and plain mouse movement
+  // orbits the camera -- the way it works on a laptop in Stumble Guys. Esc
+  // releases it (and pauses). Without it, drag-to-look still works.
+  function locked(){ return document.pointerLockElement === canvas; }
+  canvas.addEventListener('click', ()=>{
+    if(settings.mouseLook && settings.freeLook && state==='racing' && !locked()){
+      try{ canvas.requestPointerLock(); }catch(err){}
+    }
+  });
+  document.addEventListener('mousemove', e=>{
+    if(!locked()) return;
+    nudgeLook(e.movementX*3.0, e.movementY*3.0);
+  });
+  document.addEventListener('pointerlockchange', ()=>{
+    if(!locked()) dragId=null;
+  });
+
   const endDrag = e=>{ if(e.pointerId===dragId){ dragId=null; try{ canvas.releasePointerCapture(e.pointerId); }catch(err){} } };
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
@@ -89,9 +109,10 @@
 
     // after a couple of seconds hands-off, drift the view back behind the racer
     look.sinceInput += dt;
-    if(look.sinceInput > 2.0){
+    if(settings.autoCentre && look.sinceInput > 2.0){
       const k = 1 - Math.pow(0.12, dt);
-      look.yaw   += (0 - look.yaw)*k;
+      let d = -look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+      look.yaw   += d*k;
       look.pitch += (0 - look.pitch)*k;
     }
 

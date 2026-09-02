@@ -15,3 +15,7 @@
     custom.eyes = pick(EYES)[0];
     SFX.click(); syncCustomColor(); saveProfile(); refreshPreview(); buildCharacterPane();
   };
+
+  $('dailyBtn').onclick     = ()=>{ SFX.click(); openDaily(); };
+  $('dailyBackBtn').onclick = ()=>{ SFX.click(); closeDaily(); };
+  $('spinBtn').onclick      = ()=>{ doSpin(); };

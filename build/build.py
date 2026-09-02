@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 9                                   # single source of truth
+VERSION = 10                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -101,6 +101,7 @@ cut("  async function loadProfile(){",
     syncCustomColor();
     checkAchievements();
     refreshCoinChips();
+    refreshDailyChip();
     refreshPreview();
   }
   async function saveProfile(){
@@ -319,13 +320,13 @@ sub("    ['results','gameover','pause','settings','customize','mpHome','lobby'].
     "    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
     "goHome screens")
 sub("    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    refreshPreview();",
-    "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; refreshPreview(); refreshCoinChips();",
+    "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; refreshPreview(); refreshCoinChips(); refreshDailyChip();",
     "goHome refresh")
 
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",
     "  function buildSettings(){",
-    frag("05_profile.js") + "\n" + frag("10_wiring.js") + "\n",
+    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("10_wiring.js") + "\n",
     "preview + profile UI")
 
 # ---------------------------------------------------------------- settings additions
@@ -335,14 +336,16 @@ sub("""    const bots=document.createElement('div'); bots.className='row'; const
 sub("""    toggle('shake','Camera shake');""",
     """    toggle('freeLook','Free look (trackpad / drag)');
     const ls=document.createElement('div'); ls.className='row'; const lr=document.createElement('input'); lr.type='range'; lr.min=0.4; lr.max=2.2; lr.step=0.1; lr.value=settings.lookSens; const lv=document.createElement('span'); lv.className='lbl'; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; lr.oninput=()=>{ settings.lookSens=+lr.value; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; }; ls.appendChild(lr); ls.appendChild(lv); row('Look sensitivity', ls);
+    toggle('mouseLook','Mouse look (click to capture)');
     toggle('invertLook','Invert look up/down');
     toggle('camRelative','Move relative to camera');
+    toggle('autoCentre','Camera drifts back behind you');
     toggle('shake','Camera shake');""",
     "look settings")
 
 # goHome must also clear the map reel if you bail mid-load
 sub("    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
-    "    ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro'].forEach(id=>$(id).classList.add('hidden'));",
+    "    ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro','daily'].forEach(id=>$(id).classList.add('hidden'));",
     "goHome hides loader")
 
 # settings back button returns to whichever screen was open
