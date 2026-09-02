@@ -1,7 +1,8 @@
   // ============================================================
   // ACTIONS: jump / dive
   // ============================================================
-  const GRAV_UP = 0.36, GRAV_DOWN = 0.56;   // floaty rise, snappy fall — reads far better than symmetric
+  const GRAV_UP = 0.36, GRAV_DOWN = 0.68;   // floaty rise, snappy fall
+  const APEX_GRAV = 1.45;                   // extra pull through the top of the arc — reads far better than symmetric
   const JUMP_V = 7.4;
   const ACCEL = 0.68;
   const COYOTE_MS = 110;                    // grace after stepping off an edge

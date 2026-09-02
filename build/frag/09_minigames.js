@@ -2,6 +2,7 @@
   // MINIGAME + OBSTACLE RUNTIME
   // ============================================================
   let boulderTimer=0;
+  const CANNON_WARN = 0.75;          // seconds of floor warning before a cannon fires
   let shots=[];                     // cannonballs in flight
   const shotMat = new THREE.MeshPhongMaterial({color:0x2b2140, shininess:50});
   const rockMat = new THREE.MeshPhongMaterial({color:0x6b5545, shininess:8, flatShading:true});
@@ -149,7 +150,13 @@
           placeAt(g, it.side<0 ? 30 : TRACK_W-30, it.y, 54);
           g.rotation.y += it.side<0 ? 0 : Math.PI;
           courseGroup.add(g);
-          return {group:g, barrel};
+          // A ball crosses in under a second from off to one side, so the shot has
+          // to be telegraphed on the floor or it is not a fair dodge.
+          const warn = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-20, 2, 34),
+            new THREE.MeshBasicMaterial({color:0xff3b3b, transparent:true, opacity:0, depthWrite:false}));
+          placeAt(warn, TRACK_W/2, it.y, 1.2);
+          warn.visible = false; courseGroup.add(warn);
+          return {group:g, barrel, warn};
         });
 
       } else if(o.type==='pendulum'){
@@ -337,7 +344,22 @@
         // runner switched cannons off for the whole pack behind them.
         if(it.y > packFront+2200 || it.y < packBack-700) continue;
         it.cool -= dt;
+        const m = o.meshes && o.meshes[i];
+        if(m && m.warn){
+          const lead = it.cool;                       // seconds until this one fires
+          if(lead <= CANNON_WARN && lead > 0){
+            m.warn.visible = true;
+            // flash faster as it gets closer, so urgency reads without a HUD
+            const urgency = 1 - lead/CANNON_WARN;
+            m.warn.material.opacity = (0.18 + 0.42*urgency) * (0.55 + 0.45*Math.sin(t*(14+urgency*22)));
+            if(!it.warned){ it.warned = true;
+              const p = racers.find(r=>r.isPlayer);
+              if(p && Math.abs(p.y - it.y) < 900) SFX.count();
+            }
+          } else { m.warn.visible = false; }
+        }
         if(it.cool<=0){
+          it.warned = false;
           it.cool = it.interval;
           const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
                       vx: it.side<0 ? it.speed : -it.speed, spin:0 };

@@ -14,6 +14,13 @@
   }
   function roundLabel(n){ return n===ROUNDS ? 'FINAL' : 'ROUND '+n; }
 
+  // A survival round cuts harder than a race and runs for a minimum time, or it
+  // is over before anyone has understood what the map is.
+  const KNOCKOUT_MIN_S = 14;
+  function knockoutTarget(total, raceKeep){
+    return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
+  }
+
   // ---- the Stumble-Guys style map reel that plays while the course builds ----
   const LOADER_MS = 2200;
   function showMapLoader(map){
@@ -88,7 +95,12 @@
     const playerRank = sorted.findIndex(r=>r.isPlayer)+1;
 
     if(round < ROUNDS){
-      const keepCount = survivorsAfter(round, sorted.length);
+      let keepCount = survivorsAfter(round, sorted.length);
+      if(currentMap.knockout){
+        // whoever fell is out; nobody advances on a technicality
+        const alive = sorted.filter(r=>!r.lavaOut).length;
+        keepCount = Math.max(2, Math.min(keepCount, alive));
+      }
       const survivors = sorted.slice(0,keepCount);
       const madeIt = playerRank<=keepCount;
       if(mp.role!=='client' && madeIt){
@@ -142,6 +154,7 @@
   function showGameOver(rank,total){
     const el=$('gameover'); el.classList.remove('hidden');
     if(mp.role) stats.mpRaces++;
+    stats.winStreak = 0;
     const coins = 20 + Math.max(0, (total-rank))*2;
     addCoins(coins, 'Match reward');
     awardXp(15);
@@ -160,10 +173,14 @@
     if(myRank>0 && myRank<=3) stats.podiums++;
     if(winner.isPlayer){
       stats.wins++;
-      if(me && !me.fallCount) stats.noFallFinishes++;
+      stats.winStreak = (stats.winStreak||0) + 1;
+      stats.bestStreak = Math.max(stats.bestStreak||0, stats.winStreak);
+      if(me && !me.fallCount){ stats.noFallFinishes++; stats.cleanWins = (stats.cleanWins||0)+1; }
       addCoins(150,'Victory');
+      if(stats.winStreak>=2) addCoins(50*Math.min(stats.winStreak,6), stats.winStreak+' win streak');
       awardXp(60);
     } else {
+      stats.winStreak = 0;
       addCoins(myRank===2?80:myRank===3?60:30, myRank<=3?('Podium — '+myRank+(myRank===2?'nd':'rd')):'Finalist');
       awardXp(30);
     }

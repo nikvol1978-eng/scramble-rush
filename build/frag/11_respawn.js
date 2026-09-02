@@ -1,4 +1,11 @@
   function respawnAfterFall(r){
+    if(currentMap.knockout){
+      // no second chances in a survival round -- how far you got is your rank
+      r.falling=false; r.lavaOut=true; r.lavaCatchY=r.y;
+      spawnBurst3D(r.x, r.y, 0xff5a4d, 14);
+      if(r.isPlayer){ SFX.fall(); camShake=5; }
+      return;
+    }
     r.falling=false; r.h=0; r.vh=0;
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;

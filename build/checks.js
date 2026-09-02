@@ -10,8 +10,9 @@
   // Checks D and E are expected to FAIL before the spline generator exists. A
   // check that cannot fail proves nothing.
 
-  const CORRIDOR_MAPS = ['sunny','honey','neon','candy','bumperb','frost','jungle','sky','cyber'];
-  const PATH_MAPS     = ['cannonc','slide'];
+  // Four maps stay genuinely flat, so the straight fallback keeps being exercised.
+  const CORRIDOR_MAPS = ['sunny','neon','sky','cyber'];
+  const PATH_MAPS     = ['cannonc','slide','honey','candy','jungle','bumperb','frost'];
   const MINIGAME_KEYS = ['lava','boulder','doors','tiles','blockdash','hex','laser','tracer'];
   const TO_RACING     = 700;                 // ticks to clear loader + flyover + countdown
 
@@ -211,6 +212,99 @@
              detail: bad.length? bad.join('; ') : JSON.stringify(got) };
   }
 
+  // ---------- J: swinging hazards stay above the floor ----------
+  function checkJ(){
+    const bad = [];
+    for(const key of ['honey','neon','jungle']){
+      begin(key);
+      for(const o of obstacles){
+        if(o.type!=='pendulum') continue;
+        let lowest = 1e9;
+        for(let i=0;i<=60;i++){                       // sweep a whole cycle
+          const t = i/60 * (Math.PI*2/Math.abs(o.speed||1));
+          lowest = Math.min(lowest, pendPos(o,t).h - o.r);
+        }
+        if(lowest < -2){
+          bad.push(`${key}: ball dips ${(-lowest).toFixed(0)} below the floor (arm ${Math.round(o.armLen)}, pivot ${Math.round(o.pivotH)})`);
+          break;
+        }
+      }
+    }
+    return { name:'J pendulums swing above the floor', pass: bad.length===0,
+             detail: bad.length? bad.slice(0,3).join('; ') : 'all pendulums clear' };
+  }
+
+  // ---------- K: drafting behind someone actually tows you ----------
+  function checkK(){
+    // Measure top speed alone, then with a partner parked just ahead.
+    // The player must be re-fetched after each begin(): startRound rebuilds the
+    // racers array, so a reference taken earlier points at a detached object.
+    function topSpeed(withPartner){
+      const p = player();
+      const bot = racers.find(r=>!r.isPlayer);
+      p.x=TRACK_W/2; p.y=120; p.vx=0; p.vy=0; p.h=0; p.falling=false;
+      for(const r of racers) if(r!==p){ r.x=-9999; r.y=-9999; r.vx=0; r.vy=0; }
+      window.__dbg.hold('w',true);
+      let best=0;
+      for(let i=0;i<90;i++){
+        if(withPartner){ bot.y = p.y + 70; bot.x = TRACK_W/2; bot.vx=0; bot.vy=0; }
+        window.__dbg.tick(1);
+        best = Math.max(best, p.vy);
+      }
+      window.__dbg.hold('w',false);
+      return best;
+    }
+    begin('sunny'); const alone = topSpeed(false);
+    begin('sunny'); const drafting = topSpeed(true);
+    const gain = (drafting/alone - 1)*100;
+    return { name:'K slipstream tows a trailing racer',
+             pass: gain > 3 && gain < 16,
+             detail: `alone ${alone.toFixed(2)}, drafting ${drafting.toFixed(2)} (+${gain.toFixed(1)}%, want 3-16%)` };
+  }
+
+  // ---------- M: the course roster is not one flat corridor ----------
+  function checkM(){
+    const prof = {}, shaped = [];
+    for(const key of CORRIDOR_MAPS.concat(PATH_MAPS)){
+      const h = heightProfile(key);
+      const net = h[20] - h[0];
+      let turn = 0;
+      begin(key);
+      for(let i=0;i<=20;i++) turn = Math.max(turn, Math.abs(pathAngle(trackLength*(i/20))));
+      prof[key] = Math.round(net) + (turn>0.08 ? ' (turns)' : '');
+      if(Math.abs(net) > 250 || turn > 0.08) shaped.push(key);
+    }
+    return { name:'M most maps are shaped, not straight corridors',
+             pass: shaped.length >= 7,
+             detail: shaped.length+' shaped of '+(CORRIDOR_MAPS.length+PATH_MAPS.length)+' -- '+JSON.stringify(prof) };
+  }
+
+  // ---------- N: knockout rounds eliminate rather than race ----------
+  function checkN(){
+    const bad = [], got = {};
+    for(const key of ['tiles','hex']){
+      begin(key);
+      if(!currentMap.knockout){ bad.push(key+' is not flagged knockout'); continue; }
+      const reach = arenaEnd;
+      window.__dbg.hold('w',true);
+      let ended = false, ticks = 0;
+      while(ticks < 3600 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
+      window.__dbg.hold('w',false);
+      const out   = racers.filter(r=>r.lavaOut).length;
+      const alive = racers.length - out;
+      const past  = racers.filter(r=>r.y > reach + 5).length;
+      got[key] = {out, alive, endedIn: (ticks/60)+'s'};
+      if(out === 0)   bad.push(key+': nobody was eliminated');
+      if(past > 0)    bad.push(key+': '+past+' racers left the arena');
+      if(!ended)      bad.push(key+': round never ended');
+      if(alive > 9)   bad.push(key+': ended with '+alive+' still standing');
+      // a two-second round is not a round
+      if(ticks/60 < 12) bad.push(key+': ended after only '+(ticks/60)+'s');
+    }
+    return { name:'N knockout rounds eliminate and end on survivors',
+             pass: bad.length===0, detail: bad.length? bad.join('; ') : JSON.stringify(got) };
+  }
+
   // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
   function checkH(){
     begin('sunny');
@@ -255,6 +349,7 @@
       const all = [
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
+        ['J',checkJ],['K',checkK],['M',checkM],['N',checkN],
         ['I',()=>checkI(!!opts.full)]
       ];
       const results = [];

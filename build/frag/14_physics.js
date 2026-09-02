@@ -1,6 +1,8 @@
     // ============================================================
     // MOVEMENT + PHYSICS
     // ============================================================
+    updateSlipstream();
+
     const p=racers.find(r=>r.isPlayer);
     if(p && !p.finished){
       const {ix:ix0,iy:iy0}=computeInputVec();
@@ -8,7 +10,7 @@
       const mag=Math.hypot(ix,iy);
       if(mag>0.05){ ix/=mag; iy/=mag; p.facing=Math.atan2(iy,ix); }
       const control = p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.50:1;
-      p.vx+=ix*ACCEL*control*f; p.vy+=iy*ACCEL*control*f;
+      p.vx+=ix*ACCEL*(1+p.draft)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*control*f;
       // let go of jump early and the hop is short — hold it and you clear more
       if(p.h>0 && p.vh>2.6 && !keys[settings.keys.jump] && !p.jumpCut){ p.vh*=0.5; p.jumpCut=true; }
       if(p.h<=0) p.jumpCut=false;
@@ -51,7 +53,7 @@
           const mag=Math.hypot(ix,iy);
           if(mag>0.05){ r.facing=Math.atan2(iy,ix); }
           const control = r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.50:1;
-          r.vx+=ix*ACCEL*control*f; r.vy+=iy*ACCEL*control*f;
+          r.vx+=ix*ACCEL*(1+r.draft)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
 
@@ -63,16 +65,19 @@
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
-        if(r.diveT<=0 && r.h<=0){ r.getUpT=260; }
+        if(r.diveT<=0 && r.h<=0){ r.getUpT=170; }
       }
 
       // ---- vertical: floaty on the way up, snappier on the way down
       if(r.h>0){
-        r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*f;
+        // Extra pull through the top of the arc: hanging at the apex is what makes
+        // a jump feel floaty, so the arc snaps over instead.
+        const apex = Math.abs(r.vh) < 1.7 ? APEX_GRAV : 1;
+        r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*apex*f;
         r.h += r.vh*f;
         if(r.h<=0){
           r.h=0; r.squash=clamp(0.45+Math.abs(r.vh)*0.075,0,1.1); r.vh=0;
-          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, 200);
+          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, 140);
         }
         r.coyote=0;
       } else {
@@ -89,6 +94,7 @@
       r.x+=r.vx*f; r.y+=r.vy*f;
       r.x=clamp(r.x,4,TRACK_W-4);
       r.y=Math.max(r.y,-120);
+      if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
       checkObstacles(r,t);
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }
       if(r.y>=trackLength&&!r.finished){

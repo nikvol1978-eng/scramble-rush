@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 12
+VERSION = 13
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -73,6 +73,8 @@ hook = """
     rollTest:(n)=>{ const t={}; for(let i=0;i<(n||20000);i++){ const r=rollSpinRarity(); t[r]=(t[r]||0)+1; } return t; },
     spinState:()=>({ lastSpin:stats.lastSpin, readyIn:spinReadyIn(), owned:stats.owned.length }),
     shots:()=>shots.length,
+    warns:()=>obstacles.filter(o=>o.type==='cannon')
+      .reduce((n,o)=>n+((o.meshes||[]).filter(m=>m.warn&&m.warn.visible).length),0),
     cannons:()=>obstacles.filter(o=>o.type==='cannon').slice(0,3).map(o=>({
       y:Math.round(o.y), items:o.items.map(i=>({y:Math.round(i.y), cool:+(i.cool===undefined?-999:i.cool).toFixed(2),
         interval:+(i.interval===undefined?-999:i.interval).toFixed(2), side:i.side, speed:Math.round(i.speed||-999)}))})),

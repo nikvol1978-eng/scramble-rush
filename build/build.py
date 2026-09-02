@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 12                                  # single source of truth
+VERSION = 13                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -219,8 +219,17 @@ sub("""    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
     if(isFinal && fin.length && raceTime-firstFinish>6) allDone=true;                      // winner crowned, short grace
     if(!isFinal && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;      // one straggler left
     if(!isFinal && fin.length>=keepN && raceTime-firstFinish>20) allDone=true;              // cut-off after the leaders
+    if(currentMap.knockout){
+      // Survival. The normal round-1 cut keeps 12 of 16, which in a knockout ends
+      // the round the moment four people fall -- about two seconds. So a knockout
+      // cuts harder and cannot end before it has had time to be a round.
+      const alive = racers.filter(r=>!r.lavaOut).length;
+      const target = knockoutTarget(racers.length, keepN);
+      allDone = (raceTime > KNOCKOUT_MIN_S && alive <= target) || timeLeft<=0;
+      if(alive === target+1 && !p.lavaOut && !p.knockWarned){ p.knockWarned=true; showBanner('ONE MORE!',1400); }
+    }
     if(allDone) endRound();
-    else if(!isFinal && fin.length>=keepN && !p.finished && raceTime-firstFinish>15 && raceTime-firstFinish<15.1) showBanner('HURRY!',1200);""",
+    else if(!isFinal && !currentMap.knockout && fin.length>=keepN && !p.finished && raceTime-firstFinish>15 && raceTime-firstFinish<15.1) showBanner('HURRY!',1200);""",
     "round end conditions")
 
 # ---------------------------------------------------------------- obstacle animation
@@ -257,6 +266,12 @@ sub("  function baseRacer(){ return {x:0,y:-60,",
 sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=Math.sin(ang)*o.length/2;",
     "          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;",
     "bot spinbar prediction")
+
+# -------------------------------------------------- impacts + slipstream
+cut("  function racerCollisions(){",
+    "  function nextObstacle(r){",
+    frag("19_impacts.js") + "\n",
+    "racer collisions + slipstream")
 
 # ---------------------------------------------------------------- camera-relative movement
 cut("  function computeInputVec(){",
@@ -352,8 +367,16 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     "loop hooks")
 
 # HUD progress dots should show the player's colourway
-sub("  updateHint(); goHome(); loadProfile();",
-    "  updateHint(); goHome(); loadProfile();", "boot")
+sub("    $('rankBadge').textContent=`Rank ${rank}/${racers.length}`;",
+    "    $('rankBadge').textContent = currentMap.knockout"
+    + chr(10) + "      ? racers.filter(r=>!r.lavaOut).length+' LEFT'"
+    + chr(10) + "      : `Rank ${rank}/${racers.length}`;",
+    "knockout hud")
+
+# in a survival round the bar shows the arena, not an unreachable finish line
+sub("      const pct=clamp(r.y/trackLength,0,1); const d=document.createElement('div');",
+    "      const pct=clamp(r.y/((currentMap.knockout && arenaEnd) ? arenaEnd : trackLength),0,1); const d=document.createElement('div');",
+    "knockout progress bar")
 
 # the HUD comes back once the opening shot is over
 sub("        $('mapIntro').classList.add('hidden');",

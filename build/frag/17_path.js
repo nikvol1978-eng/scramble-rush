@@ -78,4 +78,24 @@
     slope: u => -(0.10 + 0.16*Math.sin(clamp(u,0,1)*Math.PI)),
     turn:  u => Math.sin(u*Math.PI*3)*0.17
   };
-  const COURSE_PATHS = { climb: PATH_CLIMB, slide: PATH_SLIDE };
+  // Gentler shapes for the ordinary race maps: enough to stop them reading as one
+  // straight corridor, not so much that they play like the two shaped courses.
+  const PATH_ROLLING = {                       // up and over, twice
+    slope: u => Math.sin(u*Math.PI*3)*0.15,
+    turn:  u => Math.sin(u*Math.PI*2)*0.20
+  };
+  const PATH_ASCENT = {                        // finishes above the start, gently
+    slope: u => 0.085 + 0.045*Math.sin(u*Math.PI*3),
+    turn:  u => Math.sin(u*Math.PI*1.5)*0.22
+  };
+  const PATH_DESCENT = {                       // finishes below, with a long sweep
+    slope: u => -(0.075 + 0.05*Math.sin(u*Math.PI)),
+    turn:  u => Math.sin(u*Math.PI*2.2)*0.26
+  };
+  const PATH_WINDING = {                       // flat, but it bends
+    slope: u => 0,
+    turn:  u => Math.sin(u*Math.PI*2.6)*0.38
+  };
+  const COURSE_PATHS = { climb: PATH_CLIMB, slide: PATH_SLIDE,
+                         rolling: PATH_ROLLING, ascent: PATH_ASCENT,
+                         descent: PATH_DESCENT, winding: PATH_WINDING };

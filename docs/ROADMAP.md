@@ -5,16 +5,16 @@ the version they shipped in.
 
 ## Update 1 — Core gameplay
 
-- [ ] Smoother, faster running
+- [x] Slipstream: drafting tows a trailing racer by ~7% *(v13)*
 - [x] Improved jumping — variable height, coyote time, input buffering *(v8)*
 - [x] Dive with a real lunge, slide and get-up *(v8)*
 - [ ] Make diving more tactically useful (not just faster)
 - [ ] Satisfying stumble / fall animations — ragdoll-ish tumbles
-- [ ] Better landing and collision reactions
+- [x] Better landing and collision reactions — impulse, squash, knocked off your feet *(v13)*
 - [ ] Collisions that feel deliberate rather than random
 - [x] Obstacles that push, spin, launch and knock players about — cannons,
       pendulums, pinball bumpers, boost pads, rotating laser arms *(v11)*
-- [ ] Warning animations before dangerous obstacles
+- [x] Warning animations before dangerous obstacles — cannon floor telegraph *(v13)*
 - [ ] Obstacles readable at a glance
 
 ## Update 2 — Maps and variety
@@ -32,8 +32,8 @@ the version they shipped in.
 - [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
 - [ ] Moving platforms, falling floors
 - [ ] Random map events
-- [ ] Game modes beyond racing: survival, last blob standing, team, collect,
-      final showdown in a small arena
+- [x] Survival / last blob standing — Tile Trap and Honey Drop *(v13)*
+- [ ] Team, collect, final showdown in a small arena
 
 ## Update 3 — Multiplayer
 
@@ -48,7 +48,7 @@ the version they shipped in.
 
 - [x] Daily reward — spin the wheel for a skin, weighted by rarity *(v10)*
 - [ ] Daily and weekly challenges
-- [ ] Win streak rewards
+- [x] Win streak rewards, and 13 grind badges *(v13)*
 - [ ] Level-up rewards
 - [ ] Cosmetics locked behind hard achievements
 
@@ -89,3 +89,4 @@ launch forward. The core game stays about movement and obstacles.
 | v10 | Free-orbit camera, 22 more skins, daily spin wheel |
 | v11 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded grid |
 | v12 | Path-based courses; Cannon Climb climbs, Super Slide descends |
+| v13 | Impact physics, slipstream, knockout rounds, 7 shaped maps, 28 badges, special auras |

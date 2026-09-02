@@ -179,6 +179,7 @@
       if(Math.abs(spin.vel)<0.0004) spin.vel=0;
     }
     applyIdle(menuBlob, dt);
+    animateAura(menuBlob, menuT);
     if(menuBlob.hatGroup.userData.spin) menuBlob.hatGroup.userData.spin.rotation.y=t*12;
     // slide the character aside when the profile card needs the room
     const profOpen = !$('profile').classList.contains('hidden');

@@ -7,7 +7,8 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-12.0.html` | **12.0 (current)** | Path-based courses: Cannon Climb climbs, Super Slide descends |
+| `scramble-rush-13.0.html` | **13.0 (current)** | Impact physics, slipstream, knockout minigames, 7 shaped maps, 28 badges |
+| `scramble-rush-12.0.html` | 12.0 | Path-based courses: Cannon Climb climbs, Super Slide descends |
 | `scramble-rush-11.0.html` | 11.0 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
 | `scramble-rush-10.0.html` | 10.0 | Free-orbit camera with mouse look, 65 skins, daily spin wheel |
 | `scramble-rush-9.0.html` | 9.0 | Character remodelled: lathed bean silhouette, small stubby limbs, thin rim |
@@ -22,6 +23,7 @@ Each version is one self-contained HTML file.
 npm run dev
 ```
 
+- v13: http://localhost:5173/scramble-rush-13.0.html
 - v12: http://localhost:5173/scramble-rush-12.0.html
 - v11: http://localhost:5173/scramble-rush-11.0.html
 - v10: http://localhost:5173/scramble-rush-10.0.html
@@ -54,6 +56,8 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 - **8 minigames** — Lava Rise, Boulder Barrage, Door Dash, Tile Trap, Block Dash,
   Honey Drop, Laser Dodge, Laser Tracer. They appear ~30% of the time in the
   qualifying rounds and 55% of the time in the final.
+- **Tile Trap and Honey Drop are knockout rounds**, not races: a bounded arena,
+  falling eliminates you, and the round runs until enough players are out.
 - **65 colourways × 14 patterns**, bought with coins across six rarities.
   Champion Gold is the only skin that cannot be bought — it needs 100 wins.
 - **Daily spin** — one free colourway every 22 hours, weighted so rarer tiers

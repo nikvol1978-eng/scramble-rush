@@ -233,7 +233,8 @@
   // LOCAL PROFILE (saved in this browser)
   // ============================================================
   let stats = { races:0, wins:0, xp:0, level:1, badges:[], lavaSurvived:0, noFallFinishes:0, mpRaces:0, dives:0,
-                coins:0, owned:[], patterns:[], podiums:0, finals:0, minigamesWon:0, claimed:[], lastSpin:0 };
+                coins:0, owned:[], patterns:[], podiums:0, finals:0, minigamesWon:0, claimed:[], lastSpin:0,
+                winStreak:0, bestStreak:0, cleanWins:0 };
   function xpForLevel(l){ return 100+(l-1)*40; }
 
   function ownedSkins(){
@@ -288,7 +289,22 @@
     {id:'finalist',     name:'Finalist',        desc:'Reach the final round 10 times',  icon:'\u{1F3AF}', coins:300, check:s=>s.finals>=10},
     {id:'podium',       name:'Podium Regular',  desc:'Finish top 3 in 15 matches',      icon:'\u{1F949}', coins:350, check:s=>s.podiums>=15},
     {id:'friend',       name:'Squad Up',        desc:'Race with a friend online',       icon:'\u{1F91D}', coins:250, check:s=>s.mpRaces>=1},
-    {id:'diver',        name:'Belly Flopper',   desc:'Dive 100 times',                  icon:'\u{1F93F}', coins:300, check:s=>s.dives>=100}
+    {id:'diver',        name:'Belly Flopper',   desc:'Dive 100 times',                  icon:'\u{1F93F}', coins:300, check:s=>s.dives>=100},
+
+    // ---- the long haul: these are meant to take a while ----
+    {id:'fifty_wins',   name:'Hall of Famer',   desc:'Win 50 matches',                   icon:'\u{1F3C5}', coins:900,  check:s=>s.wins>=50},
+    {id:'hundred_wins', name:'Legend',          desc:'Win 100 matches',                  icon:'\u{1F94A}', coins:1500, check:s=>s.wins>=100},
+    {id:'marathon',     name:'Marathon',        desc:'Play 250 matches',                 icon:'\u{1F4C5}', coins:1500, check:s=>s.races>=250},
+    {id:'streak3',      name:'On a Roll',       desc:'Win 3 matches in a row',           icon:'\u{1F525}', coins:400,  check:s=>s.bestStreak>=3},
+    {id:'streak5',      name:'Unstoppable',     desc:'Win 5 matches in a row',           icon:'\u{26A1}',  coins:900,  check:s=>s.bestStreak>=5},
+    {id:'flawless',     name:'Flawless',        desc:'Win without falling once',         icon:'\u{1F48E}', coins:500,  check:s=>s.cleanWins>=1},
+    {id:'flawless5',    name:'Untouchable',     desc:'Win 5 matches without falling',    icon:'\u{1F6E1}', coins:1200, check:s=>s.cleanWins>=5},
+    {id:'level25',      name:'Prestige',        desc:'Reach level 25',                   icon:'\u{1F31E}', coins:1200, check:s=>s.level>=25},
+    {id:'survivor25',   name:'Last One Standing',desc:'Survive 25 minigame rounds',      icon:'\u{1F3AF}', coins:700,  check:s=>s.minigamesWon>=25},
+    {id:'podium50',     name:'Ever Present',    desc:'Finish top 3 in 50 matches',       icon:'\u{1F396}', coins:900,  check:s=>s.podiums>=50},
+    {id:'dives500',     name:'Faceplant',       desc:'Dive 500 times',                   icon:'\u{1F92F}', coins:600,  check:s=>s.dives>=500},
+    {id:'collector30',  name:'Collector',       desc:'Own 30 colourways',                icon:'\u{1F5C3}', coins:700,  check:()=>ownedSkins().size>=30},
+    {id:'wardrobe',     name:'Wardrobe',        desc:'Own 8 patterns',                   icon:'\u{1F9F5}', coins:500,  check:()=>ownedPatterns().size>=8}
   ];
   function checkAchievements(){
     for(const a of ACHIEVEMENTS){
@@ -312,7 +328,7 @@
       obstacles:['pillars','hammer','pit','ramp','bumper'] },
 
     { key:'honey', name:'Honey Hive', tip:'The hive bounces you about — use a bumper to line up the next gap.', ground:'#ffc94a', groundAlt:'#f0a92b', wall:'#6b4310', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffe7a8', accent:'#ffb300',
-      obstacles:['bumper','pendulum','ramp','narrow','bumper'] },
+      path:'rolling', obstacles:['bumper','pendulum','ramp','narrow','bumper'] },
 
     { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
       path:'climb', obstacles:['cannon','ramp','bumper','pusher','cannon'] },
@@ -324,16 +340,16 @@
       obstacles:['spinbar','pusher','narrow','beam','pendulum'] },
 
     { key:'candy', name:'Candy Canyon', tip:'Diving through a gap keeps your momentum — better than stopping to line it up.', ground:'#ffc2e2', groundAlt:'#ff9fd1', wall:'#7c3f7a', wallTop:'#60a5fa', skyTop:'#ffe1f2', skyMid:'#ff9fd1', skyBot:'#c084fc', accent:'#c084fc',
-      obstacles:['pillars','pit','ramp','roller','bumper'] },
+      path:'descent', obstacles:['pillars','pit','ramp','roller','bumper'] },
 
     { key:'bumperb', name:'Bumper Bash', tip:'Nothing here kills you — it just throws you. Use the bounces.', ground:'#3aa8e0', groundAlt:'#2b8fc4', wall:'#134e75', wallTop:'#ffd54f', skyTop:'#bfe9ff', skyMid:'#5ec2ee', skyBot:'#e8f7ff', accent:'#ff4fa3',
-      obstacles:['bumper','spinbar','pusher','bumper','roller'] },
+      path:'winding', obstacles:['bumper','spinbar','pusher','bumper','roller'] },
 
     { key:'frost', name:'Frostbite Peak', tip:'Ice keeps your momentum, and the cannons know it. Brake early.', ground:'#dff3ff', groundAlt:'#bfe4fb', wall:'#3b5f8a', wallTop:'#7ee8fa', skyTop:'#cfe9ff', skyMid:'#7fb6e6', skyBot:'#e8f6ff', accent:'#7ee8fa', slippery:true,
-      obstacles:['cannon','narrow','pit','ramp','spinbar'] },
+      path:'descent', obstacles:['cannon','narrow','pit','ramp','spinbar'] },
 
     { key:'jungle', name:'Jungle Jam', tip:'The logs swing on a fixed beat — count it before you commit.', ground:'#4f7f3a', groundAlt:'#3f6a2e', wall:'#2c4a1f', wallTop:'#a3e635', skyTop:'#bde86f', skyMid:'#5ea832', skyBot:'#2f5220', accent:'#a3e635',
-      obstacles:['pendulum','pillars','roller','narrow','pendulum'] },
+      path:'ascent', obstacles:['pendulum','pillars','roller','narrow','pendulum'] },
 
     { key:'sky', name:'Cloud Nine', tip:'Nothing below you but sky — take the gaps slowly and land flat.', ground:'#f2f7ff', groundAlt:'#dbe7fb', wall:'#9fb8e8', wallTop:'#ffffff', skyTop:'#6fc0ff', skyMid:'#a5d8ff', skyBot:'#e8f4ff', accent:'#60a5fa',
       obstacles:['pit','ramp','beam','pit','boost'] },
@@ -350,11 +366,11 @@
     { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors' },
     { key:'tiles', name:'Tile Trap', tip:'Tiles drop the moment you step off — but they do rebuild. Keep moving.',
-      ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles' },
+      ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
     { key:'blockdash', name:'Block Dash', tip:'Every wall has one gap. Spot it early and commit — the pack will not wait.',
       ground:'#ffd9a0', groundAlt:'#ffc477', wall:'#8a4b1e', wallTop:'#ff5a4d', skyTop:'#ffd28c', skyMid:'#ff8a5c', skyBot:'#6d2f1f', accent:'#ff5a4d', isMinigame:true, mode:'blockdash' },
     { key:'hex', name:'Honey Drop', tip:'Every comb you touch is on borrowed time. Four layers, then the honey.',
-      ground:'#ffc42e', groundAlt:'#eda520', wall:'#7a4a0d', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffdf8a', accent:'#ff9500', isMinigame:true, mode:'hex' },
+      ground:'#ffc42e', groundAlt:'#eda520', wall:'#7a4a0d', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffdf8a', accent:'#ff9500', isMinigame:true, mode:'hex', knockout:true },
     { key:'tracer', name:'Laser Tracer', tip:'The arms sweep low. Jump the pass — you cannot outrun a circle.',
       ground:'#4b5563', groundAlt:'#3f4753', wall:'#1f2937', wallTop:'#a3e635', skyTop:'#1f2937', skyMid:'#374151', skyBot:'#84cc16', accent:'#a3e635', isMinigame:true, mode:'tracer' },
     { key:'laser', name:'Laser Dodge', tip:'Low beams you jump. High beams you dive under. Read the colour, not the sound.',
@@ -363,6 +379,9 @@
   const LAVA_MAP = MINIGAMES[0];
   let currentMap = MAPS[0], lavaZ=0, lavaSpeed=0, lavaMesh=null, lavaGlow=null, mapIntroTimer=0;
   let boulders=[], tiles=[], doorRows=[], lasers=[];
+  // Knockout rounds are survival, not a race: the arena is bounded at arenaEnd
+  // and the round ends when few enough racers are left standing.
+  let arenaEnd = 0;
   function applyMapSky(){
     sky.material.uniforms.top.value.set(currentMap.skyTop);
     sky.material.uniforms.mid.value.set(currentMap.skyMid);

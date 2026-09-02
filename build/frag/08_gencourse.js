@@ -23,7 +23,8 @@
       // Tiles go fast but come back, so the floor never runs out entirely.
       obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
                 fuseTime: hard?0.85:1.1, respawnTime: hard?5.2:4.5});
-      trackLength = yEnd+300;
+      // survival: fence them into the field, and put the line out of reach
+      arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }
 
@@ -53,7 +54,7 @@
       // tiers rebuild, or a crowded field would strand everyone before the line
       obs.push({type:'hexfield', yStart, yEnd, y0:yStart, y1:yEnd, cells, columns, tiers:TIERS,
                 fuseTime: hard?1.0:1.3, respawnTime: 4.0});
-      trackLength = yEnd+280;
+      arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }
 
@@ -253,8 +254,12 @@
       } else if(type==='pendulum'){
         // a wrecking ball on a long arm, sweeping the full width and low in the middle
         const y = cursor+gap+130;
-        obs.push({type:'pendulum', y, cx, armLen: rand(150,205), r: rand(27,37),
-                  pivotH: 168, swing: rand(0.78,1.02),
+        const pArm = rand(150,205), pR = rand(27,37);
+        // The pivot has to clear the arm, or the ball buries itself in the floor at
+        // the bottom of the swing. A fixed pivotH of 168 with arms up to 205 sank
+        // the ball as much as 50 units under the ground.
+        obs.push({type:'pendulum', y, cx, armLen: pArm, r: pR,
+                  pivotH: pArm + pR + 4, swing: rand(0.78,1.02),
                   speed: rand(1.0,1.5)*spd, phase: rand(0,6.28),
                   y0:y-120, y1:y+120});
         cursor = y+150;

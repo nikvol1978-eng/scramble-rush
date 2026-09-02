@@ -26,7 +26,7 @@
     }
     if(r.getUpT>0){
       // pushing back upright off the floor
-      const k = clamp(r.getUpT/260, 0, 1);
+      const k = clamp(r.getUpT/170, 0, 1);
       setLegs(-0.5*k, -0.35*k); setArms(-1.5*k, -1.5*k); flare(0.30);
       m.tilt.rotation.x = 1.05*k;
       return;
@@ -111,5 +111,6 @@
       if(m.hatGroup.userData.spin) m.hatGroup.userData.spin.rotation.y=t*12;
       if(m.hatGroup.userData.float) m.hatGroup.position.y=(m.hatGroup.userData.floatBase||0)+Math.sin(t*3)*2;
       if(m.arrow) m.arrow.position.y=RADIUS+34+Math.sin(t*4)*3;
+      animateAura(m, t);
     }
   }

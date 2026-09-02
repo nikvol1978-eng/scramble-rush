@@ -67,6 +67,24 @@
     outline.add(new THREE.Mesh(beanOutlineGeometry(), outMat));
     tilt.add(outline);
 
+    // ---- specials get an aura: a breathing shell plus motes drifting up off them
+    let aura = null;
+    if(skin.rarity === 'special'){
+      aura = new THREE.Group();
+      const col = new THREE.Color(skinBaseColor(skin));
+      const shell = new THREE.Mesh(beanGeometry(), new THREE.MeshBasicMaterial({
+        color:col, transparent:true, opacity:0.16, side:THREE.BackSide, depthWrite:false }));
+      shell.scale.setScalar(1.42); aura.add(shell);
+      const motes = [];
+      for(let i=0;i<8;i++){
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1.7,8,6), new THREE.MeshBasicMaterial({
+          color:col, transparent:true, opacity:0.85, depthWrite:false }));
+        aura.add(m); motes.push(m);
+      }
+      aura.userData = {motes, shell};
+      tilt.add(aura);
+    }
+
     // ---- glow shell for the light-emitting skins
     if(skin.type==='neon'||skin.type==='rainbowneon'){
       const glow = new THREE.Mesh(beanGeometry(),
@@ -167,9 +185,26 @@
       const prop=new THREE.Mesh(new THREE.BoxGeometry(13,0.9,2.3), new THREE.MeshLambertMaterial({color:0xff5a4d})); prop.position.y=8.7; hatGroup.add(prop); hatGroup.userData.spin=prop;
     }
 
-    return {group, tilt, bodyMat, outMat, outline, body, head, faceGroup, plate, hatGroup, eyeGroup,
+    return {group, tilt, aura, bodyMat, outMat, outline, body, head, faceGroup, plate, hatGroup, eyeGroup,
             pupils, scleras, mouth, tongue, arms:armPivots, legs:legPivots,
             armPivots, legPivots, feet};
   }
   // v6 name kept so nothing downstream breaks
   const makeBlob = makeCharacter;
+
+  // Drives the special-skin aura. Called from both the race loop and the menu
+  // preview, so a special reads the same wherever you see it.
+  function animateAura(m, t){
+    if(!m || !m.aura) return;
+    const {motes, shell} = m.aura.userData;
+    for(let i=0;i<motes.length;i++){
+      const a  = t*1.5 + i*(Math.PI*2/motes.length);
+      const rr = 15 + Math.sin(t*2.2 + i)*2.6;
+      const rise = ((t*34 + i*7) % 52) - 10;          // drift upward, then loop
+      motes[i].position.set(Math.cos(a)*rr, rise, Math.sin(a)*rr*0.92);
+      motes[i].material.opacity = 0.20 + 0.55*Math.max(0, Math.sin(t*2.6 + i*0.8));
+      const sc = 1 - clamp((rise+10)/62, 0, 1)*0.55;   // shrink as they rise
+      motes[i].scale.setScalar(sc);
+    }
+    shell.material.opacity = 0.12 + Math.sin(t*2.4)*0.055;
+  }
