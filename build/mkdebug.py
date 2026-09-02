@@ -22,6 +22,9 @@ new = ("      currentMap = window.__forceMap ? [...MAPS,...MINIGAMES].find(x=>x.
 assert s.count(old) == 1, "map-pick anchor: %d" % s.count(old)
 s = s.replace(old, new)
 
+CHECKS = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "checks.js"),
+                 encoding="utf-8").read()
+
 hook = """
   // ---- debug hook (test build only) ----
   window.__dbg = {
@@ -88,7 +91,10 @@ hook = """
         playerY:Math.round((racers.find(r=>r.isPlayer)||{}).y||0), trackLength:Math.round(trackLength) };
     }
   };
+
+__CHECKS__
 })();"""
+hook = hook.replace("__CHECKS__", CHECKS)
 assert s.count("\n})();") == 1
 s = s.replace("\n})();", hook)
 
