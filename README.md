@@ -11,7 +11,8 @@ Each version is one self-contained HTML file.
 | `scramble-rush-14.0.html` | 14.0 | Live shop preview, smart camera, shortcut lanes, spectator mode |
 | `scramble-rush-15.0.html` | 15.0 | Moving platforms, crumbling bridges, swinging logs, two new maps, map events |
 | `scramble-rush-16.0.html` | 16.0 | Chase camera, friendly collisions, laser fixes, locker screen, forks and gates, two new rounds |
-| `scramble-rush-17.0.html` | **17.0 (current)** | Ragdoll tumbles, comeback mechanics, Gem Grab, obstacle chain reactions, per-map music |
+| `scramble-rush-17.0.html` | 17.0 | Ragdoll tumbles, comeback mechanics, Gem Grab, obstacle chain reactions, per-map music |
+| `scramble-rush-18.0.html` | **18.0 (current)** | Slopes drive movement — climbing costs speed, descending gives it back |
 | `scramble-rush-12.0.html` | 12.0 | Path-based courses: Cannon Climb climbs, Super Slide descends |
 | `scramble-rush-11.0.html` | 11.0 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
 | `scramble-rush-10.0.html` | 10.0 | Free-orbit camera with mouse look, 65 skins, daily spin wheel |
@@ -32,6 +33,7 @@ npm run dev
 - v15: http://localhost:5173/scramble-rush-15.0.html
 - v16: http://localhost:5173/scramble-rush-16.0.html
 - v17: http://localhost:5173/scramble-rush-17.0.html
+- v18: http://localhost:5173/scramble-rush-18.0.html
 - v12: http://localhost:5173/scramble-rush-12.0.html
 - v11: http://localhost:5173/scramble-rush-11.0.html
 - v10: http://localhost:5173/scramble-rush-10.0.html

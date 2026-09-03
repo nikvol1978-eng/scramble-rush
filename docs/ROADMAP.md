@@ -22,7 +22,7 @@ the version they shipped in.
 
 - [x] Per-map obstacle sets *(v7)*
 - [x] Map intro showing the course — full arena flyover *(v8)*
-- [ ] A signature mechanic per map:
+- [x] A signature mechanic per map:
   - [x] Lava — rising lava *(v6)*
   - [x] Ice — slippery movement *(v8, `slippery` flag)*
   - [x] Tiles — disappearing floor *(v7)*
@@ -31,6 +31,8 @@ the version they shipped in.
   - [x] Beach — waves pushing players, on Beach Break *(v15)*
 - [x] Cannons and boost pads *(v11)*
 - [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
+- [x] Climbing and descending affect movement — a gradient costs you going up
+      and pays going down, instead of being scenery *(v18)*
 - [x] Moving platforms, falling floors *(v15)*
 - [x] Risk-vs-reward shortcut lanes — raised, narrow, faster *(v14)*
 - [x] Branching routes — a divider, a fast raised lane, a slower clear one *(v16)*
@@ -103,3 +105,4 @@ launch forward. The core game stays about movement and obstacles.
 | v15 | Moving platforms, crumbling bridges, swinging logs, Orbit Drop, Beach Break, map events |
 | v16 | Chase camera, friendly player collisions, laser hitbox fixes, locker screen, forks, gates, Closing Circle, Carousel |
 | v17 | Ragdoll tumbles, second wind, catch-up draft, Gem Grab, cannonball chain reactions, per-map music |
+| v18 | Gradients drive movement: hills finally cost and pay |

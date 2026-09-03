@@ -25,6 +25,9 @@
   }                   // extra pull through the top of the arc — reads far better than symmetric
   const JUMP_V = 7.4;
   const ACCEL = 0.68;
+  // How hard a gradient pulls, per frame per unit of sin(slope). At the
+  // steepest point of Cannon Climb this is about a fifth of ACCEL.
+  const SLOPE_PULL = 0.50;
   const COYOTE_MS = 110;                    // grace after stepping off an edge
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander

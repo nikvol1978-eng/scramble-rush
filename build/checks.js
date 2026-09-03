@@ -677,13 +677,26 @@
       if(!$('eventBanner') || $('eventBanner').classList.contains('hidden'))
         bad.push(kind+': fired with no warning on screen');
 
-      p.x = TRACK_W/2; p.y = 900; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
+      // Somewhere with room to be blown sideways: a fork divider pins your x,
+      // and then a working crosswind reads as no crosswind at all.
+      let openY = null;
+      for(let y=700; y<trackLength-400; y+=120){
+        if(!obstacles.some(o=>y > (o.y0===undefined?-1e9:o.y0)-260 && y < (o.y1===undefined?1e9:o.y1)+260)){ openY = y; break; }
+      }
+      if(openY === null){        // busy layout: fall back past the last obstacle
+        let last = 0;
+        for(const o of obstacles) last = Math.max(last, o.y1===undefined?0:o.y1);
+        openY = Math.min(last + 300, trackLength - 200);
+      }
+      p.x = TRACK_W/2; p.y = openY; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
       const x0 = p.x, y0 = p.y;
       window.__dbg.tick(40);
       if(kind === 'wind'){
         const drift = Math.abs(p.x - x0);
         seen.wind = drift.toFixed(0);
-        if(drift < 25) bad.push('wind moved a standing racer only '+drift.toFixed(0));
+        if(drift < 25) bad.push('wind moved a standing racer only '+drift.toFixed(0)
+          +' [map '+currentMap.key+', still active '+!!(mapEvent&&mapEvent.active)
+          +', detached '+(p!==player())+', vx '+p.vx.toFixed(2)+', x '+p.x.toFixed(0)+' from '+x0.toFixed(0)+']');
       } else if(kind === 'frenzy'){
         seen.frenzy = eventSpeed().toFixed(2)+'x';
         if(eventSpeed() <= 1.05) bad.push('frenzy did not speed the obstacles up ('+eventSpeed().toFixed(2)+')');
@@ -1275,6 +1288,74 @@
                : 'sunny key '+a.key+' at '+a.tempo+', neon key '+b.key+' at '+b.tempo+', quiet in menu' };
   }
 
+  // ---------- L: a hill is worth something, up or down ----------
+  function checkL(){
+    const bad = [];
+
+    // Terminal speed at one fixed point. The racer is pinned to a single y so
+    // the slope under them never changes, and made invulnerable so an obstacle
+    // cannot muddy the reading.
+    function terminalAt(atY){
+      const p = player();
+      for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; }
+      p.x = TRACK_W/2; p.h = 0; p.vx = 0; p.vy = 0;
+      p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.windT = 0;
+      window.__dbg.hold('w', true);
+      for(let i=0;i<170;i++){
+        p.y = atY; p.h = 0; p.floorH = 0; p.invuln = 9999; p.falling = false;
+        window.__dbg.tick(1);
+      }
+      window.__dbg.hold('w', false);
+      return p.vy;
+    }
+    // Shallowest and steepest point of whatever course is loaded. Both readings
+    // come from the same map, so friction and ice are held constant and the
+    // only thing that differs is the gradient -- Super Slide is slippery, and
+    // comparing it against a flat map measures the ice, not the hill.
+    function extremes(){
+      let lo = 1e9, hi = -1e9, loY = 800, hiY = 800;
+      for(let y=500; y<trackLength-700; y+=110){
+        const s = pathSlope(y);
+        if(s < lo){ lo = s; loY = y; }
+        if(s > hi){ hi = s; hiY = y; }
+      }
+      return {lo, hi, loY, hiY};
+    }
+
+    // a corridor map has no gradient at all, and must be untouched by this
+    begin('sunny');
+    if(pathSlope(1400) !== 0) bad.push('a corridor map reports a slope ('+pathSlope(1400)+')');
+    const flat = terminalAt(1400);
+    if(flat < 3) return { name:'L slopes cost you going up and pay going down',
+                          pass:false, detail:'could not get a clean flat reading ('+flat.toFixed(2)+')' };
+
+    // uphill: the steeper stretch has to be the slower one
+    begin('cannonc');
+    const cc = extremes();
+    const gentleUp = terminalAt(cc.loY), steepUp = terminalAt(cc.hiY);
+    const upCost = 1 - steepUp/gentleUp;
+    if(cc.hi - cc.lo < 0.05) bad.push('Cannon Climb has no gradient to speak of');
+    if(upCost < 0.05) bad.push('a steeper climb costs nothing ('+(upCost*100).toFixed(0)+'% between '
+                               +cc.lo.toFixed(2)+' and '+cc.hi.toFixed(2)+' rad)');
+    if(upCost > 0.50) bad.push('the steep part is a wall ('+(upCost*100).toFixed(0)+'% slower)');
+    if(steepUp < 1.5) bad.push('the climb cannot be walked up ('+steepUp.toFixed(2)+'/frame)');
+
+    // downhill: the steeper stretch has to be the quicker one
+    begin('slide');
+    const sl = extremes();
+    const gentleDown = terminalAt(sl.hiY), steepDown = terminalAt(sl.loY);
+    const downGain = steepDown/gentleDown - 1;
+    if(sl.hi - sl.lo < 0.05) bad.push('Super Slide has no gradient to speak of');
+    if(downGain < 0.05) bad.push('a steeper drop pays nothing ('+(downGain*100).toFixed(0)+'%)');
+    if(downGain > 0.90) bad.push('the steep part is a runaway ('+(downGain*100).toFixed(0)+'% faster)');
+
+    return { name:'L slopes cost you going up and pay going down', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'flat '+flat.toFixed(2)+'  |  climb '+gentleUp.toFixed(2)+' -> '+steepUp.toFixed(2)
+                 +' (-'+(upCost*100).toFixed(0)+'% over '+cc.lo.toFixed(2)+'..'+cc.hi.toFixed(2)+' rad)'
+                 +'  |  slide '+gentleDown.toFixed(2)+' -> '+steepDown.toFixed(2)+' (+'+(downGain*100).toFixed(0)+'%)' };
+  }
+
   // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
   function checkH(){
     begin('sunny');
@@ -1320,7 +1401,7 @@
       const all = [
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
-        ['J',checkJ],['K',checkK],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],
+        ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],
         ['S',checkS],['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['4',check4],['5',check5],

@@ -58,6 +58,9 @@
   function pathHeight(simY){ return coursePath ? pathAt(simY).y : 0; }
   // Heading, for rotating obstacle meshes to sit square on the ribbon.
   function pathAngle(simY){ return coursePath ? pathAt(simY).ang : 0; }
+  // Gradient underfoot, in radians: positive climbs, negative descends. The
+  // physics reads this, so a course that looks like a hill plays like one.
+  function pathSlope(simY){ return coursePath ? pathAt(simY).slope : 0; }
   // Convenience for the many `position.set(toSceneX(x), h, y)` call sites.
   function placeAt(obj, simX, simY, h){
     const w = toWorld(simX, simY, h||0);
