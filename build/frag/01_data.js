@@ -330,13 +330,13 @@
       obstacles:['pillars','hammer','pit','ramp','fork','gate','crumble','narrow'] },
 
     { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
-      path:'climb', obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
+      path:'climb', forcedGap:false, obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
 
     { key:'slide', name:'Super Slide', tip:'Boost pads chain together. Hold your line and do not brake.', ground:'#4dd0e1', groundAlt:'#26c6da', wall:'#0e7490', wallTop:'#ffd54f', skyTop:'#7fd7ff', skyMid:'#38bdf8', skyBot:'#b9f0ff', accent:'#ffd54f', slippery:true,
-      path:'slide', lenScale:1.6, hazardScale:0.62, obstacles:['boost','narrow','ramp','pillars','shortcut','crumble'] },
+      path:'slide', lenScale:1.6, hazardScale:0.62, forcedGap:false, obstacles:['boost','narrow','ramp','pillars','shortcut','crumble'] },
 
     { key:'neon', name:'Neon Nightrun', tip:'Jump a beat early on spinning bars — it is harder to judge in the dark.', ground:'#2b2140', groundAlt:'#241a37', wall:'#1a1033', wallTop:'#23e6c9', skyTop:'#1a0b2e', skyMid:'#3d1a5b', skyBot:'#ff4fa3', accent:'#23e6c9',
-      obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
+      forcedGap:false, obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
 
   ];
   // Minigame rounds — picked instead of a normal course.

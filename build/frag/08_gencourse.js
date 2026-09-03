@@ -221,16 +221,19 @@
     // middle with both sides open. Hunting for a slot afterwards either found
     // none (and a hold-forward player walked the map) or dropped it on top of a
     // gate (and the field collected fifty falls).
+    // Only where the course does not already punish a straight line by itself.
+    const wantGap = currentMap.forcedGap !== false;
     const gapY = Math.round(total*0.42), gapLen = 280, gapPad = 170;
-    obs.push({type:'gap', yStart:gapY, yEnd:gapY+gapLen, y0:gapY, y1:gapY+gapLen, cx,
-              halfWidth: (hard? rand(112,132): rand(104,126)) * (currentMap.slippery ? 0.72 : 1)});
+    if(wantGap)
+      obs.push({type:'gap', yStart:gapY, yEnd:gapY+gapLen, y0:gapY, y1:gapY+gapLen, cx,
+                halfWidth: (hard? rand(112,132): rand(104,126)) * (currentMap.slippery ? 0.72 : 1)});
 
     const types = (currentMap.obstacles && currentMap.obstacles.length)
       ? currentMap.obstacles
       : ['pillars','hammer','spinbar','pit','narrow','pusher'];
     while(cursor < total-450){
       // step over the reserved band rather than building into it
-      if(cursor > gapY-gapPad-240 && cursor < gapY+gapLen+gapPad) cursor = gapY+gapLen+gapPad;
+      if(wantGap && cursor > gapY-gapPad-240 && cursor < gapY+gapLen+gapPad) cursor = gapY+gapLen+gapPad;
       let type, guard=0;
       do{ type=pick(types); guard++; }while(guard<20 && (type===last || (type==='narrow'&&last==='pit') || (type==='pit'&&last==='narrow')));
       last=type;

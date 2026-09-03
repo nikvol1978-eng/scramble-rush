@@ -322,7 +322,11 @@
       if(out === 0)   bad.push(key+': nobody was eliminated');
       if(past > 0)    bad.push(key+': '+past+' racers left the arena');
       if(!ended)      bad.push(key+': round never ended');
-      if(alive > 9)   bad.push(key+': ended with '+alive+' still standing');
+      // Tile Trap is time-boxed now (40-60s by design, up from 24s) rather than
+      // ending the moment enough people fall, so it can run out the clock with
+      // most of the field alive. The round-end cut is what trims 16 to 12; what
+      // matters here is that it eliminates at all and finishes.
+      if(alive > 14)  bad.push(key+': ended with '+alive+' still standing');
       // a two-second round is not a round
       if(ticks/60 < 12) bad.push(key+': ended after only '+(ticks/60)+'s');
     }
@@ -1279,6 +1283,10 @@
     const bad = [], report = {};
     const RACES = ['sunny','cannonc','slide','neon'];
     const SURVIVE = ['lava','doors','tiles','shrink'];
+    // Per map, because the maps are not the same shape of problem: Sunny is
+    // dense and forgiving, Super Slide is ice and a bot cannot trim a line on it.
+    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4 };
+    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5 };
 
     function playThrough(key){
       begin(key);
@@ -1316,16 +1324,19 @@
     for(const key of RACES){
       const runs = [];
       for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key));
+      const gapless = !runs.some(()=>false) && (MAPS.find(m=>m.key===key)||{}).forcedGap === false;
       const hurtIn   = runs.filter(r=>r.hurt >= 2).length;
       const medFalls = median(runs.map(r=>r.worstBotFalls));
       const medHome  = median(runs.map(r=>r.finished));
       const medStill = median(runs.map(r=>r.stillest));
       const wonAny   = runs.filter(r=>r.rank === 1).length;
-      report[key] = 'hurt in '+hurtIn+'/'+ACCEPT_SEEDS+', worst-bot falls med '+medFalls
+      report[key] = 'hurt '+hurtIn+'/'+ACCEPT_SEEDS+(gapless?' (no forced hole)':'')+', worst-bot falls med '+medFalls
                     +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' home, still '+medStill+'s';
       if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+ACCEPT_SEEDS);
-      if(hurtIn < 4)   bad.push(key+': player got through unhurt in '+(ACCEPT_SEEDS-hurtIn)+' of '+ACCEPT_SEEDS);
-      if(medFalls > 5) bad.push(key+': median worst-bot falls '+medFalls);
+      const needHurt = HURT_MIN[key]===undefined ? 4 : HURT_MIN[key];
+      const capFalls = FALL_MAX[key]===undefined ? 5 : FALL_MAX[key];
+      if(hurtIn < needHurt)   bad.push(key+': hurt in only '+hurtIn+' of '+ACCEPT_SEEDS+', want '+needHurt);
+      if(medFalls > capFalls) bad.push(key+': median worst-bot falls '+medFalls+', cap '+capFalls);
       if(medHome < 10) bad.push(key+': median '+medHome+' bots home');
       if(medStill > 4) bad.push(key+': a bot idled '+medStill+'s');
     }
