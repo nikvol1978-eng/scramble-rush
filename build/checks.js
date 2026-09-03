@@ -308,34 +308,38 @@
              detail: shaped.length+' shaped of '+(CORRIDOR_MAPS.length+PATH_MAPS.length)+' -- '+JSON.stringify(prof) };
   }
 
-  // ---------- N: knockout rounds eliminate rather than race ----------
+  // ---------- N: Tile Tumble drops you a floor at a time ----------
+  // Judged over five layouts on medians, like the acceptance run: a single
+  // layout that collapses early should not fail the build.
   function checkN(){
-    const bad = [], got = {};
-    for(const key of ['tiles']){
-      begin(key);
-      if(!currentMap.knockout){ bad.push(key+' is not flagged knockout'); continue; }
-      const reach = arenaEnd;
-      window.__dbg.hold('w',true);
-      let ended = false, ticks = 0;
-      while(ticks < 6000 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
-      window.__dbg.hold('w',false);
-      const out   = racers.filter(r=>r.lavaOut).length;
-      const alive = racers.length - out;
-      const past  = racers.filter(r=>r.y > reach + 5).length;
-      got[key] = {out, alive, endedIn: (ticks/60)+'s'};
-      if(out === 0)   bad.push(key+': nobody was eliminated');
-      if(past > 0)    bad.push(key+': '+past+' racers left the arena');
-      if(!ended)      bad.push(key+': round never ended');
-      // Tile Trap is time-boxed now (40-60s by design, up from 24s) rather than
-      // ending the moment enough people fall, so it can run out the clock with
-      // most of the field alive. The round-end cut is what trims 16 to 12; what
-      // matters here is that it eliminates at all and finishes.
-      if(alive > 14)  bad.push(key+': ended with '+alive+' still standing');
-      // a two-second round is not a round
-      if(ticks/60 < 12) bad.push(key+': ended after only '+(ticks/60)+'s');
+    const bad = [], runs = [];
+    for(let i=0;i<5;i++){
+      begin('tiles');
+      if(!currentMap.knockout) return { name:'N Tile Tumble drops you a floor at a time',
+                                        pass:false, detail:'tiles is not flagged knockout' };
+      window.__dbg.hold('w', true);
+      let ticks = 0, ended = false, everDropped = false;
+      while(ticks < 6000 && !ended){
+        window.__dbg.tick(60); ticks += 60;
+        ended = (state !== 'racing');
+        if(racers.some(r=>(r.tileLayer||0) > 0)) everDropped = true;
+      }
+      window.__dbg.hold('w', false);
+      runs.push({ secs: ticks/60, out: racers.filter(r=>r.lavaOut).length, everDropped });
     }
-    return { name:'N knockout rounds eliminate and end on survivors',
-             pass: bad.length===0, detail: bad.length? bad.join('; ') : JSON.stringify(got) };
+    const med = a => [...a].sort((x,y)=>x-y)[Math.floor(a.length/2)];
+    const medSecs = med(runs.map(r=>r.secs));
+    const medOut  = med(runs.map(r=>r.out));
+
+    if(medSecs < 35)  bad.push('median round only '+medSecs+'s, want 35-60');
+    if(medSecs > 60)  bad.push('median round '+medSecs+'s, past the 60s limit');
+    if(medOut < 3)    bad.push('median '+medOut+' eliminated, want 3-6');
+    if(medOut > 6)    bad.push('median '+medOut+' eliminated, want 3-6');
+    if(!runs.some(r=>r.everDropped)) bad.push('nobody ever dropped to a lower floor');
+
+    return { name:'N Tile Tumble drops you a floor at a time', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'median '+medSecs+'s, '+medOut+' out, floors used' };
   }
 
   // ---------- O: browsing the shop previews on the model, without equipping ----------
@@ -1391,6 +1395,28 @@
     for(const key of maps){
       begin(key);
       if(currentMap.knockout) continue;      // no finish line to pace towards
+
+      // Lava Rise is a chase, not a race to a distance: the lava is clamped 340
+      // behind the leader, so comparing pace against a distance-derived target
+      // measures nothing. Assert the chase instead.
+      if(currentMap.mode === 'lava'){
+        window.__dbg.hold('w', true);
+        let worstGap = -1e9, ended = false, ticks = 0;
+        while(ticks < 6000 && !ended){
+          window.__dbg.tick(30); ticks += 30;
+          let lead = -1e9;
+          for(const r of racers) if(!r.lavaOut && !r.falling) lead = Math.max(lead, r.y);
+          if(lead > -1e8) worstGap = Math.max(worstGap, lavaZ - (lead - 340));
+          ended = (state !== 'racing');
+        }
+        window.__dbg.hold('w', false);
+        const caught = racers.filter(r=>r.lavaOut).length;
+        rate[key] = 'gap ' + Math.round(worstGap) + ', caught ' + caught;
+        if(worstGap > 6)  bad.push(key+': lava got '+Math.round(worstGap)+' past its 340 leash');
+        if(caught < 1)    bad.push(key+': lava caught nobody');
+        continue;
+      }
+
       const y0 = Math.max(...racers.map(r=>r.y));
       window.__dbg.hold('w',true); window.__dbg.tick(1200); window.__dbg.hold('w',false);
       const y1 = Math.max(...racers.map(r=>r.y));

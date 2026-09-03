@@ -106,4 +106,4 @@ launch forward. The core game stays about movement and obstacles.
 | v16 | Chase camera, friendly player collisions, laser hitbox fixes, locker screen, forks, gates, Closing Circle, Carousel |
 | v17 | Ragdoll tumbles, second wind, catch-up draft, Gem Grab, cannonball chain reactions, per-map music |
 | v18 | Gradients drive movement: hills finally cost and pay |
-| v19 | Eight maps that work, Fall Guys movement, bots that actually race, per-map acceptance test |
+| v19 | Eight maps that work, Fall Guys movement, bots that actually race, layered Tile Tumble, per-map acceptance test |

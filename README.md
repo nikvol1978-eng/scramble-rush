@@ -13,7 +13,7 @@ Each version is one self-contained HTML file.
 | `scramble-rush-16.0.html` | 16.0 | Chase camera, friendly collisions, laser fixes, locker screen, forks and gates, two new rounds |
 | `scramble-rush-17.0.html` | 17.0 | Ragdoll tumbles, comeback mechanics, Gem Grab, obstacle chain reactions, per-map music |
 | `scramble-rush-18.0.html` | 18.0 | Slopes drive movement — climbing costs speed, descending gives it back |
-| `scramble-rush-19.0.html` | **19.0 (current)** | Cut to eight working maps, reworked movement, bots that race you |
+| `scramble-rush-19.0.html` | **19.0 (current)** | Cut to eight working maps, reworked movement, bots that race you, layered Tile Tumble |
 | `scramble-rush-12.0.html` | 12.0 | Path-based courses: Cannon Climb climbs, Super Slide descends |
 | `scramble-rush-11.0.html` | 11.0 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
 | `scramble-rush-10.0.html` | 10.0 | Free-orbit camera with mouse look, 65 skins, daily spin wheel |

@@ -345,7 +345,7 @@
       ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava' },
     { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
-    { key:'tiles', name:'Tile Trap', tip:'Tiles drop the moment you step off — but they do rebuild. Keep moving.',
+    { key:'tiles', name:'Tile Tumble', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
       ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },

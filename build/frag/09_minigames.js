@@ -8,6 +8,18 @@
   const rockMat = new THREE.MeshPhongMaterial({color:0x6b5545, shininess:8, flatShading:true});
   const rockTopMat = new THREE.MeshLambertMaterial({color:0x8a7060, flatShading:true});
 
+  // Which column of the grid you are over, and the highest floor left in it.
+  function tileColumnAt(field, x, y){
+    if(x<0||x>=TRACK_W||y<field.yStart||y>=field.yEnd) return null;
+    const c=Math.floor(x/field.tileW), r=Math.floor((y-field.yStart)/field.rowDepth);
+    if(c<0||c>=field.cols||r<0||r>=field.rows) return null;
+    return field.columns[r*field.cols+c] || null;
+  }
+  function tileFloor(col){
+    if(!col) return null;
+    for(const t of col.tiers) if(!t.gone) return t;
+    return null;
+  }
   function tileAt(field, x, y){
     if(x<0||x>=TRACK_W||y<field.yStart||y>=field.yEnd) return null;
     const c=Math.floor(x/field.tileW), r=Math.floor((y-field.yStart)/field.rowDepth);
@@ -80,7 +92,7 @@
           top.receiveShadow=true; g.add(top);
           const under=new THREE.Mesh(new THREE.BoxGeometry(tl.w-14,26,tl.d-14), sideMat);
           under.position.y=-18; g.add(under);
-          placeAt(g, tl.x, tl.y, -6);
+          placeAt(g, tl.x, tl.y, (tl.hy||0)-6);
           g.visible = !tl.gone;
           courseGroup.add(g);
           tl.mesh=g; tl.topMat=top.material; tl.baseY=g.position.y;
@@ -658,7 +670,9 @@
             tl.mesh.position.y = tl.baseY + wob;
             if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(tl.fuse<field.fuseTime*0.4 ? 0xff7a5c : 0xffd166);
           }
-          if(tl.fuse<=0){ tl.gone=true; tl.drop=0; tl.back=field.respawnTime; spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
+          if(tl.fuse<=0){ tl.gone=true; tl.drop=0;
+            tl.back = (tl.layer>=2) ? Infinity : field.respawnTime;   // the bottom floor stays gone
+            spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
         } else if(tl.gone){
           if(tl.drop<1){
             tl.drop += dt*1.6;
@@ -826,13 +840,20 @@
         if(nb && Math.abs(r.x-(TRACK_W/2+(nb.offset||0)))>nb.halfWidth+RADIUS-10){ fallDown(r); return; }
       }
       if(field){
-        const tl=tileAt(field, r.x, r.y);
         const grace = raceTime < (r.tileGraceUntil||-1);
-        if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
-        // Arm it once. Re-arming every frame meant the countdown only ran
-        // after you stepped off, so standing still was safe anywhere on the
-        // field -- which is the opposite of the round.
-        if(tl && !tl.gone && !tl.touched){ tl.touched=true; tl.fuse=field.fuseTime; }
+        const col = tileColumnAt(field, r.x, r.y);
+        const floor = tileFloor(col);
+        if(!floor){ if(!grace){ fallDown(r); return; } }     // through the last floor: out
+        else {
+          if(r.tileLayer !== undefined && floor.layer > r.tileLayer){
+            // dropped a storey: remember it, for ranking if the clock runs out
+            r.lastDropT = raceTime;
+            if(r.isPlayer){ SFX.fall(); camShake = Math.max(camShake, 4); }
+          }
+          r.tileLayer = floor.layer;
+          r.floorH = floor.hy;
+          if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
+        }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
       if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }

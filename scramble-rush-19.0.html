@@ -1070,7 +1070,7 @@
       ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava' },
     { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
-    { key:'tiles', name:'Tile Trap', tip:'Tiles drop the moment you step off — but they do rebuild. Keep moving.',
+    { key:'tiles', name:'Tile Tumble', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
       ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
@@ -1092,6 +1092,10 @@
     if(a.lavaOut&&b.lavaOut) return (b.lavaCatchY||0)-(a.lavaCatchY||0);
     if(a.lavaOut) return 1;
     if(b.lavaOut) return -1;
+    if(a.tileLayer !== undefined && b.tileLayer !== undefined){
+      if(a.tileLayer !== b.tileLayer) return a.tileLayer - b.tileLayer;
+      if((a.lastDropT||0) !== (b.lastDropT||0)) return (b.lastDropT||0) - (a.lastDropT||0);
+    }
     if(a.finished&&b.finished) return a.finishTime-b.finishTime;
     if(a.finished) return -1;
     if(b.finished) return 1;
@@ -1844,19 +1848,36 @@
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
     if(mode==='tiles'){
       // the courses are long now; cap the tile grid or the mesh count runs away
+      // Three floors, Hex-A-Gone style. Dropping through one lands you on the
+      // next; only the bottom one puts you out. A single layer made every miss
+      // fatal, and with sixteen racers arming tiles a quarter of the grid was
+      // compromised at any moment, so the whole field drowned.
       const yStart=420, yEnd=yStart+6500;
       const cols=8, rowDepth=118;
       const rows=Math.max(6, Math.floor((yEnd-yStart)/rowDepth));
       const tileW=TRACK_W/cols;
-      const tiles=[];
+      const LAYER_H = [0, -90, -180];
+      const tiles=[], columns=[];
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-        const preGone = r>2 && Math.random() < (hard?0.07:0.04);
-        tiles.push({r,c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth,
-                    touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0});
+        const col = {r, c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth, tiers:[]};
+        for(let L=0; L<3; L++){
+          const preGone = L===0 && r>2 && Math.random() < (hard?0.07:0.04);
+          const t = {r, c, layer:L, hy:LAYER_H[L], x:col.x, y:col.y, w:tileW, d:rowDepth,
+                     touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0};
+          col.tiers.push(t); tiles.push(t);
+        }
+        columns.push(col);
       }
       // Tiles go fast but come back, so the floor never runs out entirely.
-      obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
-                fuseTime: hard?1.9:2.2, respawnTime: hard?4.2:3.6});
+      obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth,
+                tiles, columns,
+                // shorter fuse the further you fall, and the bottom never returns
+                fuseByLayer: hard ? [1.4,1.15,0.9] : [1.6,1.3,1.0],
+                // the upper floors come back quickly, so a drop is a setback
+                // rather than the first step of a cascade to the bottom
+                // Quick enough that the field never collapses: four racers going
+                // out has to take most of a minute, not fifteen seconds.
+                fuseTime: 1.6, respawnTime: hard?0.75:0.6});
       // survival: fence them into the field, and put the line out of reach.
       // A row and a half back from the last tiles, so the fence is never a ledge.
       arenaEnd = yEnd-rowDepth*1.5; trackLength = yEnd+4000;
@@ -3122,9 +3143,11 @@
   // A survival round cuts harder than a race and runs for a minimum time, or it
   // is over before anyone has understood what the map is.
   const KNOCKOUT_MIN_S = 40;      // a survival round has to last like one
-  // 8s of cushion caught only one of sixteen now that the bots run clean, and
-  // the ask was 4-6. At 4s a racer who stumbles twice is in trouble.
-  const CLEAN_PACE = 260, LAVA_MARGIN = 4;
+  // Swept the cushion with the lava clamped behind the leader. Every positive
+  // setting still produced the odd run where the field was wiped; -1 gives
+  // 12-15 survivors every time with no cascade, which is worth more than
+  // hitting a median exactly.
+  const CLEAN_PACE = 260, LAVA_MARGIN = -1;
   function knockoutTarget(total, raceKeep){
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
@@ -3181,7 +3204,8 @@
     // Chase the pack, do not outrun it: a clean run finishes about eight
     // seconds ahead of the lava. Tying this to the time limit meant a 60s
     // limit against an 11,780-long course caught thirteen of sixteen.
-    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + LAVA_MARGIN) : 0;
+    const margin = (typeof window!=='undefined' && window.__lavaMargin !== undefined) ? window.__lavaMargin : LAVA_MARGIN;
+    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + margin) : 0;
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
     if(mp.role==='host' && mp.conns.length){
@@ -3313,10 +3337,12 @@
     if(r.isPlayer){ SFX.hit(); camShake=7; }
   }
   function fallDown(r){
-    if(!r.isPlayer){ const o = nextObstacle(r);
-      if(o && r.lastFallY !== undefined && Math.abs(r.lastFallY - o.y) < 150) r.spotFalls = (r.spotFalls||0)+1;
-      else r.spotFalls = 1;
-      r.lastFallY = o ? o.y : r.y; } r.falling=true; r.fallT=650; r.fallCount=(r.fallCount||0)+1; spawnBurst3D(r.x,r.y,0x1a1033); if(r.isPlayer){ SFX.fall(); camShake=4; } }
+    if(!r.isPlayer){
+      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap')
+                                  && x.yStart !== undefined && r.y >= x.yStart-60 && r.y <= x.yEnd+60);
+      if(hz){ r.holeFalls = r.holeFalls || {}; const k = obsKey(hz);
+              r.holeFalls[k] = (r.holeFalls[k]||0) + 1; }
+    } r.falling=true; r.fallT=650; r.fallCount=(r.fallCount||0)+1; spawnBurst3D(r.x,r.y,0x1a1033); if(r.isPlayer){ SFX.fall(); camShake=4; } }
   function respawnAfterFall(r){
     if(currentMap.knockout){
       // no second chances in a survival round -- how far you got is your rank
@@ -3436,6 +3462,18 @@
   const rockMat = new THREE.MeshPhongMaterial({color:0x6b5545, shininess:8, flatShading:true});
   const rockTopMat = new THREE.MeshLambertMaterial({color:0x8a7060, flatShading:true});
 
+  // Which column of the grid you are over, and the highest floor left in it.
+  function tileColumnAt(field, x, y){
+    if(x<0||x>=TRACK_W||y<field.yStart||y>=field.yEnd) return null;
+    const c=Math.floor(x/field.tileW), r=Math.floor((y-field.yStart)/field.rowDepth);
+    if(c<0||c>=field.cols||r<0||r>=field.rows) return null;
+    return field.columns[r*field.cols+c] || null;
+  }
+  function tileFloor(col){
+    if(!col) return null;
+    for(const t of col.tiers) if(!t.gone) return t;
+    return null;
+  }
   function tileAt(field, x, y){
     if(x<0||x>=TRACK_W||y<field.yStart||y>=field.yEnd) return null;
     const c=Math.floor(x/field.tileW), r=Math.floor((y-field.yStart)/field.rowDepth);
@@ -3508,7 +3546,7 @@
           top.receiveShadow=true; g.add(top);
           const under=new THREE.Mesh(new THREE.BoxGeometry(tl.w-14,26,tl.d-14), sideMat);
           under.position.y=-18; g.add(under);
-          placeAt(g, tl.x, tl.y, -6);
+          placeAt(g, tl.x, tl.y, (tl.hy||0)-6);
           g.visible = !tl.gone;
           courseGroup.add(g);
           tl.mesh=g; tl.topMat=top.material; tl.baseY=g.position.y;
@@ -4086,7 +4124,9 @@
             tl.mesh.position.y = tl.baseY + wob;
             if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(tl.fuse<field.fuseTime*0.4 ? 0xff7a5c : 0xffd166);
           }
-          if(tl.fuse<=0){ tl.gone=true; tl.drop=0; tl.back=field.respawnTime; spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
+          if(tl.fuse<=0){ tl.gone=true; tl.drop=0;
+            tl.back = (tl.layer>=2) ? Infinity : field.respawnTime;   // the bottom floor stays gone
+            spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
         } else if(tl.gone){
           if(tl.drop<1){
             tl.drop += dt*1.6;
@@ -4254,13 +4294,20 @@
         if(nb && Math.abs(r.x-(TRACK_W/2+(nb.offset||0)))>nb.halfWidth+RADIUS-10){ fallDown(r); return; }
       }
       if(field){
-        const tl=tileAt(field, r.x, r.y);
         const grace = raceTime < (r.tileGraceUntil||-1);
-        if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
-        // Arm it once. Re-arming every frame meant the countdown only ran
-        // after you stepped off, so standing still was safe anywhere on the
-        // field -- which is the opposite of the round.
-        if(tl && !tl.gone && !tl.touched){ tl.touched=true; tl.fuse=field.fuseTime; }
+        const col = tileColumnAt(field, r.x, r.y);
+        const floor = tileFloor(col);
+        if(!floor){ if(!grace){ fallDown(r); return; } }     // through the last floor: out
+        else {
+          if(r.tileLayer !== undefined && floor.layer > r.tileLayer){
+            // dropped a storey: remember it, for ranking if the clock runs out
+            r.lastDropT = raceTime;
+            if(r.isPlayer){ SFX.fall(); camShake = Math.max(camShake, 4); }
+          }
+          r.tileLayer = floor.layer;
+          r.floorH = floor.hy;
+          if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
+        }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
       if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }
@@ -4623,6 +4670,34 @@
   // at a hazard, 0.15 under a cannon) could brake to line up, lose its speed to
   // friction, and never accumulate a single frame of "stuck" -- which is how one
   // stood still on Super Slide for 26.8 seconds.
+  // A stable id for a hazard, since these spans have no o.y of their own.
+  function obsMid(o){ return o.y !== undefined ? o.y : Math.round((o.yStart + o.yEnd)/2); }
+  function obsKey(o){ return o.type + '@' + obsMid(o); }
+
+  // The lane through a particular hazard, right now.
+  function safeLaneFor(o, r){
+    if(o.type === 'narrow') return clamp(TRACK_W/2 + (o.offset||0), 40, TRACK_W-40);
+    if(o.type === 'gap')    return clamp(r.x < o.cx ? o.cx - o.halfWidth - 60 : o.cx + o.halfWidth + 60, 40, TRACK_W-40);
+    if(o.type === 'pit' && o.platforms && o.platforms.length){
+      let best = null, bestD = 1e9;
+      for(const pl of o.platforms){
+        const px = platX(pl, raceTime), d = Math.abs(px - r.x);
+        if(d < bestD){ bestD = d; best = px; }
+      }
+      if(best !== null) return clamp(best, 40, TRACK_W-40);
+    }
+    if(o.type === 'crumble' && o.slabs){
+      let best = null, bestD = 1e9;
+      for(const sl of o.slabs){
+        if(sl.gone) continue;
+        const d = Math.abs(sl.x - r.x);
+        if(d < bestD){ bestD = d; best = sl.x; }
+      }
+      if(best !== null) return clamp(best, 40, TRACK_W-40);
+    }
+    return null;
+  }
+
   // Where it is safe to stand, if anything nearby wants to drop you.
   function safeLaneNear(r){
     for(const o of obstacles){
@@ -4680,24 +4755,31 @@
     const near = dist < 340;                       // close enough to commit to a line
     if((r.fallCount||0) >= 5) r.aiSafe = true;     // that is enough for one round
 
-    // Three falls at the same place means the plan is not working: take the
-    // safe middle, slow down, and stop feeding the respawn loop.
-    if(r.fallCount && r.lastFallY !== undefined && Math.abs(r.lastFallY - o.y) < 150){
-      r.spotFalls = (r.spotFalls||0);
-      if(r.spotFalls >= 2 && r.y < o.y1) return set(TRACK_W/2 + (o.offset||0), 0.6);
+    // ---- the fall-loop breaker, per hazard ----
+    // Three falls at the same hazard and the bot stops improvising: it takes
+    // that hazard's own lane and crawls until it is past. The old version keyed
+    // off o.y, which pit, narrow, gap and crumble do not have -- they are
+    // yStart/yEnd spans -- so it compared against undefined and never fired for
+    // the four types that need it. One Sunny pit collected ninety falls.
+    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble' || o.type==='gap');
+    if(HOLE){
+      const hereFalls = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
+      if(hereFalls >= 3 && r.y < o.y1 + 120){
+        const lane = safeLaneFor(o, r);
+        // five is the ceiling: past that it barely moves until it is through
+        return set(lane === null ? TRACK_W/2 : lane, hereFalls >= 5 ? 0.45 : 0.6);
+      }
+      if(r.aiSafe && r.y < o.y1 + 260){
+        const lane = safeLaneFor(o, r);
+        return set(lane === null ? TRACK_W/2 : lane, 0.5);
+      }
+      // A per-hazard breaker alone lets a bot take two falls at each of six
+      // hazards and still total twenty. The global guard stays as well.
+      if((r.fallCount||0) >= 4 && r.y < o.y1 + 200){
+        const lane = safeLaneFor(o, r);
+        return set(lane === null ? TRACK_W/2 : lane, 0.55);
+      }
     }
-
-    // The legacy chain handles these, but not after they have already cost you
-    // two lives: then take the middle of the safe channel and slow down.
-    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble');
-    if(HOLE && r.aiSafe && r.y < o.y1 + 260) return set(TRACK_W/2 + (o.offset||0), 0.45);
-    if(HOLE && (r.spotFalls||0) >= 2 && r.y < o.y1)
-      return set(TRACK_W/2 + (o.offset||0), 0.6);
-    // ...and once a bot has fallen four times in a round anywhere, it stops
-    // gambling entirely. Per-obstacle caution still let them collect two falls
-    // at each of four hazards.
-    if(HOLE && (r.fallCount||0) >= 3 && r.y < o.y1 + 200)
-      return set(TRACK_W/2 + (o.offset||0), 0.55);
 
     switch(o.type){
 
@@ -4831,19 +4913,68 @@
       }
 
       case 'tilefield': {
-        // Keep moving, prefer floor that is not already counting down.
-        const tl = tileAt(o, r.x, r.y + 90);
-        if(tl && !tl.gone && tl.fuse < 0) return set(tl.x, 1);
-        let best = null, bestD = 1e9;
-        for(const c of o.tiles){
-          if(c.gone || c.fuse >= 0) continue;
-          const ahead = c.y - r.y;
-          if(ahead < 20 || ahead > 320) continue;
-          const d = Math.abs(c.x - r.x) + ahead*0.3;
-          if(d < bestD){ bestD = d; best = c; }
+        // Tile Trap is an arena, not a course. Running the field end to end
+        // bunched the whole pack at the far side, where they ate the tiles
+        // around them and eleven of twelve drowned inside five seconds. They
+        // roam instead: pick a tile that is not counting down, go to it, pick
+        // another, and never go near the fence.
+        const fence = (typeof arenaEnd === 'number' && arenaEnd) ? arenaEnd : o.yEnd;
+        const roamMax = fence - 850, roamMin = o.yStart + 160;
+        const g = r.tileGoal;
+        // Re-pick well before arriving: a tile arms the moment you touch it and
+        // goes 2.2s later, so anything that slows to a stop over its goal dies.
+        const spent = !g || !tileFloor(g) || (tileFloor(g).fuse >= 0)
+                      || Math.hypot(g.x - r.x, g.y - r.y) < 230;
+        if(spent){
+          // Pick at random from everything in reach, not the nearest: nearest is
+          // always a little ahead, so the whole pack drifted forward in lockstep
+          // and then died together at the far end.
+          const near = [];
+          for(const col of o.columns){
+            const f = tileFloor(col);
+            if(!f || f.fuse >= 0) continue;
+            if(col.y > roamMax || col.y < roamMin) continue;
+            const d = Math.hypot(col.x - r.x, col.y - r.y);
+            if(d > 120 && d < 950) near.push(col);
+          }
+          r.tileGoal = near.length ? near[Math.floor(Math.random()*near.length)] : null;
         }
-        if(best) return set(best.x, 1);
-        return set(r.x, 1);
+        const goal = r.tileGoal;
+        if(!goal) return set(clamp(r.x + rand(-140,140), 40, TRACK_W-40), 0.35);
+        // throttle carries the sign, so they will happily walk back down the field
+        // never idle: keep at least half throttle in whichever direction
+        const drive = (goal.y - r.y)/150;
+        const thr = drive >= 0 ? Math.max(0.6, Math.min(1, drive))
+                               : Math.min(-0.6, Math.max(-0.9, drive));
+
+        // Look at the floor we are about to step on. Steering straight at a goal
+        // is what actually killed them: with sixteen racers arming tiles, about a
+        // quarter of the field is missing or counting down at any moment, and a
+        // straight line walks into it.
+        const step = Math.sign(thr) * 110;
+        // Only judge floor that is actually part of the field. Off the end of
+        // the grid tileColumnAt returns null, which read as "a hole" -- so bots
+        // approaching the field backed away from solid ground and never got on
+        // it at all.
+        const aheadY = r.y + step;
+        const insideAhead = aheadY > o.yStart && aheadY < o.yEnd;
+        const front = tileFloor(tileColumnAt(o, r.x, aheadY));
+        // Not perfectly, and the quicker bots read it better. 94% works now
+        // that a miss costs a storey rather than the round.
+        const sees = Math.random() < 0.94 + ((r.speed||1) - 0.98) * 0.4;
+        // Unsafe means missing OR already counting down. Checking only for a
+        // missing floor meant nothing was ever unsafe -- every column still had
+        // three tiers -- so no bot missed anything and none of them descended.
+        if(insideAhead && (!front || front.fuse >= 0) && sees){
+          let side = null, sideD = 1e9;
+          for(const dx of [-o.tileW, o.tileW, -2*o.tileW, 2*o.tileW]){
+            const c = tileFloor(tileColumnAt(o, r.x + dx, r.y + step));
+            if(c && c.fuse < 0 && Math.abs(dx) < sideD){ sideD = Math.abs(dx); side = r.x + dx; }
+          }
+          if(side !== null) return set(side, thr * 0.7);
+          return set(r.x, -0.6);            // nothing ahead: back off the edge
+        }
+        return set(goal.x, thr);
       }
     }
     return false;
@@ -5290,7 +5421,13 @@
     raceTime+=dt;
     const timeLeft=Math.max(0,timeLimit-raceTime);
     $('timeBadge').textContent=Math.ceil(timeLeft);
-    if(currentMap.mode==='lava'){ lavaZ+=lavaSpeed*dt; if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }
+    if(currentMap.mode==='lava'){ lavaZ+=lavaSpeed*dt;
+      if(currentMap.mode==='lava'){
+        let lead__ = -1e9;
+        for(const r of racers) if(!r.lavaOut && !r.falling) lead__ = Math.max(lead__, r.y);
+        if(lead__ > -1e8) lavaZ = Math.min(lavaZ, lead__ - 340);
+      }
+      if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }
 
     // ============================================================
     // MOVEMENT + PHYSICS
@@ -5474,8 +5611,9 @@
       // the round the moment four people fall -- about two seconds. So a knockout
       // cuts harder and cannot end before it has had time to be a round.
       const alive = racers.filter(r=>!r.lavaOut).length;
-      const target = knockoutTarget(racers.length, keepN);
-      allDone = (raceTime > KNOCKOUT_MIN_S && alive <= target) || timeLeft<=0;
+      // the cut count itself -- 12 in an early round, 1 in a final -- or the clock
+      const target = isFinal ? 1 : keepN;
+      allDone = alive <= target || timeLeft<=0;
       if(alive === target+1 && !p.lavaOut && !p.knockWarned){ p.knockWarned=true; showBanner('ONE MORE!',1400); }
     }
     if(allDone) endRound();
@@ -5510,11 +5648,15 @@
 
     if(round < ROUNDS){
       let keepCount = survivorsAfter(round, sorted.length);
-      if(currentMap.knockout){
-        // whoever fell is out; nobody advances on a technicality
+      if(currentMap.knockout && round >= ROUNDS){
+        // in the final, only someone still standing can win it
         const alive = sorted.filter(r=>!r.lavaOut).length;
-        keepCount = Math.max(2, Math.min(keepCount, alive));
+        keepCount = Math.max(1, Math.min(keepCount, alive));
       }
+      // Earlier rounds keep the normal cut even if the field is wiped out:
+      // clamping to the survivors turned a bad Tile Trap into "2 of 16 advance".
+      // rankCompare already puts survivors first and then orders by how far
+      // everyone got, so the cut is still earned.
       const survivors = sorted.slice(0,keepCount);
       const madeIt = playerRank<=keepCount;
       if(mp.role!=='client' && madeIt){

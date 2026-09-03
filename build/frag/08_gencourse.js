@@ -14,22 +14,36 @@
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
     if(mode==='tiles'){
       // the courses are long now; cap the tile grid or the mesh count runs away
+      // Three floors, Hex-A-Gone style. Dropping through one lands you on the
+      // next; only the bottom one puts you out. A single layer made every miss
+      // fatal, and with sixteen racers arming tiles a quarter of the grid was
+      // compromised at any moment, so the whole field drowned.
       const yStart=420, yEnd=yStart+6500;
       const cols=8, rowDepth=118;
       const rows=Math.max(6, Math.floor((yEnd-yStart)/rowDepth));
       const tileW=TRACK_W/cols;
-      const tiles=[];
+      const LAYER_H = [0, -90, -180];
+      const tiles=[], columns=[];
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-        const preGone = r>2 && Math.random() < (hard?0.07:0.04);
-        tiles.push({r,c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth,
-                    touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0});
+        const col = {r, c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth, tiers:[]};
+        for(let L=0; L<3; L++){
+          const preGone = L===0 && r>2 && Math.random() < (hard?0.07:0.04);
+          const t = {r, c, layer:L, hy:LAYER_H[L], x:col.x, y:col.y, w:tileW, d:rowDepth,
+                     touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0};
+          col.tiers.push(t); tiles.push(t);
+        }
+        columns.push(col);
       }
       // Tiles go fast but come back, so the floor never runs out entirely.
-      obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
-                // With a one-shot fuse a tile is dead for respawnTime out of every
-                // fuse+respawn seconds; at 3.6s that was 62% of the time and the
-                // field became unwalkable, so the whole pack drowned by 37s.
-                fuseTime: hard?1.9:2.2, respawnTime: hard?1.7:1.4});
+      obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth,
+                tiles, columns,
+                // shorter fuse the further you fall, and the bottom never returns
+                fuseByLayer: hard ? [1.4,1.15,0.9] : [1.6,1.3,1.0],
+                // the upper floors come back quickly, so a drop is a setback
+                // rather than the first step of a cascade to the bottom
+                // Quick enough that the field never collapses: four racers going
+                // out has to take most of a minute, not fifteen seconds.
+                fuseTime: 1.6, respawnTime: hard?0.75:0.6});
       // survival: fence them into the field, and put the line out of reach.
       // A row and a half back from the last tiles, so the fence is never a ledge.
       arenaEnd = yEnd-rowDepth*1.5; trackLength = yEnd+4000;

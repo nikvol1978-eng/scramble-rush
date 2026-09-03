@@ -265,18 +265,19 @@
         const g = r.tileGoal;
         // Re-pick well before arriving: a tile arms the moment you touch it and
         // goes 2.2s later, so anything that slows to a stop over its goal dies.
-        const spent = !g || g.gone || g.fuse >= 0
+        const spent = !g || !tileFloor(g) || (tileFloor(g).fuse >= 0)
                       || Math.hypot(g.x - r.x, g.y - r.y) < 230;
         if(spent){
           // Pick at random from everything in reach, not the nearest: nearest is
           // always a little ahead, so the whole pack drifted forward in lockstep
           // and then died together at the far end.
           const near = [];
-          for(const c of o.tiles){
-            if(c.gone || c.fuse >= 0) continue;
-            if(c.y > roamMax || c.y < roamMin) continue;
-            const d = Math.hypot(c.x - r.x, c.y - r.y);
-            if(d > 120 && d < 950) near.push(c);
+          for(const col of o.columns){
+            const f = tileFloor(col);
+            if(!f || f.fuse >= 0) continue;
+            if(col.y > roamMax || col.y < roamMin) continue;
+            const d = Math.hypot(col.x - r.x, col.y - r.y);
+            if(d > 120 && d < 950) near.push(col);
           }
           r.tileGoal = near.length ? near[Math.floor(Math.random()*near.length)] : null;
         }
@@ -293,17 +294,24 @@
         // quarter of the field is missing or counting down at any moment, and a
         // straight line walks into it.
         const step = Math.sign(thr) * 110;
-        const front = tileAt(o, r.x, r.y + step);
-        // ...but not perfectly. Spotting every hole every time made Tile Trap
-        // eliminate nobody at all; the quicker bots read it better.
-        // The knob is sharp: a bot meets dozens of holes in a round, so even a
-        // 10% miss rate compounds into certain death. 97-99% lands it.
-        const sees = Math.random() < 0.972 + ((r.speed||1) - 0.98) * 0.12;
-        if((!front || front.gone) && sees){
+        // Only judge floor that is actually part of the field. Off the end of
+        // the grid tileColumnAt returns null, which read as "a hole" -- so bots
+        // approaching the field backed away from solid ground and never got on
+        // it at all.
+        const aheadY = r.y + step;
+        const insideAhead = aheadY > o.yStart && aheadY < o.yEnd;
+        const front = tileFloor(tileColumnAt(o, r.x, aheadY));
+        // Not perfectly, and the quicker bots read it better. 94% works now
+        // that a miss costs a storey rather than the round.
+        const sees = Math.random() < 0.94 + ((r.speed||1) - 0.98) * 0.4;
+        // Unsafe means missing OR already counting down. Checking only for a
+        // missing floor meant nothing was ever unsafe -- every column still had
+        // three tiers -- so no bot missed anything and none of them descended.
+        if(insideAhead && (!front || front.fuse >= 0) && sees){
           let side = null, sideD = 1e9;
           for(const dx of [-o.tileW, o.tileW, -2*o.tileW, 2*o.tileW]){
-            const c = tileAt(o, r.x + dx, r.y + step);
-            if(c && !c.gone && Math.abs(dx) < sideD){ sideD = Math.abs(dx); side = r.x + dx; }
+            const c = tileFloor(tileColumnAt(o, r.x + dx, r.y + step));
+            if(c && c.fuse < 0 && Math.abs(dx) < sideD){ sideD = Math.abs(dx); side = r.x + dx; }
           }
           if(side !== null) return set(side, thr * 0.7);
           return set(r.x, -0.6);            // nothing ahead: back off the edge

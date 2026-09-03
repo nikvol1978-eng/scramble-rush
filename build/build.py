@@ -109,6 +109,16 @@ sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt; if(lavaMesh){ lavaMesh.
     + chr(10) + "      if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }",
     "lava chases the leader")
 
+# Tile Tumble can end on the clock with everyone still in, so survivors are
+# separated by which floor they are on, then by how recently they dropped to it.
+sub("    if(a.finished&&b.finished) return a.finishTime-b.finishTime;",
+    "    if(a.tileLayer !== undefined && b.tileLayer !== undefined){"
+    + chr(10) + "      if(a.tileLayer !== b.tileLayer) return a.tileLayer - b.tileLayer;"
+    + chr(10) + "      if((a.lastDropT||0) !== (b.lastDropT||0)) return (b.lastDropT||0) - (a.lastDropT||0);"
+    + chr(10) + "    }"
+    + chr(10) + "    if(a.finished&&b.finished) return a.finishTime-b.finishTime;",
+    "tile tumble ranking")
+
 sub("<title>Scramble Rush 3D</title>",
     "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
@@ -282,8 +292,9 @@ sub("""    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
       // the round the moment four people fall -- about two seconds. So a knockout
       // cuts harder and cannot end before it has had time to be a round.
       const alive = racers.filter(r=>!r.lavaOut).length;
-      const target = knockoutTarget(racers.length, keepN);
-      allDone = (raceTime > KNOCKOUT_MIN_S && alive <= target) || timeLeft<=0;
+      // the cut count itself -- 12 in an early round, 1 in a final -- or the clock
+      const target = isFinal ? 1 : keepN;
+      allDone = alive <= target || timeLeft<=0;
       if(alive === target+1 && !p.lavaOut && !p.knockWarned){ p.knockWarned=true; showBanner('ONE MORE!',1400); }
     }
     if(allDone) endRound();
