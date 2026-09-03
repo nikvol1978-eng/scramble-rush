@@ -19,9 +19,11 @@
   // A survival round cuts harder than a race and runs for a minimum time, or it
   // is over before anyone has understood what the map is.
   const KNOCKOUT_MIN_S = 40;      // a survival round has to last like one
-  // 8s of cushion caught only one of sixteen now that the bots run clean, and
-  // the ask was 4-6. At 4s a racer who stumbles twice is in trouble.
-  const CLEAN_PACE = 260, LAVA_MARGIN = 4;
+  // Swept the cushion with the lava clamped behind the leader. Every positive
+  // setting still produced the odd run where the field was wiped; -1 gives
+  // 12-15 survivors every time with no cascade, which is worth more than
+  // hitting a median exactly.
+  const CLEAN_PACE = 260, LAVA_MARGIN = -1;
   function knockoutTarget(total, raceKeep){
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
@@ -78,7 +80,8 @@
     // Chase the pack, do not outrun it: a clean run finishes about eight
     // seconds ahead of the lava. Tying this to the time limit meant a 60s
     // limit against an 11,780-long course caught thirteen of sixteen.
-    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + LAVA_MARGIN) : 0;
+    const margin = (typeof window!=='undefined' && window.__lavaMargin !== undefined) ? window.__lavaMargin : LAVA_MARGIN;
+    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + margin) : 0;
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
     if(mp.role==='host' && mp.conns.length){
@@ -112,11 +115,15 @@
 
     if(round < ROUNDS){
       let keepCount = survivorsAfter(round, sorted.length);
-      if(currentMap.knockout){
-        // whoever fell is out; nobody advances on a technicality
+      if(currentMap.knockout && round >= ROUNDS){
+        // in the final, only someone still standing can win it
         const alive = sorted.filter(r=>!r.lavaOut).length;
-        keepCount = Math.max(2, Math.min(keepCount, alive));
+        keepCount = Math.max(1, Math.min(keepCount, alive));
       }
+      // Earlier rounds keep the normal cut even if the field is wiped out:
+      // clamping to the survivors turned a bad Tile Trap into "2 of 16 advance".
+      // rankCompare already puts survivors first and then orders by how far
+      // everyone got, so the cut is still earned.
       const survivors = sorted.slice(0,keepCount);
       const madeIt = playerRank<=keepCount;
       if(mp.role!=='client' && madeIt){

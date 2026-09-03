@@ -96,6 +96,19 @@ sub("  function startRound(n, survivors){",
     "  function startRound(n, survivors){" + chr(10) + "    coinPops.length = 0; renderCoinPops(0);",
     "clear the reward toast")
 
+# The lava chases the pack rather than running to a fixed schedule. On a
+# fixed schedule a few early falls cascade and it sweeps the whole field --
+# one run in five ended with nobody left, at every cushion setting.
+sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt; if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }",
+    "    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt;"
+    + chr(10) + "      if(currentMap.mode==='lava'){"
+    + chr(10) + "        let lead__ = -1e9;"
+    + chr(10) + "        for(const r of racers) if(!r.lavaOut && !r.falling) lead__ = Math.max(lead__, r.y);"
+    + chr(10) + "        if(lead__ > -1e8) lavaZ = Math.min(lavaZ, lead__ - 340);"
+    + chr(10) + "      }"
+    + chr(10) + "      if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }",
+    "lava chases the leader")
+
 sub("<title>Scramble Rush 3D</title>",
     "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
@@ -330,13 +343,15 @@ sub("    } else if(o.type==='pillars'){",
     "    } else if(botPlan(r,o,dist,t,dt)){ throttle = r.aiThrottle; }" + "\n" +
     "    else if(o.type==='pillars'){",
     "bot plan hook")
-# remember where a bot fell, so it can stop feeding the same hole
+# tally a fall against the hazard it happened in, keyed by that hazard
 sub("  function fallDown(r){",
-    "  function fallDown(r){" + "\n" +
-    "    if(!r.isPlayer){ const o = nextObstacle(r);" + "\n" +
-    "      if(o && r.lastFallY !== undefined && Math.abs(r.lastFallY - o.y) < 150) r.spotFalls = (r.spotFalls||0)+1;" + "\n" +
-    "      else r.spotFalls = 1;" + "\n" +
-    "      r.lastFallY = o ? o.y : r.y; }",
+    "  function fallDown(r){" + chr(10) +
+    "    if(!r.isPlayer){" + chr(10) +
+    "      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap')" + chr(10) +
+    "                                  && x.yStart !== undefined && r.y >= x.yStart-60 && r.y <= x.yEnd+60);" + chr(10) +
+    "      if(hz){ r.holeFalls = r.holeFalls || {}; const k = obsKey(hz);" + chr(10) +
+    "              r.holeFalls[k] = (r.holeFalls[k]||0) + 1; }" + chr(10) +
+    "    }",
     "bot fall memory")
 
 # ------------------------------------------------------- bots keep up now

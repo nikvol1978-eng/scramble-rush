@@ -12,6 +12,34 @@
   // at a hazard, 0.15 under a cannon) could brake to line up, lose its speed to
   // friction, and never accumulate a single frame of "stuck" -- which is how one
   // stood still on Super Slide for 26.8 seconds.
+  // A stable id for a hazard, since these spans have no o.y of their own.
+  function obsMid(o){ return o.y !== undefined ? o.y : Math.round((o.yStart + o.yEnd)/2); }
+  function obsKey(o){ return o.type + '@' + obsMid(o); }
+
+  // The lane through a particular hazard, right now.
+  function safeLaneFor(o, r){
+    if(o.type === 'narrow') return clamp(TRACK_W/2 + (o.offset||0), 40, TRACK_W-40);
+    if(o.type === 'gap')    return clamp(r.x < o.cx ? o.cx - o.halfWidth - 60 : o.cx + o.halfWidth + 60, 40, TRACK_W-40);
+    if(o.type === 'pit' && o.platforms && o.platforms.length){
+      let best = null, bestD = 1e9;
+      for(const pl of o.platforms){
+        const px = platX(pl, raceTime), d = Math.abs(px - r.x);
+        if(d < bestD){ bestD = d; best = px; }
+      }
+      if(best !== null) return clamp(best, 40, TRACK_W-40);
+    }
+    if(o.type === 'crumble' && o.slabs){
+      let best = null, bestD = 1e9;
+      for(const sl of o.slabs){
+        if(sl.gone) continue;
+        const d = Math.abs(sl.x - r.x);
+        if(d < bestD){ bestD = d; best = sl.x; }
+      }
+      if(best !== null) return clamp(best, 40, TRACK_W-40);
+    }
+    return null;
+  }
+
   // Where it is safe to stand, if anything nearby wants to drop you.
   function safeLaneNear(r){
     for(const o of obstacles){
@@ -69,24 +97,31 @@
     const near = dist < 340;                       // close enough to commit to a line
     if((r.fallCount||0) >= 5) r.aiSafe = true;     // that is enough for one round
 
-    // Three falls at the same place means the plan is not working: take the
-    // safe middle, slow down, and stop feeding the respawn loop.
-    if(r.fallCount && r.lastFallY !== undefined && Math.abs(r.lastFallY - o.y) < 150){
-      r.spotFalls = (r.spotFalls||0);
-      if(r.spotFalls >= 2 && r.y < o.y1) return set(TRACK_W/2 + (o.offset||0), 0.6);
+    // ---- the fall-loop breaker, per hazard ----
+    // Three falls at the same hazard and the bot stops improvising: it takes
+    // that hazard's own lane and crawls until it is past. The old version keyed
+    // off o.y, which pit, narrow, gap and crumble do not have -- they are
+    // yStart/yEnd spans -- so it compared against undefined and never fired for
+    // the four types that need it. One Sunny pit collected ninety falls.
+    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble' || o.type==='gap');
+    if(HOLE){
+      const hereFalls = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
+      if(hereFalls >= 3 && r.y < o.y1 + 120){
+        const lane = safeLaneFor(o, r);
+        // five is the ceiling: past that it barely moves until it is through
+        return set(lane === null ? TRACK_W/2 : lane, hereFalls >= 5 ? 0.45 : 0.6);
+      }
+      if(r.aiSafe && r.y < o.y1 + 260){
+        const lane = safeLaneFor(o, r);
+        return set(lane === null ? TRACK_W/2 : lane, 0.5);
+      }
+      // A per-hazard breaker alone lets a bot take two falls at each of six
+      // hazards and still total twenty. The global guard stays as well.
+      if((r.fallCount||0) >= 4 && r.y < o.y1 + 200){
+        const lane = safeLaneFor(o, r);
+        return set(lane === null ? TRACK_W/2 : lane, 0.55);
+      }
     }
-
-    // The legacy chain handles these, but not after they have already cost you
-    // two lives: then take the middle of the safe channel and slow down.
-    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble');
-    if(HOLE && r.aiSafe && r.y < o.y1 + 260) return set(TRACK_W/2 + (o.offset||0), 0.45);
-    if(HOLE && (r.spotFalls||0) >= 2 && r.y < o.y1)
-      return set(TRACK_W/2 + (o.offset||0), 0.6);
-    // ...and once a bot has fallen four times in a round anywhere, it stops
-    // gambling entirely. Per-obstacle caution still let them collect two falls
-    // at each of four hazards.
-    if(HOLE && (r.fallCount||0) >= 3 && r.y < o.y1 + 200)
-      return set(TRACK_W/2 + (o.offset||0), 0.55);
 
     switch(o.type){
 
@@ -220,19 +255,60 @@
       }
 
       case 'tilefield': {
-        // Keep moving, prefer floor that is not already counting down.
-        const tl = tileAt(o, r.x, r.y + 90);
-        if(tl && !tl.gone && tl.fuse < 0) return set(tl.x, 1);
-        let best = null, bestD = 1e9;
-        for(const c of o.tiles){
-          if(c.gone || c.fuse >= 0) continue;
-          const ahead = c.y - r.y;
-          if(ahead < 20 || ahead > 320) continue;
-          const d = Math.abs(c.x - r.x) + ahead*0.3;
-          if(d < bestD){ bestD = d; best = c; }
+        // Tile Trap is an arena, not a course. Running the field end to end
+        // bunched the whole pack at the far side, where they ate the tiles
+        // around them and eleven of twelve drowned inside five seconds. They
+        // roam instead: pick a tile that is not counting down, go to it, pick
+        // another, and never go near the fence.
+        const fence = (typeof arenaEnd === 'number' && arenaEnd) ? arenaEnd : o.yEnd;
+        const roamMax = fence - 850, roamMin = o.yStart + 160;
+        const g = r.tileGoal;
+        // Re-pick well before arriving: a tile arms the moment you touch it and
+        // goes 2.2s later, so anything that slows to a stop over its goal dies.
+        const spent = !g || g.gone || g.fuse >= 0
+                      || Math.hypot(g.x - r.x, g.y - r.y) < 230;
+        if(spent){
+          // Pick at random from everything in reach, not the nearest: nearest is
+          // always a little ahead, so the whole pack drifted forward in lockstep
+          // and then died together at the far end.
+          const near = [];
+          for(const c of o.tiles){
+            if(c.gone || c.fuse >= 0) continue;
+            if(c.y > roamMax || c.y < roamMin) continue;
+            const d = Math.hypot(c.x - r.x, c.y - r.y);
+            if(d > 120 && d < 950) near.push(c);
+          }
+          r.tileGoal = near.length ? near[Math.floor(Math.random()*near.length)] : null;
         }
-        if(best) return set(best.x, 1);
-        return set(r.x, 1);
+        const goal = r.tileGoal;
+        if(!goal) return set(clamp(r.x + rand(-140,140), 40, TRACK_W-40), 0.35);
+        // throttle carries the sign, so they will happily walk back down the field
+        // never idle: keep at least half throttle in whichever direction
+        const drive = (goal.y - r.y)/150;
+        const thr = drive >= 0 ? Math.max(0.6, Math.min(1, drive))
+                               : Math.min(-0.6, Math.max(-0.9, drive));
+
+        // Look at the floor we are about to step on. Steering straight at a goal
+        // is what actually killed them: with sixteen racers arming tiles, about a
+        // quarter of the field is missing or counting down at any moment, and a
+        // straight line walks into it.
+        const step = Math.sign(thr) * 110;
+        const front = tileAt(o, r.x, r.y + step);
+        // ...but not perfectly. Spotting every hole every time made Tile Trap
+        // eliminate nobody at all; the quicker bots read it better.
+        // The knob is sharp: a bot meets dozens of holes in a round, so even a
+        // 10% miss rate compounds into certain death. 97-99% lands it.
+        const sees = Math.random() < 0.972 + ((r.speed||1) - 0.98) * 0.12;
+        if((!front || front.gone) && sees){
+          let side = null, sideD = 1e9;
+          for(const dx of [-o.tileW, o.tileW, -2*o.tileW, 2*o.tileW]){
+            const c = tileAt(o, r.x + dx, r.y + step);
+            if(c && !c.gone && Math.abs(dx) < sideD){ sideD = Math.abs(dx); side = r.x + dx; }
+          }
+          if(side !== null) return set(side, thr * 0.7);
+          return set(r.x, -0.6);            // nothing ahead: back off the edge
+        }
+        return set(goal.x, thr);
       }
     }
     return false;

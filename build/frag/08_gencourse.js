@@ -26,7 +26,10 @@
       }
       // Tiles go fast but come back, so the floor never runs out entirely.
       obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
-                fuseTime: hard?1.9:2.2, respawnTime: hard?4.2:3.6});
+                // With a one-shot fuse a tile is dead for respawnTime out of every
+                // fuse+respawn seconds; at 3.6s that was 62% of the time and the
+                // field became unwalkable, so the whole pack drowned by 37s.
+                fuseTime: hard?1.9:2.2, respawnTime: hard?1.7:1.4});
       // survival: fence them into the field, and put the line out of reach.
       // A row and a half back from the last tiles, so the fence is never a ledge.
       arenaEnd = yEnd-rowDepth*1.5; trackLength = yEnd+4000;
