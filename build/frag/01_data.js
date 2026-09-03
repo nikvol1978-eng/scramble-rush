@@ -377,6 +377,8 @@
       ground:'#ffd9a0', groundAlt:'#ffc477', wall:'#8a4b1e', wallTop:'#ff5a4d', skyTop:'#ffd28c', skyMid:'#ff8a5c', skyBot:'#6d2f1f', accent:'#ff5a4d', isMinigame:true, mode:'blockdash' },
     { key:'hex', name:'Honey Drop', tip:'Every comb you touch is on borrowed time. Four layers, then the honey.',
       ground:'#ffc42e', groundAlt:'#eda520', wall:'#7a4a0d', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffdf8a', accent:'#ff9500', isMinigame:true, mode:'hex', knockout:true },
+    { key:'collect', name:'Gem Grab', tip:'Three gems and you are through. Nobody cares who is fastest.',
+      ground:'#c4b5fd', groundAlt:'#a78bfa', wall:'#4c1d95', wallTop:'#fde68a', skyTop:'#1e1b4b', skyMid:'#4338ca', skyBot:'#312e81', accent:'#fde68a', isMinigame:true, mode:'collect', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true },
     { key:'spin', name:'Carousel', tip:'The floor is turning under you. Run against it or you go over the edge.',

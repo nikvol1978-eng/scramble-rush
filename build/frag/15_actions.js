@@ -5,7 +5,24 @@
   const APEX_GRAV = 1.45;
   // Some maps run at a fraction of normal gravity. The jump impulse is unchanged,
   // so you simply go higher and hang longer -- which is the whole point of Orbit Drop.
-  function gravK(){ return (currentMap && currentMap.lowGrav) || 1; }                   // extra pull through the top of the arc — reads far better than symmetric
+  function gravK(){ return (currentMap && currentMap.lowGrav) || 1; }
+
+  // Getting clobbered by something big should look like it. A tumble takes the
+  // controls away, spins the racer end over end, and hands off to the get-up.
+  function sendTumbling(r, force, dirX, dirY){
+    if(r.invuln > 0 || r.falling || r.finished || r.lavaOut) return;
+    const f = clamp(force, 3, 14);
+    r.tumbleT   = 620 + f*70;
+    r.tumbleAng = r.tumbleAng || 0;
+    r.tumbleSpin = (5.5 + f*0.55) * (Math.random()<0.5 ? -1 : 1);
+    r.tumbleRoll = Math.random()<0.45;          // over the shoulder, or head over heels
+    r.stumbleT  = 0;                            // the tumble replaces the wobble
+    r.squash    = 1;
+    r.vh = Math.max(r.vh, 2.4 + f*0.28);
+    if(r.h <= 0) r.h = 0.01;
+    if(dirX || dirY){ r.vx += (dirX||0)*f*0.55; r.vy += (dirY||0)*f*0.55; }
+    if(r.isPlayer){ SFX.fall(); camShake = Math.max(camShake, 5 + f*0.4); }
+  }                   // extra pull through the top of the arc — reads far better than symmetric
   const JUMP_V = 7.4;
   const ACCEL = 0.68;
   const COYOTE_MS = 110;                    // grace after stepping off an edge

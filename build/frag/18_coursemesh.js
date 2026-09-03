@@ -94,7 +94,7 @@
       const cm = new THREE.Mesh(cap, wallTopMat); cm.material.side=THREE.DoubleSide; courseGroup.add(cm);
     }
 
-    if(arenaOnly){ buildMinigameMeshes(); buildWaveMeshes(); resetWaves(); resetEvents(); return; }
+    if(arenaOnly){ buildMinigameMeshes(); buildWaveMeshes(); resetWaves(); resetEvents(); startMusic(currentMap.key); return; }
 
     for(const o of specials){
       if(o.yStart>cursor){ addGround(0,TRACK_W,cursor,o.yStart,false); addWall(0,cursor,o.yStart); addWall(TRACK_W,cursor,o.yStart); }
@@ -192,7 +192,7 @@
     }
 
     buildMinigameMeshes();
-    buildWaveMeshes(); resetWaves(); resetEvents();
+    buildWaveMeshes(); resetWaves(); resetEvents(); startMusic(currentMap.key);
 
     // decorations flanking the track
     const decoMats=[0xff4fa3,0x23e6c9,0x8b5cf6,0xffcb3d,0x60a5fa].map(c=>new THREE.MeshLambertMaterial({color:c}));

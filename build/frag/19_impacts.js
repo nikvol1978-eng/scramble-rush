@@ -52,8 +52,16 @@
   // Running just behind someone gives a small tow. It keeps the pack together and
   // lets a trailing player claw back, without ever making the leader faster —
   // there is nobody in front of them to draft.
+  // Straight after picking yourself up you go again harder. It is not a
+  // rubber band -- everyone gets it, and only for being knocked down.
+  const WIND_BOOST = 0.30;
+  function WIND(r){ return (r.windT>0 ? 1+WIND_BOOST : 1); }
+
   const DRAFT_MAX = 0.10, DRAFT_NEAR = 20, DRAFT_FAR = 190, DRAFT_WIDE = 80;
+  const DRAFT_BEHIND_MAX = 0.85;      // how much extra a back-marker can draw
   function updateSlipstream(){
+    let lead = -1e9;
+    for(const r of racers) if(!r.falling && !r.lavaOut && r.y > lead) lead = r.y;
     for(const r of racers){
       r.draft = 0;
       if(r.finished||r.falling||r.knockedOut) continue;
@@ -63,7 +71,10 @@
         if(ahead < DRAFT_NEAR || ahead > DRAFT_FAR) continue;
         if(Math.abs(o.x - r.x) > DRAFT_WIDE) continue;
         const closeness = 1 - (ahead-DRAFT_NEAR)/(DRAFT_FAR-DRAFT_NEAR);
-        const boost = DRAFT_MAX*closeness;
+        // The further off the pace you are, the more the tow is worth. It never
+        // makes you faster than the leader, because the leader has nobody to draft.
+        const behind = clamp((lead - r.y)/2600, 0, 1)*DRAFT_BEHIND_MAX;
+        const boost = DRAFT_MAX*closeness*(1+behind);
         if(boost > r.draft) r.draft = boost;
       }
     }

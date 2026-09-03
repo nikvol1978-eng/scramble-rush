@@ -98,7 +98,7 @@
     state='roundEnd';
     const sorted=[...racers].sort(rankCompare);
     $('hud').classList.add('hidden'); $('hint').classList.add('hidden'); $('pauseBtn').classList.add('hidden');
-    leaveSpectate();
+    leaveSpectate(); stopMusic();
     const me = sorted.find(r=>r.isPlayer);
     const playerRank = sorted.findIndex(r=>r.isPlayer)+1;
 

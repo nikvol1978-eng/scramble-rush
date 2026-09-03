@@ -18,6 +18,19 @@
     }
     m.tilt.rotation.x = 0;
 
+    if(r.tumbleT>0){
+      // arms and legs thrown out, whole body turning over. The rotation is on
+      // the tilt pivot so it composes with facing instead of fighting it.
+      const flail = Math.sin(t*26);
+      setLegs(0.9+flail*0.5, -0.9-flail*0.5);
+      setArms(-2.2+flail*0.9, -2.2-flail*0.9);
+      flare(0.85);
+      if(r.tumbleRoll) m.tilt.rotation.z = r.tumbleAng||0;
+      else             m.tilt.rotation.x = r.tumbleAng||0;
+      return;
+    }
+    m.tilt.rotation.z = 0;
+
     if(r.diveT>0){
       // superman: arms straight out front, legs trailing, whole body pitched flat
       setLegs(-0.95,-1.05); setArms(-2.75,-2.75); flare(0.10);

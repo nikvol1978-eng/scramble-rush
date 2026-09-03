@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 16                                  # single source of truth
+VERSION = 17                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -224,7 +224,19 @@ sub("""    let allDone = (fin.length+out.length)===racers.length || timeLeft<=0;
     if(isFinal && fin.length && raceTime-firstFinish>6) allDone=true;                      // winner crowned, short grace
     if(!isFinal && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;      // one straggler left
     if(!isFinal && fin.length>=keepN && raceTime-firstFinish>20) allDone=true;              // cut-off after the leaders
-    if(currentMap.knockout){
+    if(currentMap.mode==='collect'){
+      // Not a race and not a cull: you are through the moment you have your
+      // three gems. When enough people are through, everyone else is out.
+      const gf = obstacles.find(o=>o.type==='gems');
+      const target = knockoutTarget(racers.length, keepN);
+      const safe = racers.filter(r=>r.gemSafe).length;
+      const nothingLeft = gf && gf.items.every(g=>g.taken);
+      allDone = (raceTime > KNOCKOUT_MIN_S && safe >= target) || nothingLeft || timeLeft<=0;
+      if(allDone){
+        for(const r of racers) if(!r.gemSafe && !r.lavaOut){ r.lavaOut = true; r.lavaCatchY = r.y; }
+      } else if(safe === target-1 && p.gemSafe && !p.knockWarned){ p.knockWarned=true; showBanner('ONE SPOT LEFT!',1400); }
+    }
+    else if(currentMap.knockout){
       // Survival. The normal round-1 cut keeps 12 of 16, which in a knockout ends
       // the round the moment four people fall -- about two seconds. So a knockout
       // cuts harder and cannot end before it has had time to be a round.
@@ -272,6 +284,16 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
     "          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;",
     "bot spinbar prediction")
 
+# ----------------------------------------------------------------- music
+sub("  function racerCollisions(){",
+    frag("23_music.js") + "\n" + "  function racerCollisions(){",
+    "music fragment")
+
+# ------------------------------------------------------------ arena bot ai
+sub("  function racerCollisions(){",
+    frag("22_arenaai.js") + "\n" + "  function racerCollisions(){",
+    "arena ai fragment")
+
 # ------------------------------------------------------- waves + map events
 sub("  function racerCollisions(){",
     frag("21_living.js") + "\n" + "  function racerCollisions(){",
@@ -280,18 +302,7 @@ sub("  function racerCollisions(){",
 # ------------------------------------------------------------- arena bot AI
 sub("  function updateBotAI(r,dt,t,f){",
     "  function updateBotAI(r,dt,t,f){" + "\n" +
-    "    // In a closing arena there is no finish line to run at. Head for the" + "\n" +
-    "    // middle instead, with enough scatter that they do not stack up." + "\n" +
-    "    const arena = obstacles.find(o=>o.type==='ring'||o.type==='disc');" + "\n" +
-    "    if(arena){" + "\n" +
-    "      if(r.aiHome===undefined){ r.aiHome = rand(0.18,0.62); r.aiHomeA = rand(0,6.28); }" + "\n" +
-    "      const keep = (arena.type==='ring' ? arena.r : arena.r) * r.aiHome;" + "\n" +
-    "      const tx = arena.cx + Math.cos(r.aiHomeA)*keep, ty = arena.y + Math.sin(r.aiHomeA)*keep;" + "\n" +
-    "      const dx = tx-r.x, dy = ty-r.y, d = Math.hypot(dx,dy)||1;" + "\n" +
-    "      const control = r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.h>0?0.50:1;" + "\n" +
-    "      if(d > 26){ r.facing=Math.atan2(dy,dx); r.vx += dx/d*ACCEL*control*f; r.vy += dy/d*ACCEL*control*f; }" + "\n" +
-    "      return;" + "\n" +
-    "    }",
+    "    if(arenaBotAI(r,dt,t,f)) return;",
     "arena bot ai")
 
 # ---------------------------------------------------------------- spectator
@@ -354,7 +365,7 @@ sub("    ['results','gameover','pause','settings','customize','mpHome','lobby'].
     "    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
     "goHome screens")
 sub("    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    refreshPreview();",
-    "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; refreshPreview(); refreshCoinChips(); refreshDailyChip();",
+    "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip();",
     "goHome refresh")
 
 # ---------------------------------------------------------------- preview + profile UI
@@ -404,7 +415,9 @@ sub("  function updateHud(){",
     "spectator hud tick")
 
 sub("    $('rankBadge').textContent=`Rank ${rank}/${racers.length}`;",
-    "    $('rankBadge').textContent = currentMap.knockout"
+    "    const gf__ = obstacles.find(o=>o.type==='gems');"
+    + chr(10) + "    if(gf__){ const me__ = racers.find(r=>r.isPlayer); $('rankBadge').textContent = 'GEMS ' + ((me__&&me__.gems)||0) + '/' + gf__.need; } else"
+    + chr(10) + "    $('rankBadge').textContent = currentMap.knockout"
     + chr(10) + "      ? racers.filter(r=>!r.lavaOut).length+' LEFT'"
     + chr(10) + "      : `Rank ${rank}/${racers.length}`;",
     "knockout hud")

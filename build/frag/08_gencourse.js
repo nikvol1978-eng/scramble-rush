@@ -29,6 +29,25 @@
       return obs;
     }
 
+    // ---- GEM GRAB: not a race. Three gems and you are through. ----
+    if(mode==='collect'){
+      const yStart = 260, yEnd = 3100;
+      const items = [];
+      const count = 46;
+      for(let i=0;i<count;i++){
+        items.push({ x: rand(70, TRACK_W-70), y: rand(yStart, yEnd), taken:false, spin: rand(0,6.28) });
+      }
+      obs.push({type:'gems', y:(yStart+yEnd)/2, y0:yStart-200, y1:yEnd+200, items, need:3});
+      // a bit of trouble to make the picking-up interesting
+      for(let z=yStart+300; z<yEnd-200; z+=rand(520,720)){
+        obs.push({type:'roller', y:z, y0:z-46-RADIUS, y1:z+46+RADIUS, r:38,
+                  amp: rand(200,300), speed: rand(0.9,1.4)*spd, phase: rand(0,6.28), cx});
+      }
+      arenaEnd = yEnd+180; trackLength = yEnd+4200;
+      obs.sort((a,b)=>a.y0-b.y0);
+      return obs;
+    }
+
     // ---- CLOSING CIRCLE: the floor is a disc, and it never stops shrinking ----
     if(mode==='shrink'){
       // Centred over the start line: everyone spawns at y=-60, so an arena

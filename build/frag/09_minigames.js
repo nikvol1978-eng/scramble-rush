@@ -172,6 +172,17 @@
         courseGroup.add(g);
         o.mesh=g;
 
+      } else if(o.type==='gems'){
+        o.meshes = o.items.map(gm=>{
+          const m=new THREE.Mesh(new THREE.OctahedronGeometry(15,0),
+            new THREE.MeshPhongMaterial({color:0x7ee8fa, shininess:90, emissive:0x1b6f88}));
+          m.castShadow=true;
+          placeAt(m, gm.x, gm.y, 32);
+          m.userData.baseY = m.position.y;
+          courseGroup.add(m);
+          return m;
+        });
+
       } else if(o.type==='ring'){
         const g=new THREE.Group();
         const disc=new THREE.Mesh(new THREE.CylinderGeometry(1,1,16,52),
@@ -480,6 +491,15 @@
         const x = moverX(o,t);
         o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
         o._px = x;
+      } else if(o.type==='gems'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const g=o.items[i];
+          m.visible = !g.taken;
+          if(!g.taken){
+            m.rotation.y = t*2 + g.spin; m.rotation.x = 0.5;
+            m.position.y = m.userData.baseY + Math.sin(t*3+g.spin)*5;
+          }
+        });
       } else if(o.type==='ring'){
         // the ring waits a beat, then closes for the rest of the round
         if(o.wait > 0) o.wait -= dt;
@@ -570,19 +590,48 @@
     }
     for(let i=shots.length-1;i>=0;i--){
       const b=shots[i];
-      b.x += b.vx*dt; b.spin += b.vx*dt/b.r;
-      placeAt(b.mesh, b.x, b.y, b.r+26);
-      b.mesh.rotation.z = -b.spin;
-      if(b.x < -60 || b.x > TRACK_W+60){ courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
+      b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r;
+      if(b.mesh){ placeAt(b.mesh, b.x, b.y, b.r+26); b.mesh.rotation.z = -b.spin; }
+      if(b.x < -60 || b.x > TRACK_W+60){ if(b.mesh) courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
+
+      // ---- a cannonball is not only a threat to racers ----
+      // It brings a crumbling slab down under it...
+      for(const o of obstacles){
+        if(o.type!=='crumble' || b.y < o.yStart || b.y > o.yEnd) continue;
+        for(const sl of o.slabs){
+          if(sl.gone || sl.fuse > 0) continue;
+          if(Math.abs(sl.x-b.x) > sl.w/2 + b.r || Math.abs(sl.y-b.y) > sl.d/2 + b.r) continue;
+          sl.touched = true; sl.fuse = Math.min(sl.fuse<0 ? 0.18 : sl.fuse, 0.18);
+          spawnBurst3D(sl.x, sl.y, 0xffffff, 10);
+        }
+      }
+      // ...and it sets a bumper off, which throws whoever is leaning on it
+      for(const o of obstacles){
+        if(o.type!=='bumper' || Math.abs(b.y-o.y) > 110) continue;
+        for(const it of o.items){
+          if(Math.hypot(it.x-b.x, o.y-b.y) > it.r + b.r) continue;
+          it.hit = 1;
+          for(const r of racers){
+            if(r.falling||r.finished||r.lavaOut) continue;
+            const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
+            if(d > it.r + RADIUS + 26 || d < 0.001) continue;
+            r.vx += dx/d*9; r.vy += dy/d*9;
+            r.squash = Math.max(r.squash, 0.6);
+            if(r.isPlayer){ SFX.bump(); camShake = Math.max(camShake, 5); }
+          }
+          spawnBurst3D(it.x, o.y, 0xffcb3d, 12);
+        }
+      }
+
       for(const r of racers){
         if(r.falling||r.finished||r.invuln>0) continue;
         if(r.h > b.r*1.9 + 26) continue;                 // jumped it
         if(Math.hypot(r.x-b.x, r.y-b.y) < b.r+RADIUS-6){
           const dir=Math.sign(b.vx)||1;
-          r.vx += dir*11; r.vy += rand(-2,2); r.stumbleT=520; r.invuln=700;
-          r.vh=4.2; if(r.h===0) r.h=0.01;
+          r.vy += rand(-2,2);
+          sendTumbling(r, 8, dir, 0);
+          r.invuln=700;
           spawnBurst3D(r.x,r.y,0x2b2140);
-          if(r.isPlayer){ SFX.hit(); camShake=8; }
         }
       }
     }
@@ -780,6 +829,19 @@
         if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
         if(tl && !tl.gone){ tl.touched=true; tl.fuse=field.fuseTime; }
       }
+      const gems = obstacles.find(o=>o.type==='gems');
+      if(gems && r.h < 62){
+        for(const g of gems.items){
+          if(g.taken) continue;
+          if(Math.abs(g.x-r.x) > 34 || Math.abs(g.y-r.y) > 34) continue;
+          g.taken = true;
+          r.gems = (r.gems||0) + 1;
+          if(r.gems >= gems.need) r.gemSafe = true;
+          spawnBurst3D(r.x, r.y, 0x7ee8fa, 12);
+          if(r.isPlayer){ SFX.click(); if(r.gems>=gems.need) SFX.win(); }
+          break;
+        }
+      }
       const ring = obstacles.find(o=>o.type==='ring');
       if(ring && Math.hypot(r.x-ring.cx, r.y-ring.y) > ring.r){ fallDown(r); return; }
       const disc = obstacles.find(o=>o.type==='disc');
@@ -925,10 +987,10 @@
           if(top > lp.h-o.r && r.h < lp.h+o.r){
             // a trunk this size does not nudge you sideways, it sends you back
             const away = Math.sign(r.x-lp.x) || 1;
-            r.vx += away*7; r.vy = Math.min(r.vy, 0) - 5.4; r.stumbleT=600; r.invuln=750;
-            r.vh=5.2; if(r.h===0) r.h=0.01; r.squash=1;
+            r.vy = Math.min(r.vy, 0) - 5.4;
+            sendTumbling(r, 9, away, 0);
+            r.invuln=750;
             spawnBurst3D(r.x,r.y,0xa3e635,14);
-            if(r.isPlayer){ SFX.hit(); camShake=9; }
             return;
           }
         }
@@ -939,10 +1001,10 @@
           if(top > pp.h-o.r && r.h < pp.h+o.r){
             const dir = Math.sign(Math.cos(pendAngle(o,t))*Math.cos(t*o.speed+o.phase)) || 1;
             const away = Math.sign(r.x-pp.x) || dir;
-            r.vx += away*10; r.vy -= 3; r.stumbleT=540; r.invuln=700;
-            r.vh=4.6; if(r.h===0) r.h=0.01;
+            r.vy -= 3;
+            sendTumbling(r, 10, away, 0);
+            r.invuln=700;
             spawnBurst3D(r.x,r.y,0xffffff,12);
-            if(r.isPlayer){ SFX.hit(); camShake=8; }
             return;
           }
         }
@@ -961,10 +1023,9 @@
               if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 10+RADIUS-8){
                 const away = Math.sign(Math.sin(d)) || 1;
                 const px=-Math.sin(base+i*step)*away, py=Math.cos(base+i*step)*away;
-                r.vx += px*8; r.vy += py*8;
-                r.stumbleT=460; r.invuln=680; r.vh=3.4; if(r.h===0) r.h=0.01;
+                sendTumbling(r, 7, px, py);
+                r.invuln=680;
                 spawnBurst3D(r.x,r.y,0xa3e635,10);
-                if(r.isPlayer){ SFX.hit(); camShake=6; }
                 return;
               }
             }

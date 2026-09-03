@@ -9,8 +9,8 @@
       let ix=ix0, iy=iy0;
       const mag=Math.hypot(ix,iy);
       if(mag>0.05){ ix/=mag; iy/=mag; p.facing=Math.atan2(iy,ix); }
-      const control = p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.50:1;
-      p.vx+=ix*ACCEL*(1+p.draft)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*control*f;
+      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.50:1;
+      p.vx+=ix*ACCEL*(1+p.draft)*WIND(p)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*WIND(p)*control*f;
       // let go of jump early and the hop is short — hold it and you clear more
       if(p.h>0 && p.vh>2.6 && !keys[settings.keys.jump] && !p.jumpCut){ p.vh*=0.5; p.jumpCut=true; }
       if(p.h<=0) p.jumpCut=false;
@@ -52,11 +52,23 @@
           let ix=inp.ix||0, iy=inp.iy||0;
           const mag=Math.hypot(ix,iy);
           if(mag>0.05){ r.facing=Math.atan2(iy,ix); }
-          const control = r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.50:1;
-          r.vx+=ix*ACCEL*(1+r.draft)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*control*f;
+          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.50:1;
+          r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
 
+      // A tumble runs its course in the air and only settles once you land, or
+       // racers finish their cartwheel hovering.
+      if(r.tumbleT>0){
+        r.tumbleAng = (r.tumbleAng||0) + r.tumbleSpin*dt;
+        if(r.h<=0.02) r.tumbleSpin *= Math.pow(0.12, dt);
+        r.tumbleT -= dt*1000;
+        if(r.tumbleT<=0){
+          if(r.h>0.5){ r.tumbleT = 60; }        // still airborne: hold the pose
+          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.windT = 1800; }
+        }
+      }
+      if(r.windT>0) r.windT-=dt*1000;
       if(r.stumbleT>0) r.stumbleT-=dt*1000;
       if(r.diveCd>0)   r.diveCd-=dt*1000;
       if(r.invuln>0)   r.invuln-=dt*1000;
@@ -110,3 +122,4 @@
     updateMinigames(dt, obsTime(t));
     updateWaves(dt);
     updateEvents(dt);
+    updateMusic();
