@@ -197,17 +197,21 @@
     if(menuBlob.hatGroup.userData.spin) menuBlob.hatGroup.userData.spin.rotation.y=t*12;
     // slide the character aside when the profile card needs the room
     const profOpen = !$('profile').classList.contains('hidden');
-    // world +X reads as screen-left from this camera; the visible half-width at the
-    // character's distance is only about 120 units, so keep the shift well inside that
-    const wantX = (profOpen && W>=980) ? 92 : 0;
+    // world +X reads as screen-left from this camera, so a negative shift stands
+    // the character on the right of the screen with the tiles to their left. The
+    // visible half-width at this distance is only about 120 units.
+    const wantX = (profOpen && W>=861) ? -70 : 0;
     previewGroup.position.x += (wantX - previewGroup.position.x)*0.12;
+
     const dailyOpen = !$('daily').classList.contains('hidden');
-    previewGroup.visible = (!profOpen || W>=980) && !dailyOpen;
+    previewGroup.visible = (!profOpen || W>=861) && !dailyOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
     if(stageSpot) stageSpot.intensity = profOpen ? 1.6 : 0.0;
-    // pull back a little when the card is beside them, so the offset stays in frame
-    const camZ = (profOpen && W>=980) ? -186 : -150;
+    // Close in while the locker is open: this is the shot the screen is built
+    // around, and the character should fill their half of it.
+    // pull back when the card is beside them, so the offset stays in frame
+    const camZ = (profOpen && W>=861) ? -186 : -150;
     camera.position.set(0,40,camZ); camera.lookAt(0,4,0);
     // dim the room so the spotlight reads
     dirLight.intensity = profOpen ? 0.30 : 1.0;
@@ -239,7 +243,25 @@
     if(coinPops.some(p=>p.t>2.4)){ coinPops=coinPops.filter(p=>p.t<=2.4); host.innerHTML=coinPops.map(p=>`<div class="coinPop">+${fmtNum(p.n)}${p.why?`<span class="why">${p.why}</span>`:''}</div>`).join(''); }
   }
 
+  // One line of flavour under the name, the way a locker entry reads.
+  const SKIN_BLURB = {
+    solid:'A clean, flat colourway.',
+    gradient:'Two colours, blended top to bottom.',
+    galaxy:'Stars drifting somewhere under the surface.',
+    rainbow:'The whole spectrum, cycling.',
+    gold:'Polished metal, and it knows it.',
+    neon:'Lit from the inside.',
+    rainbowneon:'Lit from the inside, and never twice the same colour.'
+  };
+  function skinBlurb(s){
+    const r = RARITY[s.rarity];
+    const line = SKIN_BLURB[s.type] || 'One of a kind.';
+    return line + ' Part of the ' + r.name.toLowerCase() + ' set.';
+  }
+
   let profTab='character', shopFilter='all';
+  // which tile the locker sidebar is describing (null = whatever is equipped)
+  let selSkin=null, selPattern=null;
   function openProfile(tab){
     profTab = tab||'character';
     $('home').classList.add('hidden');
@@ -316,29 +338,38 @@
     host.innerHTML = list.map(p=>{
       const have=owned.has(p.id), equipped=custom.pattern===p.id;
       const r=RARITY[p.rarity];
-      let btn;
-      if(equipped) btn=`<button class="equipped" disabled>EQUIPPED</button>`;
-      else if(have) btn=`<button data-pequip="${p.id}">EQUIP</button>`;
-      else btn=`<button class="buy" data-pbuy="${p.id}" ${stats.coins<p.unlock.cost?'disabled':''}>${stats.coins<p.unlock.cost?'LOCKED':'BUY'}</button>`;
       const sub = have ? (equipped?'Equipped':'Owned') : (p.unlock.kind==='coins'? p.unlock.cost+' coins' : 'Starter');
       const bg = p.id==='none' ? 'background:#f4f5f8' : `background-image:${patternPreviewCSS(p)}`;
-      return `<div class="shopCard ${have?'':'locked'}">
+      const sel = (selPattern||custom.pattern)===p.id;
+      return `<div class="shopCard ${have?'':'locked'}${sel?' sel':''}">
         <div class="orb pat" style="${bg}"></div>
         <span class="rlab" style="background:${r.label};color:${r.text}">${r.name}</span>
         <div class="sn">${p.name}</div>
-        <div class="cost">${sub}</div>
-        ${btn}</div>`;
+        <div class="cost">${sub}</div></div>`;
     }).join('');
 
+    const chosen = patternOf(selPattern || custom.pattern) || list[0];
+    if(chosen){
+      const cr = RARITY[chosen.rarity], chave = owned.has(chosen.id), ceq = custom.pattern===chosen.id;
+      let act;
+      if(ceq) act = `<button class="equipped" disabled>EQUIPPED</button>`;
+      else if(chave) act = `<button class="btn gold" data-pequip="${chosen.id}">EQUIP</button>`;
+      else act = `<button class="btn pink" data-pbuy="${chosen.id}" ${stats.coins<chosen.unlock.cost?'disabled':''}>BUY ${chosen.unlock.cost}</button>`;
+      $('patternInfo').innerHTML =
+        `<div class="liRarity" style="background:${cr.label};color:${cr.text}">${cr.name}</div>
+         <div class="liName">${chosen.name}</div>
+         <div class="liDesc">Paints over whatever colourway you have on, so it mixes with all of them.</div>
+         <div class="liMeta">${chave ? (ceq?'Equipped':'In your locker') : (chosen.unlock.kind==='coins'? chosen.unlock.cost+' coins' : 'Starter')}</div>
+         ${act}`;
+    }
+
     host.querySelectorAll('.shopCard').forEach((card,i)=>{
-      card.onclick = e=>{
-        if(e.target.closest('button')) return;
-        setPreview(null, list[i].id); SFX.click();
-      };
+      card.onclick = ()=>{ selPattern = list[i].id; setPreview(null, list[i].id); SFX.click(); buildPatternPane(); };
     });
-    host.querySelectorAll('button[data-pequip]').forEach(b=>{ b.onclick=()=>{
-      custom.pattern=b.dataset.pequip; SFX.click(); saveProfile(); setPreview(null,null); buildPatternPane(); }; });
-    host.querySelectorAll('button[data-pbuy]').forEach(b=>{ b.onclick=async ()=>{
+    const ppane = host.closest('.tabPane') || host;
+    ppane.querySelectorAll('button[data-pequip]').forEach(b=>{ b.onclick=()=>{
+      custom.pattern=b.dataset.pequip; selPattern=b.dataset.pequip; SFX.click(); saveProfile(); setPreview(null,null); buildPatternPane(); }; });
+    ppane.querySelectorAll('button[data-pbuy]').forEach(b=>{ b.onclick=async ()=>{
       const p=patternOf(b.dataset.pbuy);
       if(p.unlock.kind!=='coins' || stats.coins < p.unlock.cost) return;
       stats.coins -= p.unlock.cost;
@@ -346,6 +377,7 @@
       custom.pattern = p.id;
       SFX.win();
       await saveProfile();
+      selPattern = p.id;
       setPreview(null,null); buildPatternPane(); refreshCoinChips();
     }; });
   }
@@ -414,29 +446,40 @@
     host.innerHTML = list.map(s=>{
       const have=owned.has(s.id), equipped=custom.skin===s.id;
       const r=RARITY[s.rarity];
-      let btn;
-      if(equipped) btn=`<button class="equipped" disabled>EQUIPPED</button>`;
-      else if(have) btn=`<button data-equip="${s.id}">EQUIP</button>`;
-      else if(s.unlock.kind==='coins') btn=`<button class="buy" data-buy="${s.id}" ${stats.coins<s.unlock.cost?'disabled':''}>${stats.coins<s.unlock.cost?'LOCKED':'BUY'}</button>`;
-      else btn=`<button disabled>LOCKED</button>`;
       const sub = have ? (equipped?'Equipped':'Owned') : unlockText(s);
-      return `<div class="shopCard ${have?'':'locked'}">
+      const sel = (selSkin||custom.skin)===s.id;
+      return `<div class="shopCard ${have?'':'locked'}${sel?' sel':''}">
         <div class="orb" style="background:${skinSwatch(s)}"></div>
         <span class="rlab" style="background:${r.label};color:${r.text}">${r.name}</span>
         <div class="sn">${s.name}</div>
-        <div class="cost">${sub}</div>
-        ${btn}</div>`;
+        <div class="cost">${sub}</div></div>`;
     }).join('');
 
+    // ---- the panel beside the model: what you are looking at, and one action
+    const chosen = skinOf(selSkin || custom.skin) || list[0];
+    if(chosen){
+      const r = RARITY[chosen.rarity], have = owned.has(chosen.id), equipped = custom.skin===chosen.id;
+      let act;
+      if(equipped) act = `<button class="equipped" disabled>EQUIPPED</button>`;
+      else if(have) act = `<button class="btn gold" data-equip="${chosen.id}">EQUIP</button>`;
+      else if(chosen.unlock.kind==='coins')
+        act = `<button class="btn pink" data-buy="${chosen.id}" ${stats.coins<chosen.unlock.cost?'disabled':''}>BUY ${chosen.unlock.cost}</button>`;
+      else act = `<button class="btn blue" disabled>LOCKED</button>`;
+      $('shopInfo').innerHTML =
+        `<div class="liRarity" style="background:${r.label};color:${r.text}">${r.name}</div>
+         <div class="liName">${chosen.name}</div>
+         <div class="liDesc">${skinBlurb(chosen)}</div>
+         <div class="liMeta">${have ? (equipped?'Equipped':'In your locker') : unlockText(chosen)}</div>
+         ${act}`;
+    }
+
     host.querySelectorAll('.shopCard').forEach((card,i)=>{
-      card.onclick = e=>{
-        if(e.target.closest('button')) return;         // the buttons do their own thing
-        setPreview(list[i].id, null); SFX.click();
-      };
+      card.onclick = ()=>{ selSkin = list[i].id; setPreview(list[i].id, null); SFX.click(); buildShopPane(); };
     });
-    host.querySelectorAll('button[data-equip]').forEach(b=>{ b.onclick=()=>{
-      custom.skin=b.dataset.equip; SFX.click(); saveProfile(); setPreview(null,null); buildShopPane(); }; });
-    host.querySelectorAll('button[data-buy]').forEach(b=>{ b.onclick=async ()=>{
+    const pane = host.closest('.tabPane') || host;
+    pane.querySelectorAll('button[data-equip]').forEach(b=>{ b.onclick=()=>{
+      custom.skin=b.dataset.equip; selSkin=b.dataset.equip; SFX.click(); saveProfile(); setPreview(null,null); buildShopPane(); }; });
+    pane.querySelectorAll('button[data-buy]').forEach(b=>{ b.onclick=async ()=>{
       const s=skinOf(b.dataset.buy);
       if(s.unlock.kind!=='coins' || stats.coins < s.unlock.cost) return;
       stats.coins -= s.unlock.cost;
@@ -444,6 +487,7 @@
       custom.skin = s.id;
       SFX.win();
       await saveProfile();
+      selSkin = s.id;
       setPreview(null,null); buildShopPane(); refreshCoinChips();
     }; });
   }

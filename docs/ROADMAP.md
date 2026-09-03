@@ -11,7 +11,8 @@ the version they shipped in.
 - [ ] Make diving more tactically useful (not just faster)
 - [ ] Satisfying stumble / fall animations — ragdoll-ish tumbles
 - [x] Better landing and collision reactions — impulse, squash, knocked off your feet *(v13)*
-- [ ] Collisions that feel deliberate rather than random
+- [x] Collisions that feel deliberate rather than random — racers block and
+      shove each other, but never knock each other over *(v16)*
 - [x] Obstacles that push, spin, launch and knock players about — cannons,
       pendulums, pinball bumpers, boost pads, rotating laser arms *(v11)*
 - [x] Warning animations before dangerous obstacles — cannon floor telegraph *(v13)*
@@ -32,9 +33,13 @@ the version they shipped in.
 - [x] Courses that climb and descend, on a path rather than a straight axis *(v12)*
 - [x] Moving platforms, falling floors *(v15)*
 - [x] Risk-vs-reward shortcut lanes — raised, narrow, faster *(v14)*
+- [x] Branching routes — a divider, a fast raised lane, a slower clear one *(v16)*
+- [x] Traffic jams — gates with two doors and sixteen racers *(v16)*
 - [x] Random map events — crosswind, frenzy, tremor *(v15)*
 - [x] Survival / last blob standing — Tile Trap and Honey Drop *(v13)*
-- [ ] Team, collect, final showdown in a small arena
+- [x] Final showdown in a small arena — Carousel, reserved for the last round *(v16)*
+- [x] Shrinking arena — Closing Circle *(v16)*
+- [ ] Team and collect modes
 
 ## Update 3 — Multiplayer
 
@@ -94,3 +99,4 @@ launch forward. The core game stays about movement and obstacles.
 | v13 | Impact physics, slipstream, knockout rounds, 7 shaped maps, 28 badges, special auras |
 | v14 | Live shop preview, smart camera, shortcut lanes, spectator mode |
 | v15 | Moving platforms, crumbling bridges, swinging logs, Orbit Drop, Beach Break, map events |
+| v16 | Chase camera, friendly player collisions, laser hitbox fixes, locker screen, forks, gates, Closing Circle, Carousel |

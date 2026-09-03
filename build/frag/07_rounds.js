@@ -55,7 +55,14 @@
     round=n;
     if(mp.role!=='client'){
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
-      currentMap = (Math.random()<chance) ? pick(MINIGAMES) : pick(MAPS);
+      const finals = MINIGAMES.filter(m=>m.final);
+      if(currentMap && currentMap.__forced){ /* a test picked it */ }
+      else if(n >= ROUNDS && finals.length && Math.random() < 0.72){
+        currentMap = pick(finals);                 // the showdown, not another race
+      } else {
+        const pool = MINIGAMES.filter(m=>!m.final);
+        currentMap = (Math.random()<chance) ? pick(pool) : pick(MAPS);
+      }
     }
     obstacles=genCourse(n);
     // genCourse fixes trackLength, and the path table has to span it

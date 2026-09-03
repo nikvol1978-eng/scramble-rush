@@ -14,31 +14,25 @@
         const rvx=b.vx-a.vx, rvy=b.vy-a.vy; const vn=rvx*nx+rvy*ny;
         if(vn>=0) continue;
 
-        // A diving blob hits like a cannonball; everyone else trades momentum with
-        // some bounce. The old impulse was scaled by 0.9*0.6, which read as a nudge
-        // rather than a collision.
-        const wa = a.diveT>0?2.2:1, wb = b.diveT>0?2.2:1;
-        const imp = -vn * 1.35;
-        a.vx -= nx*imp*wb/(wa+wb); a.vy -= ny*imp*wb/(wa+wb);
-        b.vx += nx*imp*wa/(wa+wb); b.vy += ny*imp*wa/(wa+wb);
-
-        // squash both of them, scaled by how hard it was
+        // Another racer is a body in the way, not an obstacle. Running into one
+        // used to hit like a pendulum -- stumble, launch, screen shake -- which
+        // made the pack feel hostile. Now the contact is perfectly inelastic:
+        // it kills the closing speed and nothing else, so you are stopped, never
+        // bounced back and never floored.
         const force = -vn;
-        const sq = clamp(force*0.16, 0, 1.1);
-        if(sq > 0.12){ a.squash=Math.max(a.squash,sq); b.squash=Math.max(b.squash,sq); }
+        const imp = force;                       // e = 0: blocked, not bounced
+        a.vx -= nx*imp*0.5; a.vy -= ny*imp*0.5;
+        b.vx += nx*imp*0.5; b.vy += ny*imp*0.5;
 
-        if(force > 3.2){
-          const victim = a.diveT>0 ? b : b.diveT>0 ? a
-                       : (Math.hypot(a.vx,a.vy) > Math.hypot(b.vx,b.vy) ? b : a);
-          if(victim.stumbleT<=0 && victim.invuln<=0){
-            victim.stumbleT = 180 + Math.min(260, force*30);
-            victim.squash = 1;
-            // a hard enough hit takes you off your feet
-            if(victim.h<=0 && force>5){ victim.vh = Math.min(3.4, force*0.4); victim.h = 0.01; }
-          }
-          spawnBurst3D((a.x+b.x)/2,(a.y+b.y)/2,0xffffff, 4+Math.min(10, force|0));
-          if(a.isPlayer||b.isPlayer){ SFX.bump(); camShake = Math.min(6, 1.5+force*0.5); }
-        }
+        // ...and you can lean on someone to move them. This is a shove, not a hit:
+        // it goes on top of the block so the pusher is not thrown off their line.
+        const shove = Math.min(force, 5) * 0.30;
+        b.vx += nx*shove; b.vy += ny*shove;
+
+        // a little give in both of them, so contact still reads
+        const sq = clamp(force*0.10, 0, 0.55);
+        if(sq > 0.10){ a.squash=Math.max(a.squash,sq); b.squash=Math.max(b.squash,sq); }
+        if(force > 3.4 && (a.isPlayer||b.isPlayer)) SFX.bump();
       }
     }
     // Pushing each other apart can shove someone through the arena fence, because

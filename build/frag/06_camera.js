@@ -2,7 +2,12 @@
   // FREE LOOK — one finger, or one drag of the mouse, or a trackpad swipe
   // ============================================================
   const look = { yaw:0, pitch:0, sinceInput:99 };
-  let camAuto = 0;                 // extra downward tilt over drops
+  // A fixed frame: back and up, looking slightly down, with the racer in the
+  // middle of it. Nothing here changes on its own except distance.
+  const CAM_BACK = 158, CAM_UP = 100, CAM_FOCUS = 20;
+  const CAM_RECENTRE_DELAY = 1.0;   // hands off this long and the view comes home
+  let camZoom = 1, camReach = 0;
+  const _camRay = new THREE.Raycaster();
   // Yaw is deliberately unbounded: the camera orbits the racer all the way
   // round. Movement is taken relative to it (see computeInputVec), so holding
   // forward always runs away from the camera whichever way you have swung it.
@@ -16,7 +21,7 @@
     look.pitch = clamp(look.pitch - dy*0.0026*s*inv, LOOK_PITCH_MIN, LOOK_PITCH_MAX);
     look.sinceInput = 0;
   }
-  function resetLook(){ look.yaw=0; look.pitch=0; look.sinceInput=99; }
+  function resetLook(){ look.yaw=0; look.pitch=0; look.sinceInput=99; camZoom=1; camReach=0; }
 
   canvas.addEventListener('wheel', e=>{
     if(!settings.freeLook || !lookActiveState()) return;
@@ -117,48 +122,78 @@
     // the profile stage dims these; put them back for play
     dirLight.intensity=1.0; hemi.intensity=0.9; sky.visible=true;
 
-    // after a couple of seconds hands-off, drift the view back behind the racer
+    // Hands off for a moment and the view eases back behind the way the racer
+    // is actually running -- not instantly, and not so slowly you give up and
+    // drag it yourself.
     look.sinceInput += dt;
-    if(settings.autoCentre && look.sinceInput > 2.0){
-      const k = 1 - Math.pow(0.12, dt);
-      let d = -look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+    if(settings.autoCentre && look.sinceInput > CAM_RECENTRE_DELAY){
+      const sp = Math.hypot(p.vx, p.vy);
+      // heading measured from straight-ahead: the camera settles behind it
+      const want = sp > 1.2 ? clamp(Math.atan2(p.vx, p.vy), -0.7, 0.7) : 0;
+      const k = 1 - Math.exp(-2.2*dt);
+      let d = want - look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
       look.yaw   += d*k;
       look.pitch += (0 - look.pitch)*k;
     }
 
-    const back = 150*settings.camDist, height = 95*settings.camDist;
+    // Pull back a little when you are quick, and again when the pack is on top
+    // of you, so you can still see what is coming.
+    const speed = Math.hypot(p.vx, p.vy);
+    let crowd = 0;
+    for(const o of racers){
+      if(o===p || o.falling || o.finished || o.lavaOut) continue;
+      if(Math.abs(o.y-p.y) < 230 && Math.abs(o.x-p.x) < 230) crowd++;
+    }
+    const wantZoom = 1 + clamp(speed/7.5, 0, 1)*0.15 + clamp(crowd/5, 0, 1)*0.12;
+    camZoom += (wantZoom - camZoom) * (snap ? 1 : 1 - Math.exp(-2.4*dt));
+
+    const back = CAM_BACK*settings.camDist*camZoom, height = CAM_UP*settings.camDist*camZoom;
     const radius = Math.hypot(back, height);
-    const baseElev = Math.atan2(height, back);
-    // Auto-tilt: look further down when falling, or when the course drops away
-    // ahead, so you can see where you are going to land.
-    const slopeAhead = coursePath ? pathAt(p.y + 260).slope : 0;
-    const dropping = Math.max(0, -p.vh*0.055) + Math.max(0, -slopeAhead*1.7);
-    camAuto += (clamp(dropping, 0, 0.5) - camAuto)*0.07;
-    const elev = clamp(baseElev + look.pitch + camAuto, -0.20, 1.35);
+    // The frame is fixed. It used to tilt down whenever you were falling, which
+    // meant the view swung every time you landed a jump.
+    const elev = clamp(Math.atan2(height, back) + look.pitch, -0.20, 1.35);
     const azim = look.yaw;
 
-    // Orbit about a point on the ribbon a little ahead of the racer. The
-    // azimuth is taken relative to the course heading, so "behind" means back
-    // along the track rather than back along world Z.
+    // Orbit the racer themselves, at chest height, so they sit in the middle of
+    // the frame. The azimuth is relative to the course heading, so "behind"
+    // means back along the track rather than back along world Z.
     const base = pathAngle(p.y);
-    const pivotW = toWorld(p.x, p.y + 55*Math.cos(azim), 0);
-    const lerp = snap?1:0.12;
+    const footH = (p.floorH||0) + p.h;
+    const pivotW = toWorld(p.x, p.y, footH + CAM_FOCUS);
+    // Vertical follow is quick -- a lagging pivot is the same as a tilting
+    // camera -- while the horizontal follow keeps a little weight.
+    const kXZ = snap ? 1 : 1 - Math.exp(-9*dt);
+    const kY  = snap ? 1 : 1 - Math.exp(-36*dt);
     if(camPos.y===undefined || snap){ camPos.y = pivotW.y; }
-    camPos.x += (pivotW.x-camPos.x)*lerp;
-    camPos.y += (pivotW.y-camPos.y)*lerp;
-    camPos.z += (pivotW.z-camPos.z)*lerp;
+    camPos.x += (pivotW.x-camPos.x)*kXZ;
+    camPos.y += (pivotW.y-camPos.y)*kY;
+    camPos.z += (pivotW.z-camPos.z)*kXZ;
 
     const aw = azim + base;
-    const ox = -radius*Math.cos(elev)*Math.sin(aw);
-    const oy =  radius*Math.sin(elev);
-    const oz = -radius*Math.cos(elev)*Math.cos(aw);
+    const ox = -Math.cos(elev)*Math.sin(aw);
+    const oy =  Math.sin(elev);
+    const oz = -Math.cos(elev)*Math.cos(aw);
+
+    // Don't let the camera end up on the far side of a wall: cast back along the
+    // boom and stop short of whatever it meets. Coming in is instant, going back
+    // out is gradual, or it pops the moment you clear a pillar.
+    let reach = radius;
+    if(fadeables.length){
+      _camRay.set(new THREE.Vector3(camPos.x+ox*radius, camPos.y+oy*radius, camPos.z+oz*radius),
+                  new THREE.Vector3(-ox, -oy, -oz));
+      _camRay.far = radius;
+      const hitList = _camRay.intersectObjects(fadeables, false);
+      if(hitList.length) reach = clamp(radius - hitList[0].distance - 16, 58, radius);
+    }
+    if(camReach === 0 || snap) camReach = reach;
+    else camReach += (reach - camReach) * (1 - Math.exp(-(reach < camReach ? 60 : 5)*dt));
 
     let shx=0, shy=0;
     if(camShake>0 && settings.shake){ shx=rand(-1,1)*camShake; shy=rand(-1,1)*camShake; camShake*= Math.pow(0.02, dt); if(camShake<0.2) camShake=0; }
 
-    camera.position.set(camPos.x+ox+shx, camPos.y+oy+shy, camPos.z+oz);
-    camera.lookAt(camPos.x, camPos.y+14, camPos.z);
-    updateOcclusion(new THREE.Vector3(camPos.x, camPos.y+14, camPos.z));
+    camera.position.set(camPos.x+ox*camReach+shx, camPos.y+oy*camReach+shy, camPos.z+oz*camReach);
+    camera.lookAt(camPos.x, camPos.y, camPos.z);
+    updateOcclusion(new THREE.Vector3(camPos.x, camPos.y, camPos.z));
     const lightAt = toWorld(p.x, p.y, 0);
     dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
     dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);

@@ -92,8 +92,8 @@
       const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? 0.955 : slip), f);
       r.vx*=fr; r.vy*=fr;
       r.x+=r.vx*f; r.y+=r.vy*f;
-      r.x=clamp(r.x,4,TRACK_W-4);
-      r.y=Math.max(r.y,-120);
+      r.x = arenaMode() ? clamp(r.x, TRACK_W/2-1400, TRACK_W/2+1400) : clamp(r.x,4,TRACK_W-4);
+      r.y = arenaMode() ? Math.max(r.y,-1400) : Math.max(r.y,-120);
       if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
       checkObstacles(r, obsTime(t));
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }

@@ -42,6 +42,9 @@
   function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
+  // Closing Circle and Carousel are a platform in the void: the track's side
+  // walls do not exist there, and clamping to them made the edge unreachable.
+  function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'; }
   function moverX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function logAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
   function logPos(o,t){ const a=logAngle(o,t);
@@ -124,6 +127,90 @@
         [-1,1].forEach(s=>{ const e=new THREE.Mesh(new THREE.BoxGeometry(26,34,26), new THREE.MeshLambertMaterial({color:0x1a1033}));
           e.position.set(s*(TRACK_W/2+10), -6, 0); g.add(e); });
         placeAt(g, TRACK_W/2, o.y, o.h);
+        courseGroup.add(g);
+        o.mesh=g;
+
+      } else if(o.type==='fork'){
+        const g=new THREE.Group();
+        const len = o.yEnd - o.wallFrom;
+        const wall=new THREE.Mesh(new THREE.BoxGeometry(16, 44, len),
+          new THREE.MeshLambertMaterial({color:currentMap.wall}));
+        wall.position.y=22; wall.castShadow=true; g.add(wall);
+        const cap=new THREE.Mesh(new THREE.BoxGeometry(22, 6, len),
+          new THREE.MeshLambertMaterial({color:accent.getHex()}));
+        cap.position.y=46; g.add(cap);
+        placeAt(g, o.cx, (o.wallFrom+o.yEnd)/2, 0);
+        courseGroup.add(g); registerFadeable(wall);
+        o.mesh=g;
+        // a sign at the split so the choice reads before you are on top of it
+        const sign=new THREE.Mesh(new THREE.BoxGeometry(120, 34, 8),
+          new THREE.MeshLambertMaterial({color:0x1a1033}));
+        placeAt(sign, o.cx, o.wallFrom-40, 74); courseGroup.add(sign);
+        const arrow=new THREE.Mesh(new THREE.ConeGeometry(15, 30, 3),
+          new THREE.MeshBasicMaterial({color:accent.getHex()}));
+        arrow.rotation.z = -o.risk*Math.PI/2; arrow.rotation.x = Math.PI/2;
+        placeAt(arrow, o.cx + o.risk*34, o.wallFrom-44, 74); courseGroup.add(arrow);
+
+      } else if(o.type==='gate'){
+        const g=new THREE.Group();
+        // solid between the doors, and out to each wall
+        const edges=[0, ...o.xs.slice().sort((a,b)=>a-b), TRACK_W];
+        for(let i=0;i<edges.length-1;i++){
+          let x0 = edges[i], x1 = edges[i+1];
+          if(i>0) x0 += o.gapW/2;
+          if(i<edges.length-2) x1 -= o.gapW/2;
+          const w = x1-x0; if(w<=4) continue;
+          const seg=new THREE.Mesh(new THREE.BoxGeometry(w, o.h, o.d),
+            new THREE.MeshLambertMaterial({color:currentMap.wall}));
+          seg.position.set(x0 + w/2 - TRACK_W/2, o.h/2, 0); seg.castShadow=true; g.add(seg);
+          registerFadeable(seg);
+          const top=new THREE.Mesh(new THREE.BoxGeometry(w+4, 7, o.d+4),
+            new THREE.MeshLambertMaterial({color:accent.getHex()}));
+          top.position.set(seg.position.x, o.h+3, 0); g.add(top);
+        }
+        placeAt(g, TRACK_W/2, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g;
+
+      } else if(o.type==='ring'){
+        const g=new THREE.Group();
+        const disc=new THREE.Mesh(new THREE.CylinderGeometry(1,1,16,52),
+          new THREE.MeshLambertMaterial({color:currentMap.ground}));
+        disc.position.y=-8; disc.receiveShadow=true; g.add(disc);
+        // A flat annulus, not a second disc: the old lip was a full cylinder
+        // slightly wider than the floor, so it painted the whole arena accent.
+        // Each band scales itself. Scaling the parent instead applies before the
+        // child's own -90 degree rotation, which squashed every ring into a line.
+        const bands = [];
+        const rim=new THREE.Mesh(new THREE.RingGeometry(0.955, 1.0, 64),
+          new THREE.MeshBasicMaterial({color:currentMap.accent, side:THREE.DoubleSide}));
+        rim.rotation.x = -Math.PI/2; rim.position.y = 1.4; g.add(rim); bands.push(rim);
+        // inner bands, so you can read how much room is left as it closes
+        for(const [a,b] of [[0.32,0.36],[0.56,0.60],[0.80,0.84]]){
+          const ring=new THREE.Mesh(new THREE.RingGeometry(a, b, 64),
+            new THREE.MeshBasicMaterial({color:currentMap.groundAlt, side:THREE.DoubleSide}));
+          ring.rotation.x = -Math.PI/2; ring.position.y = 1.0; g.add(ring); bands.push(ring);
+        }
+        placeAt(g, o.cx, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g; o.disc=disc; o.lip=bands;
+
+      } else if(o.type==='disc'){
+        const g=new THREE.Group();
+        const top=new THREE.Mesh(new THREE.CylinderGeometry(o.r,o.r,18,60),
+          new THREE.MeshLambertMaterial({color:currentMap.ground}));
+        top.position.y=-9; top.receiveShadow=true; g.add(top);
+        // spokes, so you can actually see the thing turning under you
+        for(let i=0;i<8;i++){
+          const spoke=new THREE.Mesh(new THREE.BoxGeometry(o.r*0.98, 3, 26),
+            new THREE.MeshLambertMaterial({color:currentMap.groundAlt}));
+          spoke.position.set(Math.cos(i*Math.PI/4)*o.r/2, 0.6, Math.sin(i*Math.PI/4)*o.r/2);
+          spoke.rotation.y = -i*Math.PI/4; g.add(spoke);
+        }
+        const rim=new THREE.Mesh(new THREE.TorusGeometry(o.r, 9, 8, 60),
+          new THREE.MeshLambertMaterial({color:currentMap.accent}));
+        rim.rotation.x=Math.PI/2; rim.position.y=2; g.add(rim);
+        placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g;
 
@@ -393,6 +480,14 @@
         const x = moverX(o,t);
         o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
         o._px = x;
+      } else if(o.type==='ring'){
+        // the ring waits a beat, then closes for the rest of the round
+        if(o.wait > 0) o.wait -= dt;
+        else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
+        if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
+      } else if(o.type==='disc'){
+        o.ang = (o.ang||0) + o.speed*dt;
+        if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
       } else if(o.type==='crumble'){
         for(const sl of o.slabs){
           if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
@@ -572,7 +667,7 @@
     const inPit=obstacles.find(o=>o.type==='pit'&&r.y>o.yStart&&r.y<o.yEnd);
     const field=obstacles.find(o=>o.type==='tilefield'&&r.y>o.yStart&&r.y<o.yEnd);
     const hf=obstacles.find(o=>o.type==='hexfield'&&r.y>o.yStart&&r.y<o.yEnd);
-    if(!inNarrow){ if(r.x<RADIUS+4){ r.x=RADIUS+4; r.vx=Math.abs(r.vx)*0.3; } if(r.x>TRACK_W-RADIUS-4){ r.x=TRACK_W-RADIUS-4; r.vx=-Math.abs(r.vx)*0.3; } }
+    if(!inNarrow && !arenaMode()){ if(r.x<RADIUS+4){ r.x=RADIUS+4; r.vx=Math.abs(r.vx)*0.3; } if(r.x>TRACK_W-RADIUS-4){ r.x=TRACK_W-RADIUS-4; r.vx=-Math.abs(r.vx)*0.3; } }
 
     // ---- ramps: raise the floor, then launch you off the lip ----
     const ramp = obstacles.find(o=>o.type==='ramp' && r.y>=o.yStart && r.y<=o.yEnd && Math.abs(r.x-o.cx)<o.width/2);
@@ -642,6 +737,32 @@
       r.floorH = 0; r.onCrumble = null;
     }
 
+    // ---- the fork divider: once you have picked a side you are on it ----
+    const fk = obstacles.find(o=>o.type==='fork' && r.y>=o.wallFrom-RADIUS && r.y<=o.yEnd);
+    if(fk && r.h < 44){
+      const dx = r.x - fk.cx, minD = 8 + RADIUS;
+      if(Math.abs(dx) < minD){
+        const sgn = Math.sign(dx) || (Math.sign(r.vx) || 1);
+        r.x = fk.cx + sgn*minD;
+        if(sgn*r.vx < 0){ r.vx = 0; r.squash = Math.max(r.squash, 0.3); }
+      }
+    }
+
+    // ---- the gate: two doors, sixteen racers, and a queue ----
+    const gt = obstacles.find(o=>o.type==='gate' && Math.abs(r.y-o.y) < o.d/2 + RADIUS);
+    if(gt && r.h < gt.h){
+      const through = gt.xs.some(gx => Math.abs(r.x-gx) < gt.gapW/2 - RADIUS*0.35);
+      if(!through){
+        const side = Math.sign(r.y - gt.y) || -1;
+        r.y = gt.y + side*(gt.d/2 + RADIUS);
+        if(side*r.vy < 0){ r.vy = 0; r.squash = Math.max(r.squash, 0.3); }
+        // slide toward the nearer door rather than standing there pressing into it
+        let best = gt.xs[0];
+        for(const gx of gt.xs) if(Math.abs(gx-r.x) < Math.abs(best-r.x)) best = gx;
+        r.vx += Math.sign(best - r.x)*0.34;
+      }
+    }
+
     // ---- ground hazards (only when on the ground, and only at ground level) ----
     if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
@@ -658,6 +779,16 @@
         const grace = raceTime < (r.tileGraceUntil||-1);
         if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
         if(tl && !tl.gone){ tl.touched=true; tl.fuse=field.fuseTime; }
+      }
+      const ring = obstacles.find(o=>o.type==='ring');
+      if(ring && Math.hypot(r.x-ring.cx, r.y-ring.y) > ring.r){ fallDown(r); return; }
+      const disc = obstacles.find(o=>o.type==='disc');
+      if(disc){
+        const dx=r.x-disc.cx, dy=r.y-disc.y, dd=Math.hypot(dx,dy);
+        if(dd > disc.r){ fallDown(r); return; }
+        // the floor is turning: it carries you round with it
+        const w = disc.speed;
+        r.x += -dy*w*(1/60); r.y += dx*w*(1/60);
       }
       if(hf){
         const grace = raceTime < (r.tileGraceUntil||-1);
@@ -731,10 +862,13 @@
       } else if(o.type==='laserbar'){
         const by=laserY(o,t);
         if(Math.abs(r.y-by) < 12 + RADIUS*0.60){
-          // while diving you are only about half as tall
-          const top = r.h + (r.diveT>0 ? 18 : 34);
+          // Measured from the surface underfoot, not from the racer's own h.
+          // Standing on a shortcut lane or a platform put you visibly above a
+          // low beam and it still cut you down.
+          const foot = (r.floorH||0) + r.h;
+          const top = foot + (r.diveT>0 ? 18 : 33);   // diving you are half as tall
           const bandLo=o.h-5, bandHi=o.h+5;
-          if(r.h < bandHi && top > bandLo){
+          if(foot < bandHi && top > bandLo){
             const side=Math.sign(r.y-by)||-1;
             r.y = by + side*(9+RADIUS*0.45);
             r.vy = side*Math.abs(r.vy)*0.4 - (side<0?1.5:0);
@@ -814,8 +948,9 @@
         }
 
       } else if(o.type==='spinlaser'){
-        const top = r.h + (r.diveT>0?18:34);
-        if(top > o.h-6 && r.h < o.h+6){
+        const foot = (r.floorH||0) + r.h;
+        const top = foot + (r.diveT>0?18:33);
+        if(top > o.h-6 && foot < o.h+6){
           const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
           if(dist > 14 && dist < o.len){
             const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;

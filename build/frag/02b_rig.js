@@ -9,18 +9,18 @@
   // physics (RADIUS = 17) is untouched.
   const RIG = {
     topY:16.2, bottomY:-9.6, maxR:11.8,
-    faceY:8.6, faceZ:7.6, faceR:6.2,
+    faceY:8.4, faceZ:7.6, faceR:6.9,
     hipY:-9.2, legLen:5.6, legR:2.7, legX:4.5,
-    footR:3.6, footY:-14.8,
-    shoulderY:7.4, shoulderX:9.8, armLen:6.6, armR:2.3,
+    footR:3.9, footY:-14.8,
+    shoulderY:6.4, shoulderX:9.6, armLen:6.0, armR:2.3,
     hatScale:0.84
   };
 
   // Profile of the bean, bottom to top. x is radius, y is height.
   const BEAN_PROFILE = [
-    [0.0, -9.6], [3.4, -9.5], [6.4, -8.9], [9.0, -7.4], [10.8, -5.0],
-    [11.7, -1.5], [11.8, 2.0], [11.4, 5.5], [10.4, 8.8], [8.8, 11.6],
-    [6.6, 13.9], [3.8, 15.5], [0.0, 16.2]
+    [0.0, -10.2], [3.6, -10.1], [6.9, -9.4], [9.3, -7.7], [10.9, -5.0],
+    [11.5, -1.6], [11.6, 2.0], [11.5, 5.6], [11.0, 8.8], [10.0, 11.4],
+    [8.3, 13.5], [5.9, 15.2], [3.2, 16.0], [0.0, 16.2]
   ];
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
@@ -136,13 +136,13 @@
     const eyes = opts.eyes||'round';
     const pupils=[], scleras=[];
     const ez = RIG.faceZ + 1.5;
-    [-2.6, 2.6].forEach((x,i)=>{
+    [-2.9, 2.9].forEach((x,i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
-      const slot = new THREE.Mesh(new THREE.SphereGeometry(1.9, 10, 8),
+      const slot = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8),
         new THREE.MeshBasicMaterial({color:0xfdfdff}));
       slot.position.set(x, 0.5, ez-0.3); slot.scale.set(1,1,0.3); eyeGroup.add(slot); scleras.push(slot);
 
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.45, 12, 10), darkMat);
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.78, 12, 10), darkMat);
       dot.position.set(x, 0.5, ez); dot.scale.set(1, 1.32, 0.45);
       eyeGroup.add(dot); pupils.push(dot);
 

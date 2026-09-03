@@ -37,6 +37,9 @@
                                         ||o.type==='mover'||o.type==='crumble')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
+    // Closing Circle and Carousel are a platform surrounded by nothing. Laying
+    // the usual corridor under them would just floor the whole arena.
+    const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin';
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
     const wallMat = new THREE.MeshLambertMaterial({color:currentMap.wall});
     const wallTopMat = new THREE.MeshLambertMaterial({color:currentMap.wallTop});
@@ -90,6 +93,8 @@
       const cap = ribbonStrip(z0, z1, s=>[toWorld(xPos-5,s,31), toWorld(xPos+5,s,31)]);
       const cm = new THREE.Mesh(cap, wallTopMat); cm.material.side=THREE.DoubleSide; courseGroup.add(cm);
     }
+
+    if(arenaOnly){ buildMinigameMeshes(); buildWaveMeshes(); resetWaves(); resetEvents(); return; }
 
     for(const o of specials){
       if(o.yStart>cursor){ addGround(0,TRACK_W,cursor,o.yStart,false); addWall(0,cursor,o.yStart); addWall(TRACK_W,cursor,o.yStart); }

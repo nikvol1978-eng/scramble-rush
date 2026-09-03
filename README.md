@@ -9,7 +9,8 @@ Each version is one self-contained HTML file.
 |---|---|---|
 | `scramble-rush-13.0.html` | 13.0 | Impact physics, slipstream, knockout minigames, 7 shaped maps, 28 badges |
 | `scramble-rush-14.0.html` | 14.0 | Live shop preview, smart camera, shortcut lanes, spectator mode |
-| `scramble-rush-15.0.html` | **15.0 (current)** | Moving platforms, crumbling bridges, swinging logs, two new maps, map events |
+| `scramble-rush-15.0.html` | 15.0 | Moving platforms, crumbling bridges, swinging logs, two new maps, map events |
+| `scramble-rush-16.0.html` | **16.0 (current)** | Chase camera, friendly collisions, laser fixes, locker screen, forks and gates, two new rounds |
 | `scramble-rush-12.0.html` | 12.0 | Path-based courses: Cannon Climb climbs, Super Slide descends |
 | `scramble-rush-11.0.html` | 11.0 | Five new obstacle types, four new maps, Laser Tracer, rarity-graded character grid |
 | `scramble-rush-10.0.html` | 10.0 | Free-orbit camera with mouse look, 65 skins, daily spin wheel |
@@ -28,6 +29,7 @@ npm run dev
 - v13: http://localhost:5173/scramble-rush-13.0.html
 - v14: http://localhost:5173/scramble-rush-14.0.html
 - v15: http://localhost:5173/scramble-rush-15.0.html
+- v16: http://localhost:5173/scramble-rush-16.0.html
 - v12: http://localhost:5173/scramble-rush-12.0.html
 - v11: http://localhost:5173/scramble-rush-11.0.html
 - v10: http://localhost:5173/scramble-rush-10.0.html

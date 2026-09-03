@@ -2,7 +2,8 @@
     const cx=TRACK_W/2;
     const hard = n>=2;
     const spd  = n===1?1.0 : n===2?1.22 : 1.42;
-    const total = n===1?9500 : n===2?8000 : 6600;
+    // A map whose whole mechanic is losing ground needs less ground to lose.
+    const total = Math.round((n===1?9500 : n===2?8000 : 6600) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
     const obs=[]; let cursor=380; let last='';
     const LANES=[-300,-150,0,150,300];
@@ -25,6 +26,32 @@
                 fuseTime: hard?0.85:1.1, respawnTime: hard?5.2:4.5});
       // survival: fence them into the field, and put the line out of reach
       arenaEnd = yEnd-60; trackLength = yEnd+4000;
+      return obs;
+    }
+
+    // ---- CLOSING CIRCLE: the floor is a disc, and it never stops shrinking ----
+    if(mode==='shrink'){
+      // Centred over the start line: everyone spawns at y=-60, so an arena
+      // further up the course would eliminate the entire field on tick one.
+      const yMid = 640, r0 = 940;
+      obs.push({type:'ring', cx, y:yMid, y0:yMid-r0-200, y1:yMid+r0+200,
+                // rMin has to be smaller than the area the *target* survivor
+                // count needs, not just smaller than sixteen. At r=62 thirteen
+                // racers still fitted and the round stalled above its own cut.
+                r:r0, r0, rMin:34, shrink: hard? 42 : 34, wait: 2.5});
+      arenaEnd = yMid + r0 - 40; trackLength = yMid + r0 + 4000;
+      return obs;
+    }
+
+    // ---- CAROUSEL: one turning disc, and arms sweeping you toward the edge ----
+    if(mode==='spin'){
+      const yMid = 560, rad = 840;
+      obs.push({type:'disc', cx, y:yMid, y0:yMid-rad-200, y1:yMid+rad-0+200,
+                r:rad, speed: (hard?0.42:0.32)*(Math.random()<0.5?-1:1)});
+      obs.push({type:'spinlaser', y:yMid, cx, arms: 3, len: rad*0.92,
+                speed: rand(0.30,0.46)*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                h:16, y0:yMid-rad-100, y1:yMid+rad+100});
+      arenaEnd = yMid + rad - 40; trackLength = yMid + rad + 4000;
       return obs;
     }
 
@@ -68,7 +95,7 @@
           h: low ? 12 : 32,                       // low = jump it, high = dive under it
           speed: rand(0.8,1.5)*spd*(Math.random()<0.5?-1:1),
           phase: rand(0,6.28), span: rand(180,300),
-          y0:z-40, y1:z+40});
+          y0:z-360, y1:z+360});
         z += rand(210,300);
       }
       obs.push(...rowsOut);
@@ -233,6 +260,33 @@
         obs.push({type:'ramp', yStart, yEnd, y0:yStart, y1:yEnd+90,
                   height: rand(30,52), width: rand(240,400), cx: cx+rand(-140,140)});
         cursor=yEnd+150;
+      } else if(type==='fork'){
+        // The track splits and a wall makes you commit. One side is a raised
+        // catwalk that spits you out at speed; the other is flat and safe, but
+        // there is furniture in the way.
+        const len = rand(640, 820);
+        const yStart = cursor+gap+110, yEnd = yStart+len;
+        const risk = Math.random()<0.5 ? -1 : 1;
+        obs.push({type:'fork', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-40, y1:yEnd+40,
+                  cx, risk, wallFrom: yStart+130});
+        obs.push({type:'shortcut', yStart, yEnd:yEnd-40, y0:yStart-40, y1:yEnd+120,
+                  cx: cx + risk*(TRACK_W/4), w: rand(112,132),
+                  h:46, rampLen:170, boost: rand(6.4,7.4)});
+        for(let i=0;i<3;i++){
+          const py = yStart + len*(0.30+i*0.22);
+          obs.push({type:'pillars', y:py, y0:py-70, y1:py+70,
+                    items:[{x: cx - risk*(TRACK_W/4) + rand(-80,80), r:rand(32,42)}]});
+        }
+        cursor = yEnd+160;
+      } else if(type==='gate'){
+        // A wall with two doors in it. Sixteen racers, two doors: the jam is
+        // the obstacle.
+        const y = cursor+gap+100;
+        const gapW = hard? 100 : 122;
+        const spread = rand(230,300);
+        const xs = [cx - spread/2 + rand(-24,24), cx + spread/2 + rand(-24,24)];
+        obs.push({type:'gate', y, y0:y-90, y1:y+90, d:34, gapW, xs, h:62});
+        cursor = y+150;
       } else if(type==='mover'){
         // A gap with no floor, crossed by a platform sliding side to side. You
         // have to time getting on, and it carries you while you stand on it.
@@ -336,7 +390,10 @@
         const low=Math.random()<0.6;
         obs.push({type:'laserbar', y, low, h: low?12:32,
                   speed: rand(0.8,1.5)*spd*(Math.random()<0.5?-1:1),
-                  phase: rand(0,6.28), span: rand(180,300), y0:y-40, y1:y+40});
+                  // The window has to cover the whole sweep. At y+-40 the beam
+                  // travelled 300 units outside its own hitbox, so it swept
+                  // straight through you without touching.
+                  phase: rand(0,6.28), span: rand(180,300), y0:y-360, y1:y+360});
         cursor=y+90;
       }
     }

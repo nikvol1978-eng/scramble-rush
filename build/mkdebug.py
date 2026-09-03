@@ -9,16 +9,18 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 15
+VERSION = 16
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
 
 s = io.open(SRC, encoding="utf-8").read()
 
-old = "      currentMap = (Math.random()<chance) ? pick(MINIGAMES) : pick(MAPS);"
-new = ("      currentMap = window.__forceMap ? [...MAPS,...MINIGAMES].find(x=>x.key===window.__forceMap)\n"
-       "        : ((Math.random()<chance) ? pick(MINIGAMES) : pick(MAPS));")
+old = "      const finals = MINIGAMES.filter(m=>m.final);"
+new = ("      if(window.__forceMap){ currentMap = [...MAPS,...MINIGAMES].find(x=>x.key===window.__forceMap);\n"
+       "                             if(currentMap) currentMap.__forced = true; }\n"
+       "      else if(currentMap) currentMap.__forced = false;\n"
+       "      const finals = MINIGAMES.filter(m=>m.final);")
 assert s.count(old) == 1, "map-pick anchor: %d" % s.count(old)
 s = s.replace(old, new)
 
@@ -82,8 +84,14 @@ hook = """
       y:Math.round(o.y), items:o.items.map(i=>({y:Math.round(i.y), cool:+(i.cool===undefined?-999:i.cool).toFixed(2),
         interval:+(i.interval===undefined?-999:i.interval).toFixed(2), side:i.side, speed:Math.round(i.speed||-999)}))})),
     stumbling:()=>racers.filter(r=>r.stumbleT>0).length,
+    cam:()=>{ const p=racers.find(r=>r.isPlayer); const w=toWorld(p.x,p.y,(p.floorH||0)+p.h+RADIUS); camera.updateMatrixWorld(true); const v=new THREE.Vector3(w.x,w.y,w.z).project(camera); return { pos:[+camera.position.x.toFixed(1),+camera.position.y.toFixed(1),+camera.position.z.toFixed(1)], aspect:camera.aspect, fov:camera.fov, reach:+camReach.toFixed(1), zoom:+camZoom.toFixed(2), pivot:[+camPos.x.toFixed(1),+camPos.y.toFixed(1),+camPos.z.toFixed(1)], ndc:[+v.x.toFixed(3),+v.y.toFixed(3)] }; },
     fadeMin:()=>fadeables.length? +Math.min(...fadeables.map(m=>m.material.opacity)).toFixed(3) : null,
-    obsAt:(ty)=>obstacles.filter(o=>o.type===ty).map(o=>({y:Math.round(o.y), y0:Math.round(o.y0), y1:Math.round(o.y1)})),
+    obsAt:(ty)=>obstacles.filter(o=>o.type===ty).map(o=>({y:Math.round(o.y), y0:Math.round(o.y0), y1:Math.round(o.y1), r:o.r!==undefined?Math.round(o.r):null})),
+    alive:()=>racers.filter(r=>!r.lavaOut).length,
+    spread:()=>{ const a=racers.filter(r=>!r.lavaOut); const ring=obstacles.find(o=>o.type==='ring');
+      if(!ring||!a.length) return null;
+      const d=a.map(r=>Math.hypot(r.x-ring.cx, r.y-ring.y)).sort((x,y)=>x-y);
+      return { ringR:Math.round(ring.r), inside:d.filter(x=>x<=ring.r).length, furthest:Math.round(d[d.length-1]) }; },
     arena:()=>({ arenaEnd, state, over: racers.filter(r=>r.y>arenaEnd+5).map(r=>({ n:r.isPlayer?'YOU':r.name, over:+(r.y-arenaEnd).toFixed(1), out:!!r.lavaOut, fin:!!r.finished, fall:!!r.falling, vy:+r.vy.toFixed(2) })) }),
     knockOut:()=>{ const p=racers.find(r=>r.isPlayer); p.lavaOut=true; p.lavaCatchY=p.y; updateHud(); return racers.filter(r=>!r.lavaOut).length; },
     obsTypes:()=>{ const h={}; for(const o of obstacles) h[o.type]=(h[o.type]||0)+1; return h; },

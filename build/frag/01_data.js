@@ -2,7 +2,7 @@
     keys:{ forward:'w', back:'s', left:'a', right:'d', jump:' ', dive:'shift' },
     camDist:1.0, botCount:15, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
-    mouseLook:true, autoCentre:false
+    mouseLook:true, autoCentre:true
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
@@ -325,7 +325,7 @@
   // new cannon / bumper / pendulum / boost / spinlaser pieces.
   const MAPS = [
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
-      obstacles:['pillars','hammer','pit','ramp','bumper','shortcut','crumble'] },
+      obstacles:['pillars','hammer','pit','ramp','fork','gate','crumble'] },
 
     { key:'honey', name:'Honey Hive', tip:'The hive bounces you about — use a bumper to line up the next gap.', ground:'#ffc94a', groundAlt:'#f0a92b', wall:'#6b4310', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffe7a8', accent:'#ffb300',
       path:'rolling', obstacles:['bumper','pendulum','ramp','narrow','bumper'] },
@@ -337,13 +337,13 @@
       path:'slide', obstacles:['boost','narrow','boost','ramp','pillars'] },
 
     { key:'neon', name:'Neon Nightrun', tip:'Jump a beat early on spinning bars — it is harder to judge in the dark.', ground:'#2b2140', groundAlt:'#241a37', wall:'#1a1033', wallTop:'#23e6c9', skyTop:'#1a0b2e', skyMid:'#3d1a5b', skyBot:'#ff4fa3', accent:'#23e6c9',
-      obstacles:['spinbar','pusher','narrow','beam','pendulum','shortcut'] },
+      obstacles:['spinbar','pusher','gate','beam','pendulum','fork'] },
 
     { key:'candy', name:'Candy Canyon', tip:'Diving through a gap keeps your momentum — better than stopping to line it up.', ground:'#ffc2e2', groundAlt:'#ff9fd1', wall:'#7c3f7a', wallTop:'#60a5fa', skyTop:'#ffe1f2', skyMid:'#ff9fd1', skyBot:'#c084fc', accent:'#c084fc',
-      path:'descent', obstacles:['pillars','pit','ramp','roller','bumper'] },
+      path:'descent', obstacles:['pillars','fork','ramp','roller','gate'] },
 
     { key:'bumperb', name:'Bumper Bash', tip:'Nothing here kills you — it just throws you. Use the bounces.', ground:'#3aa8e0', groundAlt:'#2b8fc4', wall:'#134e75', wallTop:'#ffd54f', skyTop:'#bfe9ff', skyMid:'#5ec2ee', skyBot:'#e8f7ff', accent:'#ff4fa3',
-      path:'winding', obstacles:['bumper','spinbar','pusher','bumper','roller'] },
+      path:'winding', obstacles:['bumper','spinbar','gate','fork','roller'] },
 
     { key:'frost', name:'Frostbite Peak', tip:'Ice keeps your momentum, and the cannons know it. Brake early.', ground:'#dff3ff', groundAlt:'#bfe4fb', wall:'#3b5f8a', wallTop:'#7ee8fa', skyTop:'#cfe9ff', skyMid:'#7fb6e6', skyBot:'#e8f6ff', accent:'#7ee8fa', slippery:true,
       path:'descent', obstacles:['cannon','narrow','pit','ramp','spinbar'] },
@@ -361,7 +361,7 @@
       path:'rolling', lowGrav:0.42, obstacles:['mover','pit','crumble','pillars','boost'] },
 
     { key:'beach', name:'Beach Break', tip:'Waves roll in on a beat and shove you back down the sand. Move between them.', ground:'#ffe9b8', groundAlt:'#f5d98f', wall:'#c99a52', wallTop:'#4dd0e1', skyTop:'#7fd7ff', skyMid:'#bfeaff', skyBot:'#ffe9b8', accent:'#4dd0e1',
-      path:'ascent', waves:true, obstacles:['bumper','ramp','narrow','pillars','mover'] }
+      path:'ascent', waves:true, lenScale:0.72, obstacles:['bumper','ramp','narrow','pillars','mover'] }
   ];
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
@@ -377,6 +377,10 @@
       ground:'#ffd9a0', groundAlt:'#ffc477', wall:'#8a4b1e', wallTop:'#ff5a4d', skyTop:'#ffd28c', skyMid:'#ff8a5c', skyBot:'#6d2f1f', accent:'#ff5a4d', isMinigame:true, mode:'blockdash' },
     { key:'hex', name:'Honey Drop', tip:'Every comb you touch is on borrowed time. Four layers, then the honey.',
       ground:'#ffc42e', groundAlt:'#eda520', wall:'#7a4a0d', wallTop:'#ffe07a', skyTop:'#bfe9ff', skyMid:'#7ec8f0', skyBot:'#ffdf8a', accent:'#ff9500', isMinigame:true, mode:'hex', knockout:true },
+    { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
+      ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true },
+    { key:'spin', name:'Carousel', tip:'The floor is turning under you. Run against it or you go over the edge.',
+      ground:'#fb7185', groundAlt:'#9f1239', wall:'#881337', wallTop:'#fde68a', skyTop:'#2a0713', skyMid:'#7f1d3a', skyBot:'#4c0519', accent:'#fde68a', isMinigame:true, mode:'spin', knockout:true, final:true },
     { key:'tracer', name:'Laser Tracer', tip:'The arms sweep low. Jump the pass — you cannot outrun a circle.',
       ground:'#4b5563', groundAlt:'#3f4753', wall:'#1f2937', wallTop:'#a3e635', skyTop:'#1f2937', skyMid:'#374151', skyBot:'#84cc16', accent:'#a3e635', isMinigame:true, mode:'tracer' },
     { key:'laser', name:'Laser Dodge', tip:'Low beams you jump. High beams you dive under. Read the colour, not the sound.',

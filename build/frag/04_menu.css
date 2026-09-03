@@ -61,10 +61,10 @@
     width:min(760px,100%);max-height:92vh;display:flex;flex-direction:column;
     padding:16px 18px;gap:12px;overflow:hidden;
   }
-  @media (min-width:980px){
-    /* give the character the left half of the screen and put the card beside it */
-    #profile{justify-content:flex-end;padding-right:4vw;}
-    .profWrap{width:min(660px,56vw);}
+  @media (min-width:861px){
+    /* locker layout: the tiles on the left, the character standing on the right */
+    #profile{align-items:flex-start;padding-left:3.5vw;}
+    .profWrap{width:min(700px,62vw);}
   }
   .profHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
   .profId{display:flex;align-items:center;gap:12px;min-width:0;}
@@ -269,20 +269,20 @@
 
   /* live preview badge, over the character while browsing the shop */
   .previewTag{
-    position:absolute;left:4vw;top:14vh;z-index:60;pointer-events:none;
+    position:absolute;right:4vw;top:16px;z-index:60;pointer-events:none;
     background:var(--line);color:var(--gold);font-weight:700;font-size:0.78rem;
     letter-spacing:0.6px;padding:7px 14px;border-radius:999px;border:3px solid var(--gold);
     box-shadow:0 4px 0 rgba(0,0,0,0.4);animation:coinIn .25s ease both;max-width:34vw;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  @media (max-width:979px){ .previewTag{ display:none; } }
+  @media (max-width:860px){ .previewTag{ display:none; } }
 
   /* The profile dims the scene, but the character has to stay legible: keep the
-     shade light over the left third where the model stands. */
-  @media (min-width:980px){
+     shade light over the right third, where the model now stands. */
+  @media (min-width:861px){
     #profile.shade{
-      background:radial-gradient(ellipse 46% 78% at 15% 54%,
-                 rgba(21,12,46,0.18), rgba(21,12,46,0.88) 68%) !important;
+      background:radial-gradient(ellipse 42% 80% at 82% 54%,
+                 rgba(21,12,46,0.10), rgba(21,12,46,0.90) 66%) !important;
     }
   }
 
@@ -327,3 +327,27 @@
   #eventBanner.evPulse{animation:evPop .45s ease both, evShake 1.1s ease-in-out .45s 3;}
   @keyframes evPop{ from{transform:translateX(-50%) scale(0.6);opacity:0;} to{transform:translateX(-50%) scale(1);opacity:1;} }
   @keyframes evShake{ 0%,100%{transform:translateX(-50%) rotate(0);} 25%{transform:translateX(-50%) rotate(-1.4deg);} 75%{transform:translateX(-50%) rotate(1.4deg);} }
+
+  /* ============ LOCKER ============ */
+  .lockerBody{ display:flex; gap:14px; align-items:flex-start; }
+  .lockerBody .shopGrid{ flex:1 1 auto; min-width:0; }
+  .lockerInfo{
+    flex:0 0 208px; align-self:flex-start; position:sticky; top:0; min-height:230px;
+    background:#221543; border:3px solid var(--line); border-radius:16px;
+    padding:12px; display:flex; flex-direction:column; gap:7px;
+  }
+  .liRarity{
+    align-self:flex-start; font-weight:700; font-size:0.66rem; letter-spacing:1.6px;
+    padding:3px 10px; border-radius:8px; border:2px solid var(--line);
+  }
+  .liName{ font-weight:700; font-size:1.12rem; color:var(--cream); line-height:1.1; }
+  .liDesc{ font-size:0.78rem; color:var(--cream); opacity:0.82; line-height:1.35; }
+  .liMeta{ font-size:0.74rem; color:var(--gold); font-weight:600; margin-top:auto; }
+  .lockerInfo .btn{ width:100%; }
+  .lockerInfo .equipped{
+    width:100%; font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.8rem;
+    padding:9px 0; border-radius:12px; border:3px solid var(--line);
+    background:var(--track); color:var(--line); opacity:0.75;
+  }
+  .shopCard.sel{ outline:4px solid var(--gold); outline-offset:2px; }
+  @media (max-width:860px){ .lockerInfo{ display:none; } }

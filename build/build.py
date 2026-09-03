@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 15                                  # single source of truth
+VERSION = 16                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -63,6 +63,11 @@ def sub(old, new, label, count=1):
     src = src.replace(old, new, count)
 
 # ---------------------------------------------------------------- title
+# a zero-height window makes aspect NaN, and every projected position with it
+sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
+    "  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
+    "resize guard")
+
 sub("<title>Scramble Rush 3D</title>",
     "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
@@ -271,6 +276,23 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
 sub("  function racerCollisions(){",
     frag("21_living.js") + "\n" + "  function racerCollisions(){",
     "living maps")
+
+# ------------------------------------------------------------- arena bot AI
+sub("  function updateBotAI(r,dt,t,f){",
+    "  function updateBotAI(r,dt,t,f){" + "\n" +
+    "    // In a closing arena there is no finish line to run at. Head for the" + "\n" +
+    "    // middle instead, with enough scatter that they do not stack up." + "\n" +
+    "    const arena = obstacles.find(o=>o.type==='ring'||o.type==='disc');" + "\n" +
+    "    if(arena){" + "\n" +
+    "      if(r.aiHome===undefined){ r.aiHome = rand(0.18,0.62); r.aiHomeA = rand(0,6.28); }" + "\n" +
+    "      const keep = (arena.type==='ring' ? arena.r : arena.r) * r.aiHome;" + "\n" +
+    "      const tx = arena.cx + Math.cos(r.aiHomeA)*keep, ty = arena.y + Math.sin(r.aiHomeA)*keep;" + "\n" +
+    "      const dx = tx-r.x, dy = ty-r.y, d = Math.hypot(dx,dy)||1;" + "\n" +
+    "      const control = r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.h>0?0.50:1;" + "\n" +
+    "      if(d > 26){ r.facing=Math.atan2(dy,dx); r.vx += dx/d*ACCEL*control*f; r.vy += dy/d*ACCEL*control*f; }" + "\n" +
+    "      return;" + "\n" +
+    "    }",
+    "arena bot ai")
 
 # ---------------------------------------------------------------- spectator
 sub("  function racerCollisions(){",
