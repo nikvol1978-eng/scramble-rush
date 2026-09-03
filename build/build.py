@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, sys
 
-VERSION = 18                                  # single source of truth
+VERSION = 19                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -316,6 +316,11 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
 sub("  function racerCollisions(){",
     frag("23_music.js") + "\n" + "  function racerCollisions(){",
     "music fragment")
+
+# the anti-stall runs every frame, plan or no plan
+sub("  function updateBotAI(r,dt,t,f){",
+    "  function updateBotAI(r,dt,t,f){" + chr(10) + "    botAntiStall(r,dt);",
+    "anti-stall hook")
 
 # ------------------------------------------------------------- bot plans
 sub("  function racerCollisions(){",

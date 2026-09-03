@@ -7,7 +7,63 @@
   // at. Five bots once stood behind a Sunny Sprint gate for a whole round.
   //
   // Returns true when it has taken charge, having set r.targetX and r.aiThrottle.
+  // Hard anti-stall, independent of any plan. The old stuck detector only
+  // counted while throttle > 0.5, so a bot in one of the cautious modes (0.45
+  // at a hazard, 0.15 under a cannon) could brake to line up, lose its speed to
+  // friction, and never accumulate a single frame of "stuck" -- which is how one
+  // stood still on Super Slide for 26.8 seconds.
+  // Where it is safe to stand, if anything nearby wants to drop you.
+  function safeLaneNear(r){
+    for(const o of obstacles){
+      if(o.yStart === undefined || r.y < o.yStart - 260 || r.y > o.yEnd + 60) continue;
+      if(o.type === 'narrow') return clamp(TRACK_W/2 + (o.offset||0), 40, TRACK_W-40);
+      if(o.type === 'gap') return clamp(r.x < o.cx ? o.cx - o.halfWidth - 70 : o.cx + o.halfWidth + 70, 40, TRACK_W-40);
+      if(o.type === 'pit' && o.platforms && o.platforms.length){
+        let best = null, bestD = 1e9;
+        for(const pl of o.platforms){
+          const px = platX(pl, raceTime), d = Math.abs(px - r.x);
+          if(d < bestD){ bestD = d; best = px; }
+        }
+        if(best !== null) return clamp(best, 40, TRACK_W-40);
+      }
+      if(o.type === 'crumble' && o.slabs){
+        let best = null, bestD = 1e9;
+        for(const sl of o.slabs){
+          if(sl.gone) continue;
+          const d = Math.abs(sl.x - r.x);
+          if(d < bestD){ bestD = d; best = sl.x; }
+        }
+        if(best !== null) return clamp(best, 40, TRACK_W-40);
+      }
+    }
+    return null;
+  }
+
+  function botAntiStall(r, dt){
+    if(r.escapeT > 0){ r.escapeT -= dt; return; }
+    if(Math.abs(r.vy) >= 0.3 || r.falling || r.lavaOut || r.finished
+       || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ r.deadT = 0; return; }
+    r.deadT = (r.deadT||0) + dt;
+    if(r.deadT < 2) return;
+    // Two seconds without going anywhere: jump, pick a fresh line, and throw
+    // away whatever plan put us here.
+    r.deadT = 0;
+    r.escapeT = 0.9;
+    // A new line, but not a suicidal one: a blind 200-unit sidestep next to a
+    // narrow channel is a guaranteed fall, then a respawn, then another stall.
+    // If there is a hole in front of us, escape along the line that survives it.
+    r.escapeX = safeLaneNear(r) ;
+    if(r.escapeX === null)
+      r.escapeX = clamp(r.x + (Math.random()<0.5?-1:1)*rand(110,240), 40, TRACK_W-40);
+    r.targetX = r.escapeX;
+    r.aiSafe = false; r.spotFalls = 0; r.aiObsFor = null;
+    r.aiDoor = undefined; r.aiFork = undefined; r.aiLane = undefined; r.aiDoorX = undefined;
+    if(r.h <= 0) doJump(r);
+  }
+
   function botPlan(r, o, dist, t, dt){
+    // an escape overrides every plan, including "stand still and wait"
+    if(r.escapeT > 0){ r.targetX = r.escapeX; r.aiThrottle = 1; return true; }
     if(!o) return false;
     const set = (x, thr)=>{ r.targetX = clamp(x, 40, TRACK_W-40); r.aiThrottle = thr===undefined?1:thr; return true; };
     const near = dist < 340;                       // close enough to commit to a line
@@ -104,6 +160,11 @@
         }
         return best === null ? false : set(best, 0.5);
       }
+
+      case 'gap':
+        // Two wide ways round: take whichever side you are already nearer.
+        const clear = 55 + (currentMap.slippery ? 50 : 0);
+        return set(r.x < o.cx ? o.cx - o.halfWidth - clear : o.cx + o.halfWidth + clear, 1);
 
       case 'boost':
         return set(o.cx, 1);                          // free speed, line up on it

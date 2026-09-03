@@ -69,6 +69,9 @@
 
       // A tumble runs its course in the air and only settles once you land, or
        // racers finish their cartwheel hovering.
+      // A tumble that ends in a hole never lands, and the airborne guard below
+      // kept re-extending it, so the racer stayed flagged as tumbling for good.
+      if(r.tumbleT>0 && (r.falling || r.lavaOut)){ r.tumbleT = 0; r.tumbleSpin = 0; }
       if(r.tumbleT>0){
         r.tumbleAng = (r.tumbleAng||0) + r.tumbleSpin*dt;
         if(r.h<=0.02) r.tumbleSpin *= Math.pow(0.12, dt);

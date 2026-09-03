@@ -28,7 +28,31 @@
     return p.mesh.group.position.y - RADIUS;
   }
 
+  // Everything a previous round can leave lying about. startRound rebuilds
+  // racers and obstacles but nothing else, so particles, coin toasts, in-flight
+  // cannonballs, the lava height and the arena fence all carried over -- which
+  // is why a full-suite number moved depending on what ran before it.
+  function wipeRoundState(){
+    try{ particles.length = 0; }catch(e){}
+    try{ coinPops.length = 0; renderCoinPops(0); }catch(e){}
+    try{ shots.length = 0; }catch(e){}
+    try{ boulders.length = 0; }catch(e){}
+    try{ waves.length = 0; }catch(e){}
+    try{ bannerTimer = 0; }catch(e){}
+    try{ lavaZ = 0; }catch(e){}
+    try{ arenaEnd = 0; }catch(e){}
+    try{ camShake = 0; }catch(e){}
+    try{ obsBoost = 0; mapEvent = null; hideEventBanner(); }catch(e){}
+    try{ stopMusic(); }catch(e){}
+    try{ leaveSpectate(); }catch(e){}
+    try{ resetLook(); }catch(e){}
+    try{ window.__dbg.hold('w', false); window.__dbg.hold('s', false);
+         window.__dbg.hold('a', false); window.__dbg.hold('d', false);
+         window.__dbg.hold(settings.keys.jump, false); }catch(e){}
+  }
+
   function begin(mapKey, round){
+    wipeRoundState();
     window.__forceMap = mapKey || null;
     ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
     startRound(round||1, null);
@@ -125,7 +149,7 @@
         // skip anywhere the course is meant to drop you
         const hazard = obstacles.some(o=>
           (o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'||
-           o.type==='mover'||o.type==='crumble') &&
+           o.type==='mover'||o.type==='crumble'||o.type==='gap') &&
           sy > o.yStart-120 && sy < o.yEnd+120);
         if(hazard) continue;
         p.y=sy; p.x=TRACK_W/2; p.h=0; p.vx=0; p.vy=0; p.falling=false; p.floorH=0;
@@ -1240,15 +1264,21 @@
                : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
   }
 
-  // ---------- +: the acceptance run -- hold forward, spam jump, on every map ----------
-  // This is the brief's own test. A player who only ever holds forward and mashes
-  // jump used to finish first or top-three on 8 of 13 race maps, and on six maps
-  // nobody in a field of sixteen fell even once. It runs every kept map with
-  // exactly that player and asks whether the round is a contest.
+  // ---------- +: the acceptance run, five seeds a map ----------
+  // The brief's own test. A player who only holds forward and mashes jump used
+  // to finish first or top-three on 8 of 13 race maps. Judged over five layouts
+  // per map and on medians, because a single unlucky course should not fail a
+  // build -- and a single lucky one should not pass it.
+  const ACCEPT_SEEDS = 5;
+  function median(xs){
+    const a = [...xs].sort((p,q)=>p-q);
+    return a.length % 2 ? a[(a.length-1)/2] : (a[a.length/2 - 1] + a[a.length/2])/2;
+  }
+
   function checkAccept(){
     const bad = [], report = {};
     const RACES = ['sunny','cannonc','slide','neon'];
-    const ROUNDS_ = ['lava','doors','tiles','shrink'];
+    const SURVIVE = ['lava','doors','tiles','shrink'];
 
     function playThrough(key){
       begin(key);
@@ -1256,16 +1286,14 @@
       window.__dbg.hold('w', true);
       let ticks = 0, ended = false, stillest = 0;
       const lastY = new Map(), stuckFor = new Map();
-      while(ticks < 60*70 && !ended){
-        // mash jump the way a new player does
-        window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);
+      while(ticks < 60*72 && !ended){
+        window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);   // mash it
         window.__dbg.tick(12); ticks += 12;
         ended = (state !== 'racing');
         for(const r of racers){
           if(r.isPlayer || r.finished || r.lavaOut) continue;
           const was = lastY.get(r) === undefined ? -1e9 : lastY.get(r);
-          const moved = r.y - was > 12;
-          const t2 = moved ? 0 : (stuckFor.get(r)||0) + 0.2;
+          const t2 = (r.y - was > 12) ? 0 : (stuckFor.get(r)||0) + 0.2;
           stuckFor.set(r, t2); lastY.set(r, r.y);
           if(t2 > stillest) stillest = t2;
         }
@@ -1278,8 +1306,7 @@
       return {
         secs: Math.round(ticks/60), limit,
         rank: sorted.findIndex(r=>r.isPlayer)+1,
-        myFalls: (me.fallCount||0) + (me.lavaOut?1:0),
-        myTumbles: me.__tumbles||0,
+        hurt: (me.fallCount||0) + (me.__tumbles||0) + (me.lavaOut?1:0),
         finished: bots.filter(b=>b.finished || b.y>=L).length,
         worstBotFalls: Math.max(...bots.map(b=>b.fallCount||0)),
         stillest: Math.round(stillest*10)/10
@@ -1287,23 +1314,34 @@
     }
 
     for(const key of RACES){
-      const r = playThrough(key);
-      report[key] = r.rank+'/'+racers.length+' in '+r.secs+'s, fell '+r.myFalls
-                    +', '+r.finished+' bots home, worst bot '+r.worstBotFalls+' falls';
-      if(r.rank === 1)        bad.push(key+': hold-forward player finished 1st');
-      if(r.myFalls + r.myTumbles < 2) bad.push(key+': player never got hurt ('+r.myFalls+' falls)');
-      if(r.finished < 10)     bad.push(key+': only '+r.finished+' bots finished');
-      if(r.worstBotFalls > 5) bad.push(key+': a bot fell '+r.worstBotFalls+' times');
-      if(r.stillest > 4)      bad.push(key+': a bot stood still for '+r.stillest+'s');
-    }
-    for(const key of ROUNDS_){
-      const r = playThrough(key);
-      report[key] = r.secs+'s of '+r.limit+'s';
-      if(r.secs < 30)        bad.push(key+': over in '+r.secs+'s');
-      if(r.secs > r.limit+6) bad.push(key+': ran past its own time limit ('+r.secs+'s)');
+      const runs = [];
+      for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key));
+      const hurtIn   = runs.filter(r=>r.hurt >= 2).length;
+      const medFalls = median(runs.map(r=>r.worstBotFalls));
+      const medHome  = median(runs.map(r=>r.finished));
+      const medStill = median(runs.map(r=>r.stillest));
+      const wonAny   = runs.filter(r=>r.rank === 1).length;
+      report[key] = 'hurt in '+hurtIn+'/'+ACCEPT_SEEDS+', worst-bot falls med '+medFalls
+                    +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' home, still '+medStill+'s';
+      if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+ACCEPT_SEEDS);
+      if(hurtIn < 4)   bad.push(key+': player got through unhurt in '+(ACCEPT_SEEDS-hurtIn)+' of '+ACCEPT_SEEDS);
+      if(medFalls > 5) bad.push(key+': median worst-bot falls '+medFalls);
+      if(medHome < 10) bad.push(key+': median '+medHome+' bots home');
+      if(medStill > 4) bad.push(key+': a bot idled '+medStill+'s');
     }
 
-    return { name:'+ acceptance: a hold-forward player must not walk it', pass: bad.length===0,
+    for(const key of SURVIVE){
+      const runs = [];
+      for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key));
+      const medSecs = median(runs.map(r=>r.secs));
+      const limit = runs[0].limit;
+      report[key] = 'median '+medSecs+'s of '+limit+'s';
+      if(medSecs < 30)       bad.push(key+': median run only '+medSecs+'s');
+      if(medSecs > limit+6)  bad.push(key+': median run '+medSecs+'s, past its '+limit+'s limit');
+    }
+
+    return { name:'+ acceptance: five layouts a map, judged on medians',
+             pass: bad.length===0,
              detail: bad.length ? bad.join('; ') : JSON.stringify(report) };
   }
 
@@ -1357,9 +1395,10 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['4',check4],
         ['6',check6],['7',check7],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],
-        ['+',checkAccept]
+        ['I',()=>checkI(!!opts.full)]
       ];
+      // slow: five layouts a map, so only when asked for
+      if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);
       const results = [];
       for(const [id,fn] of all){
         if(only && !only.has(id)) continue;

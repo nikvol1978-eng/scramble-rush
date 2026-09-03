@@ -16,7 +16,7 @@ the version they shipped in.
 - [x] Obstacles that push, spin, launch and knock players about — cannons,
       pendulums, pinball bumpers, boost pads, rotating laser arms *(v11)*
 - [x] Warning animations before dangerous obstacles — cannon floor telegraph *(v13)*
-- [ ] Obstacles readable at a glance
+- [x] Obstacles readable at a glance — ground texture filtered, checks doubled *(v19)*
 
 ## Update 2 — Maps and variety
 
@@ -51,7 +51,7 @@ the version they shipped in.
 - [ ] Player ready system
 - [ ] Map voting before each round
 - [ ] Rematch without returning to the menu
-- [ ] Better bots
+- [x] Better bots — same acceleration as the player, plans for every obstacle *(v19)*
 
 ## Update 4 — Replayability
 
@@ -106,3 +106,4 @@ launch forward. The core game stays about movement and obstacles.
 | v16 | Chase camera, friendly player collisions, laser hitbox fixes, locker screen, forks, gates, Closing Circle, Carousel |
 | v17 | Ragdoll tumbles, second wind, catch-up draft, Gem Grab, cannonball chain reactions, per-map music |
 | v18 | Gradients drive movement: hills finally cost and pay |
+| v19 | Eight maps that work, Fall Guys movement, bots that actually race |

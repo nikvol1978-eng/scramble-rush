@@ -34,7 +34,7 @@
     clearGroup(courseGroup);
     clearFadeables();
     const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'
-                                        ||o.type==='mover'||o.type==='crumble')
+                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
@@ -98,6 +98,14 @@
 
     for(const o of specials){
       if(o.yStart>cursor){ addGround(0,TRACK_W,cursor,o.yStart,false); addWall(0,cursor,o.yStart); addWall(TRACK_W,cursor,o.yStart); }
+      if(o.type==='gap'){
+        addGround(0, o.cx-o.halfWidth, o.yStart, o.yEnd, false);
+        addGround(o.cx-o.halfWidth, o.cx+o.halfWidth, o.yStart, o.yEnd, true);
+        addGround(o.cx+o.halfWidth, TRACK_W, o.yStart, o.yEnd, false);
+        addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
+        cursor=o.yEnd;
+        continue;
+      }
       if(o.type==='mover' || o.type==='crumble'){
         // the drop these two are built over -- the platform and the slabs are
         // the only way across, and they are made in buildMinigameMeshes

@@ -217,10 +217,20 @@
     }
 
     // ---- NORMAL COURSE — each map draws from its own obstacle set ----
+    // One hazard is reserved before anything else is placed: a hole down the
+    // middle with both sides open. Hunting for a slot afterwards either found
+    // none (and a hold-forward player walked the map) or dropped it on top of a
+    // gate (and the field collected fifty falls).
+    const gapY = Math.round(total*0.42), gapLen = 280, gapPad = 170;
+    obs.push({type:'gap', yStart:gapY, yEnd:gapY+gapLen, y0:gapY, y1:gapY+gapLen, cx,
+              halfWidth: (hard? rand(112,132): rand(104,126)) * (currentMap.slippery ? 0.72 : 1)});
+
     const types = (currentMap.obstacles && currentMap.obstacles.length)
       ? currentMap.obstacles
       : ['pillars','hammer','spinbar','pit','narrow','pusher'];
     while(cursor < total-450){
+      // step over the reserved band rather than building into it
+      if(cursor > gapY-gapPad-240 && cursor < gapY+gapLen+gapPad) cursor = gapY+gapLen+gapPad;
       let type, guard=0;
       do{ type=pick(types); guard++; }while(guard<20 && (type===last || (type==='narrow'&&last==='pit') || (type==='pit'&&last==='narrow')));
       last=type;
@@ -422,20 +432,6 @@
     // Every race course needs at least two places you can actually fall off.
     // Left to the random draw, a course could come out with none, and then
     // holding forward is a guaranteed finish.
-    const holes = obs.filter(o=>o.type==='narrow'||o.type==='pit'||o.type==='crumble').length;
-    for(let k=holes; k<2; k++){
-      const y = total*(k===0 ? 0.38 : 0.68);
-      const clash = obs.some(o=>y < (o.y1===undefined?0:o.y1)+120 && y+300 > (o.y0===undefined?0:o.y0)-120);
-      const yStart = clash ? y + 340 : y;
-      const icy2 = currentMap.slippery ? 1.4 : 1;
-      const hw = (hard? rand(52,66): rand(60,78))*icy2;
-      // Off centre enough that holding straight is a gamble, not so far that
-      // the middle of the track is always over the drop -- fully offset,
-      // bots collected twenty falls a round on a bad layout.
-      obs.push({type:'narrow', yStart, yEnd:yStart+300, y0:yStart, y1:yStart+300,
-                halfWidth: hw,
-                offset: (hw*0.75 + 20) * (Math.random()<0.5?-1:1)});
-    }
     trackLength = cursor+300;
     obs.sort((a,b)=>a.y0-b.y0);
     return obs;

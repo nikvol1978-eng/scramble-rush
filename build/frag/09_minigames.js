@@ -820,8 +820,10 @@
         if(!onPlat){ fallDown(r); return; }
       }
       if(inNarrow){
-        const o=obstacles.find(o=>o.type==='narrow'&&r.y>o.yStart&&r.y<o.yEnd);
-        if(Math.abs(r.x-(TRACK_W/2+(o.offset||0)))>o.halfWidth+RADIUS-10){ fallDown(r); return; }
+        // inNarrow was measured before the gate block, which can shove r.y --
+        // so by the time we look the racer may no longer be in one.
+        const nb=obstacles.find(o=>o.type==='narrow'&&r.y>o.yStart&&r.y<o.yEnd);
+        if(nb && Math.abs(r.x-(TRACK_W/2+(nb.offset||0)))>nb.halfWidth+RADIUS-10){ fallDown(r); return; }
       }
       if(field){
         const tl=tileAt(field, r.x, r.y);
@@ -829,6 +831,8 @@
         if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
         if(tl && !tl.gone){ tl.touched=true; tl.fuse=field.fuseTime; }
       }
+      const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
+      if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }
       const gems = obstacles.find(o=>o.type==='gems');
       if(gems && r.h < 62){
         for(const g of gems.items){

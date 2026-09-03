@@ -9,10 +9,13 @@
 
   // Getting clobbered by something big should look like it. A tumble takes the
   // controls away, spins the racer end over end, and hands off to the get-up.
+  // Slippery maps hit differently: you cannot correct a stumble on ice, so the
+  // same force costs far more there. Ice maps scale it down on their own dial.
+  function hazardK(){ return (currentMap && currentMap.hazardScale) || 1; }
   function sendTumbling(r, force, dirX, dirY){
     if(r.invuln > 0 || r.falling || r.finished || r.lavaOut) return;
     r.__tumbles = (r.__tumbles||0) + 1;      // the acceptance run counts these
-    const f = clamp(force, 3, 14);
+    const f = clamp(force * hazardK(), 3, 14);
     r.tumbleT   = 620 + f*70;
     r.tumbleAng = r.tumbleAng || 0;
     r.tumbleSpin = (5.5 + f*0.55) * (Math.random()<0.5 ? -1 : 1);
