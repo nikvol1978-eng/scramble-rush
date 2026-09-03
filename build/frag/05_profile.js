@@ -236,7 +236,10 @@
   }
   function renderCoinPops(dt){
     const host=$('coinPops'); if(!host) return;
-    if(coinPops.length && host.children.length!==coinPops.length){
+    // Emptying coinPops used to skip the rebuild entirely -- the guard needs a
+    // non-empty array -- so the toast stayed up into the next map intro.
+    if(!coinPops.length){ if(host.children.length) host.innerHTML=''; return; }
+    if(host.children.length!==coinPops.length){
       host.innerHTML = coinPops.map(p=>`<div class="coinPop">+${fmtNum(p.n)}${p.why?`<span class="why">${p.why}</span>`:''}</div>`).join('');
     }
     for(const p of coinPops) p.t+=dt;

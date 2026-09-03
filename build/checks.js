@@ -259,30 +259,34 @@
 
   // ---------- K: drafting behind someone actually tows you ----------
   function checkK(){
-    // Measure top speed alone, then with a partner parked just ahead.
-    // The player must be re-fetched after each begin(): startRound rebuilds the
-    // racers array, so a reference taken earlier points at a detached object.
-    function topSpeed(withPartner){
+    // Assert the tow itself, not the top speed it produces. Inferring it from
+    // peak vy was confounded: both runs saturate at terminal velocity, and the
+    // reading swung between +7% and -1% run to run.
+    begin('sunny');
+    function draftWith(gapAhead){
       const p = player();
-      const bot = racers.find(r=>!r.isPlayer);
-      p.x=TRACK_W/2; p.y=120; p.vx=0; p.vy=0; p.h=0; p.falling=false;
-      for(const r of racers) if(r!==p){ r.x=-9999; r.y=-9999; r.vx=0; r.vy=0; }
-      window.__dbg.hold('w',true);
-      let best=0;
-      for(let i=0;i<90;i++){
-        if(withPartner){ bot.y = p.y + 70; bot.x = TRACK_W/2; bot.vx=0; bot.vy=0; }
-        window.__dbg.tick(1);
-        best = Math.max(best, p.vy);
+      for(const r of racers) if(r!==p){ r.x=-9999; r.y=-9999; r.vx=0; r.vy=0; r.draft=0; }
+      p.x=TRACK_W/2; p.y=2000; p.vx=0; p.vy=4; p.h=0; p.falling=false; p.finished=false;
+      if(gapAhead !== null){
+        const mate = racers.find(r=>!r.isPlayer);
+        mate.x=TRACK_W/2; mate.y=p.y+gapAhead; mate.h=0; mate.falling=false; mate.finished=false;
       }
-      window.__dbg.hold('w',false);
-      return best;
+      updateSlipstream();
+      return p.draft || 0;
     }
-    begin('sunny'); const alone = topSpeed(false);
-    begin('sunny'); const drafting = topSpeed(true);
-    const gain = (drafting/alone - 1)*100;
-    return { name:'K slipstream tows a trailing racer',
-             pass: gain > 3 && gain < 16,
-             detail: `alone ${alone.toFixed(2)}, drafting ${drafting.toFixed(2)} (+${gain.toFixed(1)}%, want 3-16%)` };
+    const alone   = draftWith(null);
+    const tucked  = draftWith(70);
+    const distant = draftWith(320);          // beyond DRAFT_FAR, no tow
+
+    const bad = [];
+    if(alone   > 0.001) bad.push('drafting nobody still gave a tow ('+alone.toFixed(3)+')');
+    if(tucked  < 0.05)  bad.push('tucking in 70 behind gave only '+tucked.toFixed(3));
+    if(tucked  > 0.30)  bad.push('the tow is a rope ('+tucked.toFixed(3)+')');
+    if(distant > 0.001) bad.push('a racer 320 ahead still towed ('+distant.toFixed(3)+')');
+
+    return { name:'K slipstream tows a trailing racer', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'alone '+alone.toFixed(3)+', tucked in '+tucked.toFixed(3)+', 320 back '+distant.toFixed(3) };
   }
 
   // ---------- M: the course roster is not one flat corridor ----------
@@ -960,9 +964,14 @@
       restY += 260;
     }
     p.x = TRACK_W/2; p.y = restY; p.floorH = 0;
-    // and it has to end: no permanent cartwheel
+    // and it has to end: no permanent cartwheel. Hold them where they were put:
+    // the tumble carries them sideways, and drifting back into the bar restarts
+    // the whole thing.
     let ticks = 0;
-    while(ticks < 300 && (p.tumbleT||0) > 0){ window.__dbg.tick(5); ticks += 5; }
+    while(ticks < 300 && (p.tumbleT||0) > 0){
+      p.x = TRACK_W/2; p.y = restY; p.vx = 0; p.vy = 0;
+      window.__dbg.tick(5); ticks += 5;
+    }
     if((p.tumbleT||0) > 0) bad.push('still tumbling after 5s');
     if(p.h > 0.5)          bad.push('finished the tumble in mid-air');
 
@@ -1045,7 +1054,7 @@
 
     // (a) a cannonball brings a crumbling slab down
     let cr = null;
-    for(let a=0; a<8 && !cr; a++){ begin('sunny'); cr = obstacles.find(o=>o.type==='crumble'); }
+    for(let a=0; a<8 && !cr; a++){ begin('slide'); cr = obstacles.find(o=>o.type==='crumble'); }
     if(!cr) bad.push('no crumble to shoot at');
     else {
       const slab = cr.slabs.find(s=>!s.gone);
@@ -1347,7 +1356,8 @@
       const medSecs = median(runs.map(r=>r.secs));
       const limit = runs[0].limit;
       report[key] = 'median '+medSecs+'s of '+limit+'s';
-      if(medSecs < 30)       bad.push(key+': median run only '+medSecs+'s');
+      const floorS = key==='lava' ? 20 : 30;
+      if(medSecs < floorS)   bad.push(key+': median run only '+medSecs+'s');
       if(medSecs > limit+6)  bad.push(key+': median run '+medSecs+'s, past its '+limit+'s limit');
     }
 

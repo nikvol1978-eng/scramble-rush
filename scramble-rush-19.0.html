@@ -1052,7 +1052,7 @@
   // new cannon / bumper / pendulum / boost / spinlaser pieces.
   const MAPS = [
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
-      obstacles:['pillars','hammer','pit','ramp','fork','gate','crumble','narrow'] },
+      obstacles:['pillars','hammer','pit','ramp','fork','gate','narrow','bumper'] },
 
     { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
       path:'climb', forcedGap:false, obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
@@ -1067,7 +1067,7 @@
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
     { key:'lava', name:'Lava Rise', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',
-      ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava', lenScale:1.7 },
+      ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava' },
     { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
     { key:'tiles', name:'Tile Trap', tip:'Tiles drop the moment you step off — but they do rebuild. Keep moving.',
@@ -1835,7 +1835,10 @@
     // A map whose whole mechanic is losing ground needs less ground to lose.
     const total = Math.round((n===1?7000 : n===2?6000 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
-    const obs=[]; let cursor=380; let last='';
+    // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
+    // crumbling bridge at y=560: anyone walking straight was stopped dead and
+    // the camera clipped into the void wall behind them.
+    const obs=[]; let cursor=640; let last='';
     const LANES=[-200,-100,0,100,200];
 
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
@@ -1854,8 +1857,9 @@
       // Tiles go fast but come back, so the floor never runs out entirely.
       obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
                 fuseTime: hard?1.9:2.2, respawnTime: hard?4.2:3.6});
-      // survival: fence them into the field, and put the line out of reach
-      arenaEnd = yEnd-60; trackLength = yEnd+4000;
+      // survival: fence them into the field, and put the line out of reach.
+      // A row and a half back from the last tiles, so the fence is never a ledge.
+      arenaEnd = yEnd-rowDepth*1.5; trackLength = yEnd+4000;
       return obs;
     }
 
@@ -3118,6 +3122,9 @@
   // A survival round cuts harder than a race and runs for a minimum time, or it
   // is over before anyone has understood what the map is.
   const KNOCKOUT_MIN_S = 40;      // a survival round has to last like one
+  // 8s of cushion caught only one of sixteen now that the bots run clean, and
+  // the ask was 4-6. At 4s a racer who stumbles twice is in trouble.
+  const CLEAN_PACE = 260, LAVA_MARGIN = 4;
   function knockoutTarget(total, raceKeep){
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
@@ -3171,7 +3178,10 @@
     boulders=[]; lasers=[]; shots=[];
     lavaZ = currentMap.mode==='lava' ? -320 : 0;
     timeLimit = n===1?60 : n===2?55 : 50;
-    lavaSpeed = currentMap.mode==='lava' ? trackLength/(timeLimit*0.8) : 0;
+    // Chase the pack, do not outrun it: a clean run finishes about eight
+    // seconds ahead of the lava. Tying this to the time limit meant a 60s
+    // limit against an 11,780-long course caught thirteen of sixteen.
+    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + LAVA_MARGIN) : 0;
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
     if(mp.role==='host' && mp.conns.length){
@@ -4247,7 +4257,10 @@
         const tl=tileAt(field, r.x, r.y);
         const grace = raceTime < (r.tileGraceUntil||-1);
         if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
-        if(tl && !tl.gone){ tl.touched=true; tl.fuse=field.fuseTime; }
+        // Arm it once. Re-arming every frame meant the countdown only ran
+        // after you stepped off, so standing still was safe anywhere on the
+        // field -- which is the opposite of the round.
+        if(tl && !tl.gone && !tl.touched){ tl.touched=true; tl.fuse=field.fuseTime; }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
       if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }
@@ -5842,7 +5855,10 @@
   }
   function renderCoinPops(dt){
     const host=$('coinPops'); if(!host) return;
-    if(coinPops.length && host.children.length!==coinPops.length){
+    // Emptying coinPops used to skip the rebuild entirely -- the guard needs a
+    // non-empty array -- so the toast stayed up into the next map intro.
+    if(!coinPops.length){ if(host.children.length) host.innerHTML=''; return; }
+    if(host.children.length!==coinPops.length){
       host.innerHTML = coinPops.map(p=>`<div class="coinPop">+${fmtNum(p.n)}${p.why?`<span class="why">${p.why}</span>`:''}</div>`).join('');
     }
     for(const p of coinPops) p.t+=dt;

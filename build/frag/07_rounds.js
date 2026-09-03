@@ -19,6 +19,9 @@
   // A survival round cuts harder than a race and runs for a minimum time, or it
   // is over before anyone has understood what the map is.
   const KNOCKOUT_MIN_S = 40;      // a survival round has to last like one
+  // 8s of cushion caught only one of sixteen now that the bots run clean, and
+  // the ask was 4-6. At 4s a racer who stumbles twice is in trouble.
+  const CLEAN_PACE = 260, LAVA_MARGIN = 4;
   function knockoutTarget(total, raceKeep){
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
@@ -72,7 +75,10 @@
     boulders=[]; lasers=[]; shots=[];
     lavaZ = currentMap.mode==='lava' ? -320 : 0;
     timeLimit = n===1?60 : n===2?55 : 50;
-    lavaSpeed = currentMap.mode==='lava' ? trackLength/(timeLimit*0.8) : 0;
+    // Chase the pack, do not outrun it: a clean run finishes about eight
+    // seconds ahead of the lava. Tying this to the time limit meant a 60s
+    // limit against an 11,780-long course caught thirteen of sixteen.
+    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + LAVA_MARGIN) : 0;
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
     if(mp.role==='host' && mp.conns.length){

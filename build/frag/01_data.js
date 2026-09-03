@@ -327,7 +327,7 @@
   // new cannon / bumper / pendulum / boost / spinlaser pieces.
   const MAPS = [
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
-      obstacles:['pillars','hammer','pit','ramp','fork','gate','crumble','narrow'] },
+      obstacles:['pillars','hammer','pit','ramp','fork','gate','narrow','bumper'] },
 
     { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
       path:'climb', forcedGap:false, obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
@@ -342,7 +342,7 @@
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
     { key:'lava', name:'Lava Rise', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',
-      ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava', lenScale:1.7 },
+      ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava' },
     { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
     { key:'tiles', name:'Tile Trap', tip:'Tiles drop the moment you step off — but they do rebuild. Keep moving.',

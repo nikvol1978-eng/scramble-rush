@@ -829,7 +829,10 @@
         const tl=tileAt(field, r.x, r.y);
         const grace = raceTime < (r.tileGraceUntil||-1);
         if(!grace && (!tl || (tl.gone && tl.drop>0.12))){ fallDown(r); return; }
-        if(tl && !tl.gone){ tl.touched=true; tl.fuse=field.fuseTime; }
+        // Arm it once. Re-arming every frame meant the countdown only ran
+        // after you stepped off, so standing still was safe anywhere on the
+        // field -- which is the opposite of the round.
+        if(tl && !tl.gone && !tl.touched){ tl.touched=true; tl.fuse=field.fuseTime; }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
       if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }

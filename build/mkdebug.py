@@ -84,6 +84,7 @@ hook = """
       y:Math.round(o.y), items:o.items.map(i=>({y:Math.round(i.y), cool:+(i.cool===undefined?-999:i.cool).toFixed(2),
         interval:+(i.interval===undefined?-999:i.interval).toFixed(2), side:i.side, speed:Math.round(i.speed||-999)}))})),
     stumbling:()=>racers.filter(r=>r.stumbleT>0).length,
+    tileUnder:()=>{ const f=obstacles.find(o=>o.type==='tilefield'); const p=racers.find(r=>r.isPlayer); if(!f) return 'no field'; const tl=tileAt(f,p.x,p.y); return { y:Math.round(p.y), h:+p.h.toFixed(2), floor:Math.round(p.floorH||0), inField:(p.y>f.yStart&&p.y<f.yEnd), yStart:f.yStart, yEnd:f.yEnd, tile: tl? {r:tl.r,c:tl.c,touched:tl.touched,fuse:+tl.fuse.toFixed(2),gone:tl.gone,drop:+tl.drop.toFixed(2)} : null, grace:+(p.tileGraceUntil||-1).toFixed(1), raceTime:+raceTime.toFixed(1) }; },
     noGap:(v)=>{ for(const m of MAPS) m.forcedGap = v ? false : undefined; return MAPS.map(m=>m.key+':'+(m.forcedGap===false?'off':'on')).join(','); },
     cam:()=>{ const p=racers.find(r=>r.isPlayer); const w=toWorld(p.x,p.y,(p.floorH||0)+p.h+RADIUS); camera.updateMatrixWorld(true); const v=new THREE.Vector3(w.x,w.y,w.z).project(camera); return { pos:[+camera.position.x.toFixed(1),+camera.position.y.toFixed(1),+camera.position.z.toFixed(1)], aspect:camera.aspect, fov:camera.fov, reach:+camReach.toFixed(1), zoom:+camZoom.toFixed(2), pivot:[+camPos.x.toFixed(1),+camPos.y.toFixed(1),+camPos.z.toFixed(1)], ndc:[+v.x.toFixed(3),+v.y.toFixed(3)] }; },
     fadeMin:()=>fadeables.length? +Math.min(...fadeables.map(m=>m.material.opacity)).toFixed(3) : null,

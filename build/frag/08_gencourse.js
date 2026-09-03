@@ -5,7 +5,10 @@
     // A map whose whole mechanic is losing ground needs less ground to lose.
     const total = Math.round((n===1?7000 : n===2?6000 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
-    const obs=[]; let cursor=380; let last='';
+    // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
+    // crumbling bridge at y=560: anyone walking straight was stopped dead and
+    // the camera clipped into the void wall behind them.
+    const obs=[]; let cursor=640; let last='';
     const LANES=[-200,-100,0,100,200];
 
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
@@ -24,8 +27,9 @@
       // Tiles go fast but come back, so the floor never runs out entirely.
       obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
                 fuseTime: hard?1.9:2.2, respawnTime: hard?4.2:3.6});
-      // survival: fence them into the field, and put the line out of reach
-      arenaEnd = yEnd-60; trackLength = yEnd+4000;
+      // survival: fence them into the field, and put the line out of reach.
+      // A row and a half back from the last tiles, so the fence is never a ledge.
+      arenaEnd = yEnd-rowDepth*1.5; trackLength = yEnd+4000;
       return obs;
     }
 
