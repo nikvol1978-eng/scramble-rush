@@ -68,6 +68,34 @@ sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.se
     "  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
     "resize guard")
 
+# a wider lens: obstacles need to be on screen sooner than 1.5s before impact
+sub("  const camera = new THREE.PerspectiveCamera(58, W/H, 0.1, 4000);",
+    "  const camera = new THREE.PerspectiveCamera(64, W/H, 0.1, 4000);",
+    "wider fov")
+
+# A 760-wide track at RADIUS 17 is 22 bean-widths across, which reads as a field.
+sub("  const TRACK_W = 760;", "  const TRACK_W = 520;", "narrower track")
+
+# the narrow channel can sit off-centre now, so the bots have to aim at it
+sub("      r.targetX=TRACK_W/2+(r.aiRoute-0.5)*o.halfWidth*0.7;",
+    "      r.targetX=TRACK_W/2+(o.offset||0)+(r.aiRoute-0.5)*o.halfWidth*0.7;",
+    "bot aims at the narrow channel")
+
+# The checkerboard moired badly at distance: no mipmaps, no anisotropy.
+sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding; return tex;",
+    "    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding;"
+    + chr(10) + "    tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;"
+    + chr(10) + "    tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;",
+    "ground texture filtering")
+# ...and the checks are half as dense, so the pattern reads instead of shimmering
+sub("    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 2);",
+    "    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 1);",
+    "bigger checks")
+# the round-reward toast hung around into the next map intro
+sub("  function startRound(n, survivors){",
+    "  function startRound(n, survivors){" + chr(10) + "    coinPops.length = 0; renderCoinPops(0);",
+    "clear the reward toast")
+
 sub("<title>Scramble Rush 3D</title>",
     "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
@@ -288,6 +316,36 @@ sub("          const tt=t+0.22; const ang=spinAngle(o,tt); const dx=Math.cos(ang
 sub("  function racerCollisions(){",
     frag("23_music.js") + "\n" + "  function racerCollisions(){",
     "music fragment")
+
+# ------------------------------------------------------------- bot plans
+sub("  function racerCollisions(){",
+    frag("24_botplan.js") + "\n" + "  function racerCollisions(){",
+    "bot plan fragment")
+sub("    } else if(o.type==='pillars'){",
+    "    } else if(botPlan(r,o,dist,t,dt)){ throttle = r.aiThrottle; }" + "\n" +
+    "    else if(o.type==='pillars'){",
+    "bot plan hook")
+# remember where a bot fell, so it can stop feeding the same hole
+sub("  function fallDown(r){",
+    "  function fallDown(r){" + "\n" +
+    "    if(!r.isPlayer){ const o = nextObstacle(r);" + "\n" +
+    "      if(o && r.lastFallY !== undefined && Math.abs(r.lastFallY - o.y) < 150) r.spotFalls = (r.spotFalls||0)+1;" + "\n" +
+    "      else r.spotFalls = 1;" + "\n" +
+    "      r.lastFallY = o ? o.y : r.y; }",
+    "bot fall memory")
+
+# ------------------------------------------------------- bots keep up now
+# Bots drove at 0.52*speed(0.84-1.04) against the player's ACCEL. That is a
+# 20-35% handicap, which is why holding W won races.
+sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
+    "    r.vy+=ACCEL*(r.speed||1)*diffMult()*throttle*WIND(r)*f;",
+    "bot accel")
+sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
+    "    r.vx+=clamp(dx*0.055,-1.5,1.5)*f;",
+    "bot steering keeps up with the new friction")
+sub("x:s, speed:rand(0.84,1.04),",
+    "x:s, speed:(i<3 ? rand(1.00,1.05) : rand(0.93,1.03)),",
+    "bot speed spread, with a few elites")
 
 # ------------------------------------------------------------ arena bot ai
 sub("  function racerCollisions(){",

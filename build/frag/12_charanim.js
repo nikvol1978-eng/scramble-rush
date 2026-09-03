@@ -99,7 +99,9 @@
       const wp = toWorld(r.x, r.y, RADIUS+baseY+bob+(r.floorH||0)+r.h);
       m.group.position.set(wp.x, wp.y, wp.z);
 
-      if(moving){ r.renderFacing=Math.atan2(r.vx,r.vy); }
+      // Follow the bean's own facing: reading it off velocity meant the model
+      // pointed where it was sliding, not where it was being steered.
+      if(moving || r.isPlayer){ r.renderFacing = Math.PI/2 - (r.facing||0); }
       m.group.rotation.y=(r.renderFacing||0) + pathAngle(r.y);
 
       // the head leads the turn a little

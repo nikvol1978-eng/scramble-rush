@@ -1,7 +1,7 @@
   // ============================================================
   // ACTIONS: jump / dive
   // ============================================================
-  const GRAV_UP = 0.36, GRAV_DOWN = 0.68;   // floaty rise, snappy fall
+  const GRAV_UP = 0.45, GRAV_DOWN = 0.78;   // floaty rise, snappy fall
   const APEX_GRAV = 1.45;
   // Some maps run at a fraction of normal gravity. The jump impulse is unchanged,
   // so you simply go higher and hang longer -- which is the whole point of Orbit Drop.
@@ -11,6 +11,7 @@
   // controls away, spins the racer end over end, and hands off to the get-up.
   function sendTumbling(r, force, dirX, dirY){
     if(r.invuln > 0 || r.falling || r.finished || r.lavaOut) return;
+    r.__tumbles = (r.__tumbles||0) + 1;      // the acceptance run counts these
     const f = clamp(force, 3, 14);
     r.tumbleT   = 620 + f*70;
     r.tumbleAng = r.tumbleAng || 0;
@@ -23,11 +24,19 @@
     if(dirX || dirY){ r.vx += (dirX||0)*f*0.55; r.vy += (dirY||0)*f*0.55; }
     if(r.isPlayer){ SFX.fall(); camShake = Math.max(camShake, 5 + f*0.4); }
   }                   // extra pull through the top of the arc — reads far better than symmetric
-  const JUMP_V = 7.4;
-  const ACCEL = 0.68;
+  const JUMP_V = 8.2;
+  // Tight on the ground with light momentum: friction was 0.885, which took
+  // fifteen frames to stop and made the bean feel like it was on a trolley.
+  // ACCEL rises to match so top speed lands in the same place.
+  // Friction is applied after acceleration, so top speed is A*fr/(1-fr), not
+  // A/(1-fr): at 1.25 the bean topped out 15% slower than v18 did.
+  const ACCEL = 1.47;
+  const TURN_RATE_GROUND = 17, TURN_RATE_AIR = 9;   // radians per second
   // How hard a gradient pulls, per frame per unit of sin(slope). At the
   // steepest point of Cannon Climb this is about a fifth of ACCEL.
-  const SLOPE_PULL = 0.50;
+  // Scaled with ACCEL: at 0.50 against the old 0.68 a hill was worth 15%, and
+  // against 1.47 it would be worth 7%.
+  const SLOPE_PULL = 1.08;
   const COYOTE_MS = 110;                    // grace after stepping off an edge
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
@@ -44,8 +53,8 @@
     if(r.finished||r.falling||r.diveCd>0||r.stumbleT>0||r.getUpT>0) return false;
     const ang=r.facing||Math.PI/2;
     // a committed lunge: you go further than a step, but you are prone at the end of it
-    r.vx+=Math.cos(ang)*5.4; r.vy+=Math.sin(ang)*5.4;
-    r.diveT=260; r.diveCd=1250; r.invuln=420;
+    r.vx+=Math.cos(ang)*7.5; r.vy+=Math.sin(ang)*7.5;
+    r.diveT=320; r.diveCd=900; r.invuln=420;
     if(r.h===0){ r.vh=2.2; r.h=0.01; }
     if(r.isPlayer){ SFX.dive(); stats.dives++; }
     return true;

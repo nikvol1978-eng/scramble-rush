@@ -9,7 +9,31 @@
     r.falling=false; r.h=0; r.vh=0;
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;
-    for(const o of obstacles){ if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){ ry=o.yStart-90; } }
+    for(const o of obstacles){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+        ry=o.yStart-90;
+        // Put them back on the line that works, not on the one that just killed
+        // them. Respawning at the same x is how a racer collects eleven falls
+        // at a single narrow.
+        if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
+        else if(o.type==='pit' && o.platforms && o.platforms.length){
+          let best = null, bestD = 1e9;
+          for(const pl of o.platforms){
+            const px = platX(pl, raceTime), d = Math.abs(px - r.x);
+            if(d < bestD){ bestD = d; best = px; }
+          }
+          if(best !== null) rx = best;
+        } else if(o.type==='crumble' && o.slabs){
+          let best = null, bestD = 1e9;
+          for(const sl of o.slabs){
+            if(sl.gone) continue;
+            const d = Math.abs(sl.x - r.x);
+            if(d < bestD){ bestD = d; best = sl.x; }
+          }
+          if(best !== null) rx = best;
+        }
+      }
+    }
     const field=obstacles.find(o=>o.type==='tilefield' && r.y>=o.yStart-5 && r.y<=o.yEnd+5);
     if(field){
       // drop back onto the nearest surviving tile behind us, else in front of the field

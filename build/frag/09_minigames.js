@@ -821,7 +821,7 @@
       }
       if(inNarrow){
         const o=obstacles.find(o=>o.type==='narrow'&&r.y>o.yStart&&r.y<o.yEnd);
-        if(Math.abs(r.x-TRACK_W/2)>o.halfWidth+RADIUS-10){ fallDown(r); return; }
+        if(Math.abs(r.x-(TRACK_W/2+(o.offset||0)))>o.halfWidth+RADIUS-10){ fallDown(r); return; }
       }
       if(field){
         const tl=tileAt(field, r.x, r.y);
@@ -876,7 +876,8 @@
             const nx=dx/(d||1), ny=dy/(d||1); const pen=it.r+RADIUS-4-d;
             r.x+=nx*pen; r.y+=ny*pen;
             const vn=r.vx*nx+r.vy*ny;
-            if(vn<0){ r.vx-=vn*nx*1.4; r.vy-=vn*ny*1.4; if(-vn>4){ r.stumbleT=250; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
+            if(vn<0){ r.vx-=vn*nx*1.4; r.vy-=vn*ny*1.4;
+              if(-vn>4){ r.stumbleT=320; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
             r.vx += (nx>=0?1:-1)*0.8;
           }
         }
@@ -914,8 +915,9 @@
             if(Math.abs(r.x-bx) > it.w/2 + RADIUS - 6) continue;
             const side = Math.sign(r.y-o.y)||-1;
             r.y = o.y + side*(o.d/2 + RADIUS);
-            if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1; r.stumbleT=380; r.invuln=280;
-              spawnBurst3D(r.x,o.y,0xff8a5c,8); if(r.isPlayer){ SFX.hit(); camShake=5; } }
+            if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
+              sendTumbling(r, 6, 0, -1); r.invuln=520;
+              spawnBurst3D(r.x,o.y,0xff8a5c,8); }
             // shove sideways toward the nearer edge so you slide off rather than stick
             r.vx += (r.x < bx ? -1 : 1)*3.4;
           }
@@ -934,9 +936,8 @@
             const side=Math.sign(r.y-by)||-1;
             r.y = by + side*(9+RADIUS*0.45);
             r.vy = side*Math.abs(r.vy)*0.4 - (side<0?1.5:0);
-            r.stumbleT=420; r.invuln=620; r.vh=2.6; if(r.h===0) r.h=0.01;
+            sendTumbling(r, 7, 0, side); r.invuln=620;
             spawnBurst3D(r.x, by, o.low?0xff2d6f:0x26d5ff, 10);
-            if(r.isPlayer){ SFX.hit(); camShake=6; }
             return;
           }
         }
@@ -1051,8 +1052,8 @@
           if(d<o.thickness/2+RADIUS-6){
             const relx=r.x-o.cx, rely=r.y-o.y; const sw=Math.sign(o.speed);
             const tx=rely*sw, ty=-relx*sw; const tl=Math.hypot(tx,ty)||1;
-            r.vx+=tx/tl*7; r.vy+=ty/tl*7; r.stumbleT=450; r.invuln=650; r.vh=3.5; if(r.h===0) r.h=0.01;
-            spawnBurst3D(r.x,r.y,0xffffff); if(r.isPlayer){ SFX.hit(); camShake=6; } return;
+            sendTumbling(r, 8, tx/tl, ty/tl); r.invuln=650;
+            spawnBurst3D(r.x,r.y,0xffffff); return;
           }
         }
 
@@ -1062,8 +1063,8 @@
             const px=platX(it,t);
             if(Math.abs(r.x-px)<it.width/2+RADIUS-4){
               const dir=Math.sign(Math.cos(t*it.speed+it.phase)*it.speed)||1;
-              r.vx+=dir*9; r.vy-=2; r.stumbleT=420; r.invuln=600; r.vh=3; if(r.h===0) r.h=0.01;
-              spawnBurst3D(r.x,r.y,0x60a5fa); if(r.isPlayer){ SFX.hit(); camShake=6; } return;
+              r.vy-=2; sendTumbling(r, 7, dir, 0); r.invuln=600;
+              spawnBurst3D(r.x,r.y,0x60a5fa); return;
             }
           }
         }

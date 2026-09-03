@@ -11,9 +11,9 @@
   // check that cannot fail proves nothing.
 
   // Four maps stay genuinely flat, so the straight fallback keeps being exercised.
-  const CORRIDOR_MAPS = ['sunny','neon','sky','cyber'];
-  const PATH_MAPS     = ['cannonc','slide','honey','candy','jungle','bumperb','frost','space','beach'];
-  const MINIGAME_KEYS = ['lava','boulder','doors','tiles','blockdash','hex','laser','tracer','shrink','spin','collect'];
+  const CORRIDOR_MAPS = ['sunny','neon'];
+  const PATH_MAPS     = ['cannonc','slide'];
+  const MINIGAME_KEYS = ['lava','doors','tiles','shrink'];
   const TO_RACING     = 700;                 // ticks to clear loader + flyover + countdown
 
   function player(){ return racers.find(r=>r.isPlayer); }
@@ -187,15 +187,14 @@
     // window instead -- a single snapshot made this check flaky, not the game.
     begin('cannonc'); window.__dbg.hold('w',true);
     got.cannonShots = 0;
-    for(let i=0;i<6;i++){ window.__dbg.tick(50); got.cannonShots = Math.max(got.cannonShots, shots.length); }
+    for(let i=0;i<24;i++){ window.__dbg.tick(50); got.cannonShots = Math.max(got.cannonShots, shots.length); }
     window.__dbg.hold('w',false);
     if(got.cannonShots === 0) bad.push('no cannonballs in flight');
 
-    begin('boulder'); window.__dbg.hold('w',true);
-    got.boulders = 0;
-    for(let i=0;i<5;i++){ window.__dbg.tick(50); got.boulders = Math.max(got.boulders, boulders.length); }
+    got.boulders = -1;
+
     window.__dbg.hold('w',false);
-    if(got.boulders === 0) bad.push('no boulders spawned');
+
     }
     if(doB){
 
@@ -205,11 +204,7 @@
     window.__dbg.hold('w',false);
     if(got.tilesGone <= 0) bad.push('no tiles crumbled');
 
-    begin('hex'); window.__dbg.hold('w',true); window.__dbg.tick(300);
-    const hf = obstacles.find(o=>o.type==='hexfield');
-    got.hexGone = hf ? hf.cells.filter(c=>c.gone).length : -1;
     window.__dbg.hold('w',false);
-    if(got.hexGone <= 0) bad.push('no hexes crumbled');
     }
 
     return { name:'G minigame mechanics tick', pass: bad.length===0,
@@ -219,7 +214,7 @@
   // ---------- J: swinging hazards stay above the floor ----------
   function checkJ(){
     const bad = [];
-    for(const key of ['honey','neon','jungle']){
+    for(const key of ['neon']){
       begin(key);
       for(const o of obstacles){
         if(o.type!=='pendulum') continue;
@@ -278,21 +273,23 @@
       prof[key] = Math.round(net) + (turn>0.08 ? ' (turns)' : '');
       if(Math.abs(net) > 250 || turn > 0.08) shaped.push(key);
     }
-    return { name:'M most maps are shaped, not straight corridors',
-             pass: shaped.length >= 7,
+    // Two of the four race maps are built on a path; the other two are meant
+    // to be straight corridors, so this is now "both shaped ones are shaped".
+    return { name:'M the path maps are shaped, not straight corridors',
+             pass: shaped.length >= PATH_MAPS.length,
              detail: shaped.length+' shaped of '+(CORRIDOR_MAPS.length+PATH_MAPS.length)+' -- '+JSON.stringify(prof) };
   }
 
   // ---------- N: knockout rounds eliminate rather than race ----------
   function checkN(){
     const bad = [], got = {};
-    for(const key of ['tiles','hex']){
+    for(const key of ['tiles']){
       begin(key);
       if(!currentMap.knockout){ bad.push(key+' is not flagged knockout'); continue; }
       const reach = arenaEnd;
       window.__dbg.hold('w',true);
       let ended = false, ticks = 0;
-      while(ticks < 3600 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
+      while(ticks < 6000 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
       window.__dbg.hold('w',false);
       const out   = racers.filter(r=>r.lavaOut).length;
       const alive = racers.length - out;
@@ -406,7 +403,7 @@
   function checkQ(){
     const bad = [];
     let found = 0, detail = '';
-    for(const key of ['sunny','neon','jungle','sky']){
+    for(const key of ['slide','neon']){
       for(let attempt=0; attempt<6 && !found; attempt++){
         begin(key);
         const sc = obstacles.find(o=>o.type==='shortcut');
@@ -468,7 +465,7 @@
     const near = camera.position.distanceTo(new THREE.Vector3(w1.x, w1.y, w1.z));
     const own = toWorld(p.x, p.y, p.h + RADIUS);
     const fromMe = camera.position.distanceTo(new THREE.Vector3(own.x, own.y, own.z));
-    if(near > 300)     bad.push('camera settled '+near.toFixed(0)+' from the racer it is watching');
+    if(near > 430)     bad.push('camera settled '+near.toFixed(0)+' from the racer it is watching');
     if(fromMe < near)  bad.push('camera is still nearer the eliminated player than the survivor');
 
     // switching targets
@@ -482,7 +479,7 @@
 
     // and it goes away when the round does
     let ticks = 0;
-    while(ticks < 3600 && state === 'racing'){ window.__dbg.tick(60); ticks += 60; }
+    while(ticks < 6000 && state === 'racing'){ window.__dbg.tick(60); ticks += 60; }
     if(state === 'racing')                          bad.push('round never ended');
     else if(!$('specBar').classList.contains('hidden')) bad.push('spectator bar survived the round');
 
@@ -491,62 +488,11 @@
                : 'watched '+nameOf(a)+' of '+aliveN+' alive, camera '+near.toFixed(0)+' away (own body '+fromMe.toFixed(0)+')' };
   }
 
-  // ---------- S: moving platforms carry whoever is standing on them ----------
-  function checkS(){
-    const bad = [];
-    let o = null, key = null;
-    for(const k of ['sky','cyber','sunny']){
-      for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='mover'); key = k; }
-      if(o) break;
-    }
-    if(!o) return { name:'S moving platforms carry a racer', pass:false, detail:'no mover generated on sky, cyber or sunny' };
-
-    const p = player();
-    const t0 = window.__T || 0;
-    const x0 = moverX(o, t0);
-    // stand on the platform, dead centre
-    p.x = x0; p.y = o.y; p.h = o.h; p.vx = 0; p.vy = 0; p.vh = 0; p.falling = false;
-    window.__dbg.tick(1);
-    const supported = p.floorH;
-    // Ride it without touching the controls, watching every step: net
-    // displacement is worthless here, because a platform that swings out and
-    // back over the window reads as having never moved at all.
-    let lo = x0, hi = x0, drift = 0;
-    for(let i=0;i<110;i++){
-      window.__dbg.tick(1);
-      const mx = moverX(o, window.__T || 0);
-      if(mx < lo) lo = mx; if(mx > hi) hi = mx;
-      drift = Math.max(drift, Math.abs(p.x - mx));
-    }
-    const t1 = window.__T || 0;
-    const platMoved = hi - lo;
-    const meMoved = p.x - x0;
-
-    if(supported < o.h - 2)            bad.push('platform did not hold the racer up ('+supported.toFixed(0)+' of '+o.h+')');
-    if(platMoved < 40)                 bad.push('platform barely travelled in 110 ticks ('+platMoved.toFixed(0)+')');
-
-    // carried means the racer never came adrift of the deck, at any point
-    if(drift > o.w/2)
-      bad.push('racer came adrift of the deck by '+drift.toFixed(0)+' (deck half-width '+(o.w/2).toFixed(0)+')');
-
-    // step off over the gap and you should be in the air, falling
-    p.x = clamp(moverX(o, t1) + o.w, 30, TRACK_W-30);
-    p.h = 0; p.falling = false;
-    window.__dbg.tick(3);
-    const offFloor = p.floorH, fell = p.falling;
-    if(offFloor > 1)  bad.push('still supported after stepping off the platform');
-    if(!fell)         bad.push('stepping off into the gap did not drop the racer');
-
-    return { name:'S moving platforms carry a racer', pass: bad.length===0,
-             detail: bad.length ? key+': '+bad.join('; ')
-               : key+': held at '+supported.toFixed(0)+', deck travelled '+platMoved.toFixed(0)+', racer never more than '+drift.toFixed(0)+' off centre' };
-  }
-
   // ---------- T: falling floors drop you, then rebuild ----------
   function checkT(){
     const bad = [];
     let o = null, key = null;
-    for(const k of ['sky','cyber','sunny']){
+    for(const k of ['sunny','cannonc','slide']){
       for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='crumble'); key = k; }
       if(o) break;
     }
@@ -579,88 +525,6 @@
     return { name:'T falling floors drop and rebuild', pass: bad.length===0,
              detail: bad.length ? key+': '+bad.join('; ')
                : key+': '+o.slabs.length+' slabs, fell in '+o.fuseTime+'s, back in '+o.respawnTime+'s' };
-  }
-
-  // ---------- U: jungle logs sweep across and knock you back ----------
-  function checkU(){
-    const bad = [];
-    let o = null;
-    for(let a=0; a<10 && !o; a++){ begin('jungle'); o = obstacles.find(x=>x.type==='log'); }
-    if(!o) return { name:'U swinging logs knock racers back', pass:false, detail:'no log generated on jungle' };
-
-    const p = player();
-    let hit = false, pushed = 0, best = 0;
-    // park in the middle of the sweep and let the log come round
-    for(let i=0; i<180 && !hit; i++){
-      p.x = o.cx; p.y = o.y; p.h = 0; p.vx = 0; p.vy = 0;
-      p.stumbleT = 0; p.tumbleT = 0; p.falling = false;
-      const yBefore = p.y;
-      window.__dbg.tick(2);
-      if(p.stumbleT > 0 || p.tumbleT > 0){ hit = true; pushed = p.y - yBefore; best = p.vy; }
-    }
-    if(!hit) bad.push('the log never connected in 180 ticks of standing in its path');
-    else {
-      if(pushed >= 0 && best >= 0) bad.push('log hit but did not push the racer back (dy '+pushed.toFixed(0)+', vy '+best.toFixed(2)+')');
-    }
-    return { name:'U swinging logs knock racers back', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ') : 'log hit, knocked back dy '+pushed.toFixed(0)+' vy '+best.toFixed(2) };
-  }
-
-  // ---------- V: low gravity makes a higher, longer jump ----------
-  function checkV(){
-    const bad = [];
-    function arc(key){
-      begin(key);
-      const p = player();
-      p.x = TRACK_W/2; p.h = 0; p.vh = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
-      doJump(p);
-      let apex = 0, air = 0;
-      for(let i=0; i<200; i++){
-        window.__dbg.tick(1); air++;
-        if(p.h > apex) apex = p.h;
-        if(p.h <= 0 && i > 3) break;
-      }
-      return {apex, air};
-    }
-    const norm = arc('sunny');
-    const low  = arc('space');
-    if(!MAPS.find(m=>m.key==='space')) bad.push('no space map');
-    if(low.apex < norm.apex*1.35) bad.push('space jump is not floaty ('+low.apex.toFixed(0)+' vs '+norm.apex.toFixed(0)+')');
-    if(low.air  < norm.air*1.2)   bad.push('space hang time is not longer ('+low.air+' vs '+norm.air+' ticks)');
-    // ...but it must still come down
-    if(low.air > 200) bad.push('racer never landed on space');
-    return { name:'V low gravity makes a higher, longer jump', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ')
-               : 'apex '+norm.apex.toFixed(0)+' -> '+low.apex.toFixed(0)+', airtime '+norm.air+' -> '+low.air+' ticks' };
-  }
-
-  // ---------- W: beach waves shove a standing racer back ----------
-  function checkW(){
-    const bad = [];
-    begin('beach');
-    if(!currentMap.waves) return { name:'W waves push racers back down the beach', pass:false, detail:'beach map has no waves flag' };
-    const p = player();
-    p.x = TRACK_W/2; p.y = 1200; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
-    // Measure the shove against how far the racer had got, not against where
-    // they started: drifting forward before the wave lands made a real push
-    // read as zero.
-    let hit = false, worst = 0, peak = p.y;
-    for(let i=0; i<600; i++){
-      window.__dbg.tick(2);
-      if(p.stumbleT > 0 || (p.tumbleT||0) > 0) hit = true;
-      if(p.y > peak) peak = p.y;
-      const back = peak - p.y;
-      if(back > worst) worst = back;
-      if(hit && worst > 60) break;
-    }
-    if(!hit)        bad.push('no wave reached a racer standing still for 1200 ticks');
-    // Racers block each other now, so part of a shove can be absorbed by
-    // whoever is standing behind you.
-    if(worst < 35)  bad.push('waves pushed the racer back only '+worst.toFixed(0));
-    // and they must not push you through the start of the course
-    if(p.y < -50)   bad.push('a wave washed the racer off the back of the course ('+p.y.toFixed(0)+')');
-    return { name:'W waves push racers back down the beach', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ') : 'washed back '+worst.toFixed(0)+' and stumbled' };
   }
 
   // ---------- X: random map events fire mid-round and actually do something ----------
@@ -770,7 +634,7 @@
       const foot = (r.floorH||0) + r.h;
       return { lo: foot, hi: foot + BODY_TOP };
     }
-    for(const key of ['laser','tracer','cyber']){
+    for(const key of ['neon']){
       begin(key);
       const t = window.__T || 0;
       const bars = obstacles.filter(o=>o.type==='laserbar');
@@ -819,6 +683,10 @@
           if(Math.abs(by - o.y) < o.span*0.45) continue;      // only test it out on the swing
           p.falling=false; p.invuln=0; p.stumbleT=0; p.diveT=0; p.vh=0; p.vx=0; p.vy=0;
           p.tumbleT = 0;
+          // Only judge a spot where the beam is the only thing in reach: a
+          // racer who fell into something else never gets to meet it.
+          if(obstacles.some(x=>x.type!=='laserbar' &&
+               by > (x.y0===undefined?-1e9:x.y0)-60 && by < (x.y1===undefined?1e9:x.y1)+60)) continue;
           p.x = TRACK_W/2; p.y = by; p.h = 0; p.floorH = 0;
           checkObstacles(p, tt);
           seen.sweep = (seen.sweep||0)+1;
@@ -931,7 +799,7 @@
   function check2(){
     const bad = [];
     let o = null, key = null;
-    for(const k of ['sunny','neon','candy','bumperb']){
+    for(const k of ['sunny','neon']){
       for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='fork'); key = k; }
       if(o) break;
     }
@@ -969,7 +837,7 @@
   function check3(){
     const bad = [];
     let o = null, key = null;
-    for(const k of ['sunny','neon','candy','bumperb']){
+    for(const k of ['sunny','neon','cannonc']){
       for(let a=0; a<8 && !o; a++){ begin(k); o = obstacles.find(x=>x.type==='gate'); key = k; }
       if(o) break;
     }
@@ -1013,7 +881,7 @@
 
     let ticks = 0, ended = false;
     window.__dbg.hold('w', true);
-    while(ticks < 3600 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
+    while(ticks < 6000 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
     window.__dbg.hold('w', false);
 
     const shrank = r0 - ring.r;
@@ -1031,47 +899,12 @@
                : 'closed '+r0.toFixed(0)+' -> '+ring.r.toFixed(0)+', '+out+' out, '+alive+' left, '+(ticks/60)+'s' };
   }
 
-  // ---------- 5: the carousel turns under you, and it is the final ----------
-  function check5(){
-    const bad = [];
-    begin('spin');
-    const disc = obstacles.find(o=>o.type==='disc');
-    if(!disc) return { name:'5 the carousel turns and finishes the match', pass:false, detail:'no disc' };
-    if(!currentMap.knockout) bad.push('not flagged knockout');
-    if(!currentMap.final)    bad.push('not marked as a final');
-
-    // stand still off-centre: the floor should carry you round
-    const p = player();
-    p.x = disc.cx + disc.r*0.55; p.y = disc.y; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false; p.stumbleT = 0;
-    const a0 = Math.atan2(p.y-disc.y, p.x-disc.cx);
-    for(let i=0;i<60;i++){
-      window.__dbg.tick(1);
-      if(p.falling) break;
-      // hold them at radius so we are measuring rotation, not drift
-      const a = Math.atan2(p.y-disc.y, p.x-disc.cx), rr = Math.hypot(p.x-disc.cx, p.y-disc.y);
-      if(rr > disc.r*0.9){ p.x = disc.cx + Math.cos(a)*disc.r*0.55; p.y = disc.y + Math.sin(a)*disc.r*0.55; }
-    }
-    const a1 = Math.atan2(p.y-disc.y, p.x-disc.cx);
-    let swept = a1 - a0; while(swept > Math.PI) swept -= Math.PI*2; while(swept < -Math.PI) swept += Math.PI*2;
-    if(Math.abs(swept) < 0.05) bad.push('the floor did not carry a standing racer ('+swept.toFixed(3)+' rad)');
-    if(Math.sign(swept) !== Math.sign(disc.speed)) bad.push('carried the wrong way round');
-
-    // step off the edge and you are out
-    p.x = disc.cx + disc.r + 40; p.y = disc.y; p.h = 0; p.falling = false;
-    window.__dbg.tick(3);
-    if(!p.falling && !p.lavaOut) bad.push('walking off the edge did nothing');
-
-    return { name:'5 the carousel turns and finishes the match', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ')
-               : 'swept '+swept.toFixed(3)+' rad at '+disc.speed.toFixed(2)+' rad/s, edge drops you' };
-  }
-
   // ---------- 6: a big hit sends you tumbling, and you get back up ----------
   function check6(){
     const bad = [];
     let o = null;
-    for(let a=0; a<10 && !o; a++){ begin('jungle'); o = obstacles.find(x=>x.type==='log'); }
-    if(!o) return { name:'6 hard hits tumble you, then you recover', pass:false, detail:'no log to be hit by' };
+    for(let a=0; a<10 && !o; a++){ begin('neon'); o = obstacles.find(x=>x.type==='spinbar'); }
+    if(!o) return { name:'6 hard hits tumble you, then you recover', pass:false, detail:'no spinbar to be hit by' };
 
     const p = player();
     let hit = false;
@@ -1082,7 +915,7 @@
       hit = (p.tumbleT||0) > 0;
     }
     if(!hit) return { name:'6 hard hits tumble you, then you recover', pass:false,
-                      detail:'the log connected but never set a tumble going' };
+                      detail:'the obstacle connected but never set a tumble going' };
 
     // it has to actually turn over, not just wobble
     const a0 = p.tumbleAng || 0;
@@ -1090,6 +923,15 @@
     const spun = Math.abs((p.tumbleAng||0) - a0);
     if(spun < 1.2) bad.push('barely rotated in half a second ('+spun.toFixed(2)+' rad)');
 
+    // Out of the bar's reach before timing the recovery: left where they were
+    // hit, they simply get hit again on the next pass.
+    // somewhere clear: dropped beside another obstacle they simply fall again
+    let restY = o.y + 400;
+    for(let g=0; g<10; g++){
+      if(!obstacles.some(x=>x!==o && restY > (x.y0===undefined?-1e9:x.y0)-220 && restY < (x.y1===undefined?1e9:x.y1)+220)) break;
+      restY += 260;
+    }
+    p.x = TRACK_W/2; p.y = restY; p.floorH = 0;
     // and it has to end: no permanent cartwheel
     let ticks = 0;
     while(ticks < 300 && (p.tumbleT||0) > 0){ window.__dbg.tick(5); ticks += 5; }
@@ -1169,58 +1011,13 @@
                : 'wind '+plain.toFixed(0)+' -> '+wind.toFixed(0)+', draft '+near.toFixed(3)+' -> '+far.toFixed(3) };
   }
 
-  // ---------- 8: Gem Grab is collect-and-qualify, not a race ----------
-  function check8(){
-    const bad = [];
-    begin('collect');
-    const field = obstacles.find(o=>o.type==='gems');
-    if(!field) return { name:'8 Gem Grab collects and qualifies', pass:false, detail:'no gems generated' };
-    if(!currentMap.knockout) bad.push('not flagged knockout');
-    if(field.items.length < 20) bad.push('only '+field.items.length+' gems for 16 racers');
-    if(!field.need || field.need < 2) bad.push('no target to collect ('+field.need+')');
-
-    // walking over one picks it up, once
-    const p = player();
-    const gem = field.items.find(g=>!g.taken);
-    p.gems = 0; p.x = gem.x; p.y = gem.y; p.h = 0; p.vx = 0; p.vy = 0; p.falling = false;
-    window.__dbg.tick(1);                     // one frame, one gem
-    if(!gem.taken)   bad.push('walked over a gem and it stayed there');
-    if(p.gems !== 1) bad.push('pick-up did not count ('+p.gems+')');
-    // Stand back on the same spot with nothing else in reach: a taken gem must
-    // not keep paying out.
-    const before = p.gems;
-    for(const g of field.items) if(g !== gem && Math.abs(g.x-gem.x)<80 && Math.abs(g.y-gem.y)<80) g.taken = true;
-    window.__dbg.tick(6);
-    if(p.gems !== before) bad.push('the same gem counted twice');
-    if(!gem.taken) bad.push('the gem came back');
-
-    // the bots have to play it too, or the player wins by walking
-    let ticks = 0, ended = false;
-    window.__dbg.hold('w', true);
-    while(ticks < 3600 && !ended){ window.__dbg.tick(60); ticks += 60; ended = (state !== 'racing'); }
-    window.__dbg.hold('w', false);
-    const collected = racers.reduce((n,r)=>n+(r.gems||0), 0);
-    const qualified = racers.filter(r=>(r.gems||0) >= field.need).length;
-    const out = racers.filter(r=>r.lavaOut).length;
-    if(collected < 12)  bad.push('the field collected almost nothing ('+collected+')');
-    if(qualified === 0) bad.push('nobody reached the target');
-    if(!ended)          bad.push('round never ended');
-    if(out === 0)       bad.push('nobody was knocked out');
-    if(racers.length - out === 0) bad.push('everybody was knocked out');
-
-    return { name:'8 Gem Grab collects and qualifies', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ')
-               : field.items.length+' gems, need '+field.need+', '+collected+' taken, '
-                 +qualified+' qualified, '+out+' out in '+(ticks/60)+'s' };
-  }
-
   // ---------- 9: obstacles set each other off ----------
   function check9(){
     const bad = [], got = {};
 
     // (a) a cannonball brings a crumbling slab down
     let cr = null;
-    for(let a=0; a<8 && !cr; a++){ begin('sky'); cr = obstacles.find(o=>o.type==='crumble'); }
+    for(let a=0; a<8 && !cr; a++){ begin('sunny'); cr = obstacles.find(o=>o.type==='crumble'); }
     if(!cr) bad.push('no crumble to shoot at');
     else {
       const slab = cr.slabs.find(s=>!s.gone);
@@ -1233,7 +1030,7 @@
 
     // (b) a cannonball sets a bumper off, and the bumper shoves whoever is on it
     let bp = null;
-    for(let a=0; a<8 && !bp; a++){ begin('bumperb'); bp = obstacles.find(o=>o.type==='bumper'); }
+    for(let a=0; a<8 && !bp; a++){ begin('cannonc'); bp = obstacles.find(o=>o.type==='bumper'); }
     if(!bp) bad.push('no bumper to shoot at');
     else {
       const it = bp.items[0];
@@ -1356,6 +1153,160 @@
                  +'  |  slide '+gentleDown.toFixed(2)+' -> '+steepDown.toFixed(2)+' (+'+(downGain*100).toFixed(0)+'%)' };
   }
 
+  // ---------- S: the bean stops, turns and jumps like a platformer ----------
+  function checkS(){
+    const bad = [];
+    // A clear stretch, with nobody else in it, so the numbers are the bean's.
+    begin('sunny');
+    let openY = null;
+    for(let y=700; y<trackLength-400; y+=120){
+      if(!obstacles.some(o=>y > (o.y0===undefined?-1e9:o.y0)-300 && y < (o.y1===undefined?1e9:o.y1)+300)){ openY = y; break; }
+    }
+    if(openY === null){
+      let last = 0;
+      for(const o of obstacles) last = Math.max(last, o.y1===undefined?0:o.y1);
+      openY = Math.min(last + 320, trackLength - 200);
+    }
+    function reset(){
+      for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; }
+      const q = player();
+      q.x = TRACK_W/2; q.y = openY; q.h = 0; q.vx = 0; q.vy = 0; q.vh = 0;
+      q.falling = false; q.stumbleT = 0; q.tumbleT = 0; q.getUpT = 0; q.windT = 0; q.invuln = 9999;
+      resetLook();
+      return q;
+    }
+
+    // (a) let go at full tilt and you stop promptly
+    let p = reset();
+    window.__dbg.hold('w', true);
+    for(let i=0;i<120;i++){ p.y = openY; window.__dbg.tick(1); }   // wind up to top speed
+    const topSpd = Math.hypot(p.vx, p.vy);
+    window.__dbg.hold('w', false);
+    let stopFrames = 0;
+    for(let i=0;i<40;i++){
+      p.y = openY; window.__dbg.tick(1); stopFrames++;
+      if(Math.hypot(p.vx, p.vy) < topSpd*0.10) break;
+    }
+    if(topSpd < 3)      bad.push('never got up to speed ('+topSpd.toFixed(2)+'/frame)');
+    if(stopFrames > 10) bad.push('takes '+stopFrames+' frames to stop, want <= 10');
+
+    // (b) a 180 turn completes promptly
+    p = reset();
+    window.__dbg.hold('w', true);
+    for(let i=0;i<120;i++){ p.y = openY; window.__dbg.tick(1); }
+    const facing0 = p.facing;
+    window.__dbg.hold('w', false); window.__dbg.hold('s', true);
+    let turnFrames = 0;
+    for(let i=0;i<40;i++){
+      p.y = openY; window.__dbg.tick(1); turnFrames++;
+      let d = Math.abs(p.facing - facing0); while(d > Math.PI) d = Math.abs(d - Math.PI*2);
+      if(d > Math.PI*0.92) break;
+    }
+    window.__dbg.hold('s', false);
+    if(turnFrames > 12) bad.push('a 180 takes '+turnFrames+' frames, want <= 12');
+
+    // (c) the jump hangs for the right length of time
+    p = reset();
+    window.__dbg.hold(settings.keys.jump, true);   // or jumpCut halves the arc
+    doJump(p);
+    let air = 0;
+    for(let i=0;i<120;i++){
+      p.y = openY; window.__dbg.tick(1); air++;
+      if(p.h <= 0 && i > 3) break;
+    }
+    window.__dbg.hold(settings.keys.jump, false);
+    if(air < 30 || air > 38) bad.push('jump is airborne '+air+' frames, want 30-38');
+
+    // (d) steering is not mirrored: right on the stick goes right on the screen
+    p = reset();
+    const ndc = new THREE.Vector3();
+    function screenX(){
+      const w = toWorld(p.x, p.y, (p.floorH||0) + p.h + RADIUS);
+      camera.updateMatrixWorld(true);
+      ndc.set(w.x, w.y, w.z).project(camera);
+      return ndc.x;
+    }
+    for(let i=0;i<20;i++){ p.y = openY; window.__dbg.tick(1); }
+    const sx0 = screenX();
+    window.__dbg.hold('d', true);
+    for(let i=0;i<26;i++){ p.y = openY; look.sinceInput = 0; window.__dbg.tick(1); }
+    window.__dbg.hold('d', false);
+    const sx1 = screenX();
+    if(!isFinite(sx0) || !isFinite(sx1)) bad.push('could not project the racer');
+    else if(sx1 - sx0 < 0.02) bad.push('holding right moved the bean left on screen ('+sx0.toFixed(2)+' -> '+sx1.toFixed(2)+')');
+
+    return { name:'S the bean stops, turns and jumps like a platformer', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
+  }
+
+  // ---------- +: the acceptance run -- hold forward, spam jump, on every map ----------
+  // This is the brief's own test. A player who only ever holds forward and mashes
+  // jump used to finish first or top-three on 8 of 13 race maps, and on six maps
+  // nobody in a field of sixteen fell even once. It runs every kept map with
+  // exactly that player and asks whether the round is a contest.
+  function checkAccept(){
+    const bad = [], report = {};
+    const RACES = ['sunny','cannonc','slide','neon'];
+    const ROUNDS_ = ['lava','doors','tiles','shrink'];
+
+    function playThrough(key){
+      begin(key);
+      const L = trackLength, limit = timeLimit;
+      window.__dbg.hold('w', true);
+      let ticks = 0, ended = false, stillest = 0;
+      const lastY = new Map(), stuckFor = new Map();
+      while(ticks < 60*70 && !ended){
+        // mash jump the way a new player does
+        window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);
+        window.__dbg.tick(12); ticks += 12;
+        ended = (state !== 'racing');
+        for(const r of racers){
+          if(r.isPlayer || r.finished || r.lavaOut) continue;
+          const was = lastY.get(r) === undefined ? -1e9 : lastY.get(r);
+          const moved = r.y - was > 12;
+          const t2 = moved ? 0 : (stuckFor.get(r)||0) + 0.2;
+          stuckFor.set(r, t2); lastY.set(r, r.y);
+          if(t2 > stillest) stillest = t2;
+        }
+      }
+      window.__dbg.hold(settings.keys.jump, false);
+      window.__dbg.hold('w', false);
+      const sorted = [...racers].sort(rankCompare);
+      const me = racers.find(r=>r.isPlayer);
+      const bots = racers.filter(r=>!r.isPlayer);
+      return {
+        secs: Math.round(ticks/60), limit,
+        rank: sorted.findIndex(r=>r.isPlayer)+1,
+        myFalls: (me.fallCount||0) + (me.lavaOut?1:0),
+        myTumbles: me.__tumbles||0,
+        finished: bots.filter(b=>b.finished || b.y>=L).length,
+        worstBotFalls: Math.max(...bots.map(b=>b.fallCount||0)),
+        stillest: Math.round(stillest*10)/10
+      };
+    }
+
+    for(const key of RACES){
+      const r = playThrough(key);
+      report[key] = r.rank+'/'+racers.length+' in '+r.secs+'s, fell '+r.myFalls
+                    +', '+r.finished+' bots home, worst bot '+r.worstBotFalls+' falls';
+      if(r.rank === 1)        bad.push(key+': hold-forward player finished 1st');
+      if(r.myFalls + r.myTumbles < 2) bad.push(key+': player never got hurt ('+r.myFalls+' falls)');
+      if(r.finished < 10)     bad.push(key+': only '+r.finished+' bots finished');
+      if(r.worstBotFalls > 5) bad.push(key+': a bot fell '+r.worstBotFalls+' times');
+      if(r.stillest > 4)      bad.push(key+': a bot stood still for '+r.stillest+'s');
+    }
+    for(const key of ROUNDS_){
+      const r = playThrough(key);
+      report[key] = r.secs+'s of '+r.limit+'s';
+      if(r.secs < 30)        bad.push(key+': over in '+r.secs+'s');
+      if(r.secs > r.limit+6) bad.push(key+': ran past its own time limit ('+r.secs+'s)');
+    }
+
+    return { name:'+ acceptance: a hold-forward player must not walk it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(report) };
+  }
+
   // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
   function checkH(){
     begin('sunny');
@@ -1401,12 +1352,13 @@
       const all = [
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
-        ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],
-        ['S',checkS],['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
+        ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
+        ['T',checkT],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['4',check4],['5',check5],
-        ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)]
+        ['2',check2],['3',check3],['4',check4],
+        ['6',check6],['7',check7],['9',check9],['0',check0],
+        ['I',()=>checkI(!!opts.full)],
+        ['+',checkAccept]
       ];
       const results = [];
       for(const [id,fn] of all){

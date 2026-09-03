@@ -3,15 +3,15 @@
     const hard = n>=2;
     const spd  = n===1?1.0 : n===2?1.22 : 1.42;
     // A map whose whole mechanic is losing ground needs less ground to lose.
-    const total = Math.round((n===1?9500 : n===2?8000 : 6600) * (currentMap.lenScale||1));
+    const total = Math.round((n===1?7000 : n===2?6000 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
     const obs=[]; let cursor=380; let last='';
-    const LANES=[-300,-150,0,150,300];
+    const LANES=[-200,-100,0,100,200];
 
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
     if(mode==='tiles'){
       // the courses are long now; cap the tile grid or the mesh count runs away
-      const yStart=420, yEnd=Math.min(total-260, yStart+4600);
+      const yStart=420, yEnd=yStart+6500;
       const cols=8, rowDepth=118;
       const rows=Math.max(6, Math.floor((yEnd-yStart)/rowDepth));
       const tileW=TRACK_W/cols;
@@ -23,7 +23,7 @@
       }
       // Tiles go fast but come back, so the floor never runs out entirely.
       obs.push({type:'tilefield', yStart, yEnd, y0:yStart, y1:yEnd, cols, rows, tileW, rowDepth, tiles,
-                fuseTime: hard?0.85:1.1, respawnTime: hard?5.2:4.5});
+                fuseTime: hard?1.9:2.2, respawnTime: hard?4.2:3.6});
       // survival: fence them into the field, and put the line out of reach
       arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
@@ -57,7 +57,7 @@
                 // rMin has to be smaller than the area the *target* survivor
                 // count needs, not just smaller than sixteen. At r=62 thirteen
                 // racers still fitted and the round stalled above its own cut.
-                r:r0, r0, rMin:34, shrink: hard? 42 : 34, wait: 2.5});
+                r:r0, r0, rMin:34, shrink: hard? 30 : 26, wait: 2.5});
       arenaEnd = yMid + r0 - 40; trackLength = yMid + r0 + 4000;
       return obs;
     }
@@ -174,7 +174,7 @@
 
     // ---- DOOR DASH: rows of doors, half of them paper ----
     if(mode==='doors'){
-      const span=Math.min(total, 5800);
+      const span=Math.min(total, 9000);
       let z=460;
       while(z < span-420){
         // 5 doors with a passable majority: a pack of sixteen jams solid on 4-with-2
@@ -224,7 +224,7 @@
       let type, guard=0;
       do{ type=pick(types); guard++; }while(guard<20 && (type===last || (type==='narrow'&&last==='pit') || (type==='pit'&&last==='narrow')));
       last=type;
-      const gap = rand(110,190);
+      const gap = rand(60,120);
       if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
@@ -261,7 +261,10 @@
       } else if(type==='narrow'){
         const len=rand(320,460);
         const yStart=cursor+gap+60, yEnd=yStart+len;
-        obs.push({type,yStart,yEnd,y0:yStart,y1:yEnd,halfWidth: hard? rand(62,85): rand(78,108)});
+        const icy = currentMap.slippery ? 1.4 : 1;
+        obs.push({type,yStart,yEnd,y0:yStart,y1:yEnd,
+                  halfWidth: (hard? rand(52,66): rand(60,78))*icy,
+                  offset: rand(-70,70)*(currentMap.slippery?0.6:1)});
         cursor=yEnd+30;
       } else if(type==='pusher'){
         const y=cursor+gap+70, d=44;
@@ -301,8 +304,8 @@
         // A wall with two doors in it. Sixteen racers, two doors: the jam is
         // the obstacle.
         const y = cursor+gap+100;
-        const gapW = hard? 100 : 122;
-        const spread = rand(230,300);
+        const gapW = hard? 72 : 86;
+        const spread = rand(170,220);
         const xs = [cx - spread/2 + rand(-24,24), cx + spread/2 + rand(-24,24)];
         obs.push({type:'gate', y, y0:y-90, y1:y+90, d:34, gapW, xs, h:62});
         cursor = y+150;
@@ -318,17 +321,17 @@
       } else if(type==='crumble'){
         // A bridge of slabs over a drop. Each one falls a moment after you put
         // your weight on it, then rebuilds -- so the bridge is never gone for good.
-        const cols = 3, rows = 3;
+        const cols = 4, rows = 3;
         const len = rand(360,440);
         const yStart = cursor+gap+100, yEnd = yStart+len;
-        const slabW = 190, rowD = len/rows;
+        const slabW = 108, rowD = len/rows;
         const slabs = [];
         for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
-          slabs.push({ x: cx + (ci-1)*(slabW+26), y: yStart + ri*rowD + rowD/2,
+          slabs.push({ x: cx + (ci-1.5)*(slabW+14), y: yStart + ri*rowD + rowD/2,
                        w: slabW, d: rowD-18, touched:false, fuse:-1, gone:false, drop:0, back:0 });
         }
         obs.push({type:'crumble', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-30, y1:yEnd+30,
-                  slabs, h: 26, fuseTime: hard?0.6:0.8, respawnTime: hard?4.4:3.6});
+                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.8:1.4});
         cursor = yEnd+150;
       } else if(type==='log'){
         // A whole tree trunk on ropes, sweeping across the track at chest height.
@@ -415,6 +418,23 @@
                   phase: rand(0,6.28), span: rand(180,300), y0:y-360, y1:y+360});
         cursor=y+90;
       }
+    }
+    // Every race course needs at least two places you can actually fall off.
+    // Left to the random draw, a course could come out with none, and then
+    // holding forward is a guaranteed finish.
+    const holes = obs.filter(o=>o.type==='narrow'||o.type==='pit'||o.type==='crumble').length;
+    for(let k=holes; k<2; k++){
+      const y = total*(k===0 ? 0.38 : 0.68);
+      const clash = obs.some(o=>y < (o.y1===undefined?0:o.y1)+120 && y+300 > (o.y0===undefined?0:o.y0)-120);
+      const yStart = clash ? y + 340 : y;
+      const icy2 = currentMap.slippery ? 1.4 : 1;
+      const hw = (hard? rand(52,66): rand(60,78))*icy2;
+      // Off centre enough that holding straight is a gamble, not so far that
+      // the middle of the track is always over the drop -- fully offset,
+      // bots collected twenty falls a round on a bad layout.
+      obs.push({type:'narrow', yStart, yEnd:yStart+300, y0:yStart, y1:yStart+300,
+                halfWidth: hw,
+                offset: (hw*0.75 + 20) * (Math.random()<0.5?-1:1)});
     }
     trackLength = cursor+300;
     obs.sort((a,b)=>a.y0-b.y0);

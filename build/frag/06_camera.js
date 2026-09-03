@@ -4,8 +4,8 @@
   const look = { yaw:0, pitch:0, sinceInput:99 };
   // A fixed frame: back and up, looking slightly down, with the racer in the
   // middle of it. Nothing here changes on its own except distance.
-  const CAM_BACK = 158, CAM_UP = 100, CAM_FOCUS = 20;
-  const CAM_RECENTRE_DELAY = 1.0;   // hands off this long and the view comes home
+  const CAM_BACK = 190, CAM_UP = 135, CAM_FOCUS = 20, CAM_LEAD = 60;
+  const CAM_RECENTRE_DELAY = 0.6;   // hands off this long and the view comes home
   let camZoom = 1, camReach = 0;
   const _camRay = new THREE.Raycaster();
   // Yaw is deliberately unbounded: the camera orbits the racer all the way
@@ -159,7 +159,9 @@
     // means back along the track rather than back along world Z.
     const base = pathAngle(p.y);
     const footH = (p.floorH||0) + p.h;
-    const pivotW = toWorld(p.x, p.y, footH + CAM_FOCUS);
+    // Aim a little up the course so you can read what is coming, without
+    // pushing the bean off the middle of the frame.
+    const pivotW = toWorld(p.x, p.y + CAM_LEAD*0.35, footH + CAM_FOCUS);
     // Vertical follow is quick -- a lagging pivot is the same as a tilting
     // camera -- while the horizontal follow keeps a little weight.
     const kXZ = snap ? 1 : 1 - Math.exp(-9*dt);

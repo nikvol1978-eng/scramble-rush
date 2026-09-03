@@ -26,7 +26,10 @@
 
         // ...and you can lean on someone to move them. This is a shove, not a hit:
         // it goes on top of the block so the pusher is not thrown off their line.
-        const shove = Math.min(force, 5) * 0.30;
+        // A dive is the one time contact is meant to move somebody: it still
+        // does not knock them over, but it shoves them a body length.
+        const diving = (a.diveT>0 && !b.diveT) ? 1.6 : 1;
+        const shove = Math.min(force, 5) * 0.30 * diving;
         b.vx += nx*shove; b.vy += ny*shove;
 
         // a little give in both of them, so contact still reads
@@ -57,7 +60,9 @@
   const WIND_BOOST = 0.30;
   function WIND(r){ return (r.windT>0 ? 1+WIND_BOOST : 1); }
 
-  const DRAFT_MAX = 0.10, DRAFT_NEAR = 20, DRAFT_FAR = 190, DRAFT_WIDE = 80;
+  // Courses are 7000 long now rather than 9500, so the distance-behind bonus
+  // has less room to build and the tow was down to 2%.
+  const DRAFT_MAX = 0.14, DRAFT_NEAR = 20, DRAFT_FAR = 190, DRAFT_WIDE = 80;
   const DRAFT_BEHIND_MAX = 0.85;      // how much extra a back-marker can draw
   function updateSlipstream(){
     let lead = -1e9;
@@ -73,7 +78,7 @@
         const closeness = 1 - (ahead-DRAFT_NEAR)/(DRAFT_FAR-DRAFT_NEAR);
         // The further off the pace you are, the more the tow is worth. It never
         // makes you faster than the leader, because the leader has nobody to draft.
-        const behind = clamp((lead - r.y)/2600, 0, 1)*DRAFT_BEHIND_MAX;
+        const behind = clamp((lead - r.y)/1800, 0, 1)*DRAFT_BEHIND_MAX;
         const boost = DRAFT_MAX*closeness*(1+behind);
         if(boost > r.draft) r.draft = boost;
       }

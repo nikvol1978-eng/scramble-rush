@@ -8,8 +8,18 @@
       const {ix:ix0,iy:iy0}=computeInputVec();
       let ix=ix0, iy=iy0;
       const mag=Math.hypot(ix,iy);
-      if(mag>0.05){ ix/=mag; iy/=mag; p.facing=Math.atan2(iy,ix); }
-      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.50:1;
+      if(mag>0.05){
+        ix/=mag; iy/=mag;
+        // Turn toward the stick rather than snapping to it. Snapping is what
+        // made a change of direction read as a teleport plus a skid.
+        const want = Math.atan2(iy,ix);
+        const rate = (p.h>0 ? TURN_RATE_AIR : TURN_RATE_GROUND) * dt;
+        let d = want - p.facing;
+        while(d> Math.PI) d-=Math.PI*2;
+        while(d<-Math.PI) d+=Math.PI*2;
+        p.facing += clamp(d, -rate, rate);
+      }
+      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.65:1;
       p.vx+=ix*ACCEL*(1+p.draft)*WIND(p)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*WIND(p)*control*f;
       // let go of jump early and the hop is short — hold it and you clear more
       if(p.h>0 && p.vh>2.6 && !keys[settings.keys.jump] && !p.jumpCut){ p.vh*=0.5; p.jumpCut=true; }
@@ -52,7 +62,7 @@
           let ix=inp.ix||0, iy=inp.iy||0;
           const mag=Math.hypot(ix,iy);
           if(mag>0.05){ r.facing=Math.atan2(iy,ix); }
-          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.50:1;
+          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.65:1;
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
@@ -111,7 +121,7 @@
       }
 
       // ---- horizontal: prone dives slide, ice holds your momentum
-      const slip = currentMap.slippery ? 0.955 : 0.885;
+      const slip = currentMap.slippery ? 0.845 : 0.78;
       const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? 0.955 : slip), f);
       r.vx*=fr; r.vy*=fr;
       r.x+=r.vx*f; r.y+=r.vy*f;

@@ -117,7 +117,7 @@
           placeAt(g, TRACK_W/2, (o.yStart+o.yEnd)/2, -6); courseGroup.add(g); return g;
         });
       } else if(o.type==='narrow'){
-        const ncx=TRACK_W/2;
+        const ncx=TRACK_W/2 + (o.offset||0);
         addGround(ncx-o.halfWidth, ncx+o.halfWidth, o.yStart,o.yEnd,false);
         addGround(0, ncx-o.halfWidth, o.yStart,o.yEnd,true);
         addGround(ncx+o.halfWidth, TRACK_W, o.yStart,o.yEnd,true);

@@ -3,7 +3,9 @@
   // ============================================================
   const ROUNDS = 3, FINAL_COUNT = 6;
   // The final leans hard into minigames — that is where they land best.
-  const MINIGAME_CHANCE = {1:0.30, 2:0.34, 3:0.55};
+  // Round 1 is always a race so everyone learns the controls; round 2 is a
+  // coin flip; round 3 is always the Closing Circle.
+  const MINIGAME_CHANCE = {1:0, 2:0.5};
   let loadTimer = 0;
 
   function survivorsAfter(roundNum, total){
@@ -16,7 +18,7 @@
 
   // A survival round cuts harder than a race and runs for a minimum time, or it
   // is over before anyone has understood what the map is.
-  const KNOCKOUT_MIN_S = 14;
+  const KNOCKOUT_MIN_S = 40;      // a survival round has to last like one
   function knockoutTarget(total, raceKeep){
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
@@ -57,8 +59,8 @@
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
       const finals = MINIGAMES.filter(m=>m.final);
       if(currentMap && currentMap.__forced){ /* a test picked it */ }
-      else if(n >= ROUNDS && finals.length && Math.random() < 0.72){
-        currentMap = pick(finals);                 // the showdown, not another race
+      else if(n >= ROUNDS && finals.length){
+        currentMap = pick(finals);                 // the showdown, always
       } else {
         const pool = MINIGAMES.filter(m=>!m.final);
         currentMap = (Math.random()<chance) ? pick(pool) : pick(MAPS);
@@ -69,7 +71,7 @@
     setCoursePath(currentMap.path ? COURSE_PATHS[currentMap.path] : null, trackLength);
     boulders=[]; lasers=[]; shots=[];
     lavaZ = currentMap.mode==='lava' ? -320 : 0;
-    timeLimit = n===1?80 : n===2?70 : 62;
+    timeLimit = n===1?60 : n===2?55 : 50;
     lavaSpeed = currentMap.mode==='lava' ? trackLength/(timeLimit*0.8) : 0;
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
