@@ -18,6 +18,16 @@
         while(d> Math.PI) d-=Math.PI*2;
         while(d<-Math.PI) d+=Math.PI*2;
         p.facing += clamp(d, -rate, rate);
+        // A sharp change of direction read as a skid: the body swings at
+        // TURN_RATE_GROUND while the velocity carries on the old way. Bite
+        // harder for a few frames so the two arrive together. This belongs with
+        // the turn rather than with the surface -- bots snap their facing
+        // instead of turning, so it is part of the control model, not the
+        // ground. Ice is exempt: sliding is the point of a slippery map.
+        let off = want - Math.atan2(p.vy, p.vx);
+        while(off> Math.PI) off-=Math.PI*2;
+        while(off<-Math.PI) off+=Math.PI*2;
+        if(Math.hypot(p.vx,p.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) p.turnGrip = 6;
       }
       const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.65:1;
       p.vx+=ix*ACCEL*(1+p.draft)*WIND(p)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*WIND(p)*control*f;
@@ -61,7 +71,14 @@
         if(inp){
           let ix=inp.ix||0, iy=inp.iy||0;
           const mag=Math.hypot(ix,iy);
-          if(mag>0.05){ r.facing=Math.atan2(iy,ix); }
+          if(mag>0.05){
+            const want=Math.atan2(iy,ix);
+            let off = want - Math.atan2(r.vy, r.vx);
+            while(off> Math.PI) off-=Math.PI*2;
+            while(off<-Math.PI) off+=Math.PI*2;
+            if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
+            r.facing=want;
+          }
           const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.65:1;
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
@@ -124,7 +141,8 @@
       }
 
       // ---- horizontal: prone dives slide, ice holds your momentum
-      const slip = currentMap.slippery ? 0.845 : 0.78;
+      const slip = currentMap.slippery ? 0.845 : ((r.turnGrip||0) > 0 ? 0.70 : 0.78);
+      if(r.turnGrip) r.turnGrip = Math.max(0, r.turnGrip - f);
       const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? 0.955 : slip), f);
       r.vx*=fr; r.vy*=fr;
       r.x+=r.vx*f; r.y+=r.vy*f;

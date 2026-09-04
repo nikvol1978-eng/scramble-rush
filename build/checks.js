@@ -313,7 +313,10 @@
   // layout that collapses early should not fail the build.
   function checkN(){
     const bad = [], runs = [];
-    for(let i=0;i<5;i++){
+    // Nine rounds, not five. A Tile Tumble round is 3-4 out and 50s most of the
+    // time, but a quarter of them end early with one or two gone, and a median
+    // of five samples lands on that tail often enough to fail a good build.
+    for(let i=0;i<9;i++){
       begin('tiles');
       if(!currentMap.knockout) return { name:'N Tile Tumble drops you a floor at a time',
                                         pass:false, detail:'tiles is not flagged knockout' };
@@ -337,9 +340,10 @@
     if(medOut > 6)    bad.push('median '+medOut+' eliminated, want 3-6');
     if(!runs.some(r=>r.everDropped)) bad.push('nobody ever dropped to a lower floor');
 
+    const spread = runs.map(r=>r.out+'/'+r.secs+'s').join(' ');
     return { name:'N Tile Tumble drops you a floor at a time', pass: bad.length===0,
-             detail: bad.length ? bad.join('; ')
-               : 'median '+medSecs+'s, '+medOut+' out, floors used' };
+             detail: (bad.length ? bad.join('; ') + ' -- ' : 'median '+medSecs+'s, '+medOut+' out, floors used -- ')
+                     + 'rounds: ' + spread };
   }
 
   // ---------- O: browsing the shop previews on the model, without equipping ----------
@@ -397,18 +401,26 @@
     // Swing the camera round behind the wall. One hand-picked angle was too
     // brittle -- depending on where the racer stands the camera can clear the
     // wall top -- so sweep and take the best occlusion the arc produces.
+    // Which wall, and which way the camera swings behind it, both depend on the
+    // layout. Hunting one wall in one direction meant the check occasionally
+    // found no geometry at all and reported a working camera as broken.
     let blockedMin = 1;
-    for(const yaw of [0.38, 0.52, 0.66, 0.80, 0.94]){
+    const spots = [];
+    for(const wallX of [26, TRACK_W-26]) for(const sign of [1,-1]) spots.push([wallX,sign]);
+    for(const [wallX, sign] of spots){
+     for(const yaw of [0.38, 0.52, 0.66, 0.80, 0.94]){
       // The camera lerps to a new orbit over ~25 frames, so hold long enough for
       // the fade to settle after it arrives. Re-pin every slice: over a hold this
       // long the pack barges the racer off the wall, and then of course nothing
       // is blocking the view any more.
       // hold it there: sinceInput stays 0, as though a hand were still on it
       for(let k=0;k<8;k++){
-        look.yaw = Math.PI*yaw; look.pitch = -0.5; look.sinceInput = 0;
-        p.x = 26; p.y = openY; p.vx = 0; p.vy = 0; window.__dbg.tick(10);
+        look.yaw = Math.PI*yaw*sign; look.pitch = -0.5; look.sinceInput = 0;
+        p.x = wallX; p.y = openY; p.vx = 0; p.vy = 0; window.__dbg.tick(10);
       }
       blockedMin = Math.min(blockedMin, ...fadeables.map(m=>m.material.opacity));
+     }
+     if(blockedMin <= 0.6) break;                  // found the blocked view
     }
     if(!fadeables.length) bad.push('nothing registered as fadeable');
     if(clearMin < 0.9)    bad.push('faded with a clear line of sight ('+clearMin.toFixed(2)+')');
@@ -782,10 +794,11 @@
       return Math.atan2(dy, Math.hypot(dx, dz));
     }
 
-    begin('sunny');
-    const p = player();
-    p.x = TRACK_W/2; p.y = 1400; p.h = 0; p.vx=0; p.vy=0; p.vh=0; p.falling=false;
-    resetLook(); window.__dbg.tick(60);
+    // Clear ground, and nobody else in it. A hard-coded y put the racer in the
+    // gap hazard on the odd layout: it fell during the settle, and a camera
+    // chasing a racer that is no longer there is not off-centre, it is right.
+    const { p, pin } = steerRig();
+    for(let i=0;i<60;i++){ pin(); window.__dbg.tick(1); }
 
     // (a) the racer sits in the middle of the frame, not down in the corner
     const centred = racerNDC();
@@ -798,6 +811,7 @@
     doJump(p);
     let worst = 0;
     for(let i=0;i<80;i++){
+      const wasH = p.h, wasVh = p.vh; pin(); p.h = wasH; p.vh = wasVh;
       window.__dbg.tick(1);
       worst = Math.max(worst, Math.abs(camElev() - flatElev));
       if(p.h <= 0 && i > 6) break;
@@ -805,16 +819,19 @@
     if(worst > 0.09) bad.push('camera angle swung '+worst.toFixed(3)+' rad over a jump');
 
     // (c) the racer stays on screen through the jump
-    p.h = 0; p.vh = 0; window.__dbg.tick(20);
-    doJump(p); window.__dbg.tick(14);
+    p.h = 0; p.vh = 0;
+    for(let i=0;i<20;i++){ pin(); window.__dbg.tick(1); }
+    doJump(p);
+    for(let i=0;i<14;i++){ const wasH=p.h, wasVh=p.vh; pin(); p.h=wasH; p.vh=wasVh; window.__dbg.tick(1); }
     const air = racerNDC();
     if(Math.abs(air.x) > 0.25 || Math.abs(air.y) > 0.75) bad.push('racer left frame mid-jump ('+air.x.toFixed(2)+','+air.y.toFixed(2)+')');
 
     // (d) look away by hand, let go, and the view comes back behind on its own
-    p.h = 0; p.vh = 0; p.vy = 4;
-    look.yaw = 1.15; look.sinceInput = 0; window.__dbg.tick(4);
+    p.h = 0; p.vh = 0;
+    look.yaw = 1.15; look.sinceInput = 0;
+    for(let i=0;i<4;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }
     const swung = look.yaw;
-    window.__dbg.tick(150);                                   // 2.5s hands off
+    for(let i=0;i<150;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }   // 2.5s hands off
     const back = Math.abs(look.yaw);
     if(back > 0.22) bad.push('view did not recentre in 2.5s (yaw '+swung.toFixed(2)+' -> '+look.yaw.toFixed(2)+')');
     if(back < 0.0005 && swung > 0) seen1 = 0;                 // fine, fully home
@@ -1430,6 +1447,124 @@
              pass: bad.length===0, detail: bad.length? bad.join('; ') : JSON.stringify(rate) };
   }
 
+  // ---- shared rig for the steering checks: a clear stretch, nobody else in it ----
+  function steerRig(){
+    begin('sunny');
+    let openY = null;
+    for(let y=700; y<trackLength-400; y+=120){
+      if(!obstacles.some(o=>y > (o.y0===undefined?-1e9:o.y0)-300 && y < (o.y1===undefined?1e9:o.y1)+300)){ openY = y; break; }
+    }
+    if(openY === null){
+      let last = 0;
+      for(const o of obstacles) last = Math.max(last, o.y1===undefined?0:o.y1);
+      openY = Math.min(last + 320, trackLength - 200);
+    }
+    const pin = ()=>{
+      for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; }
+      const q = player();
+      q.y = openY; q.h = 0; q.floorH = 0; q.invuln = 9999;
+      q.falling = false; q.stumbleT = 0; q.tumbleT = 0; q.getUpT = 0; q.windT = 0;
+      return q;
+    };
+    const p = pin();
+    p.x = TRACK_W/2; p.vx = 0; p.vy = 0;
+    resetLook();
+    return { p, openY, pin };
+  }
+  const DEG = 180/Math.PI;
+  function wrapDeg(d){ while(d > 180) d -= 360; while(d <= -180) d += 360; return d; }
+
+  // ---------- U: a diagonal is a diagonal ----------
+  // Holding W+A used to curve, because auto-centre chased the running direction
+  // while the input was measured against the camera -- the yaw fed into itself.
+  function checkU(){
+    const bad = [];
+    const { p, openY, pin } = steerRig();
+    window.__dbg.hold('w', true); window.__dbg.hold('a', true);
+    let worstOff = 0, worstYaw = 0;
+    for(let i=0;i<120;i++){                       // two seconds
+      pin(); window.__dbg.tick(1);
+      if(i < 20) continue;                        // let the turn settle first
+      const deg = p.facing*DEG;
+      const off = Math.min(...[45,135,-45,-135].map(a=>Math.abs(wrapDeg(deg - a))));
+      if(off > worstOff) worstOff = off;
+      if(Math.abs(look.yaw) > worstYaw) worstYaw = Math.abs(look.yaw);
+    }
+    window.__dbg.hold('w', false); window.__dbg.hold('a', false);
+
+    if(worstOff > 3)     bad.push('heading wandered '+worstOff.toFixed(1)+' deg off the diagonal');
+    if(worstYaw > 0.02)  bad.push('the view drifted with it (yaw '+worstYaw.toFixed(3)+')');
+
+    return { name:'U W+A holds an exact diagonal', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'within '+worstOff.toFixed(1)+' deg of 45, yaw within '+worstYaw.toFixed(3) };
+  }
+
+  // ---------- V: letting go moves the bean, not the camera ----------
+  function checkV(){
+    const bad = [];
+    const { p, pin } = steerRig();
+    window.__dbg.hold('w', true);
+    for(let i=0;i<120;i++){ pin(); window.__dbg.tick(1); }
+    const top = Math.hypot(p.vx, p.vy);
+    window.__dbg.hold('w', false);
+
+    const yaw0 = look.yaw, zoom0 = camZoom;
+    let slide = 0, stopped = false, worstYaw = 0, worstZoom = 0;
+    for(let i=0;i<30;i++){                        // half a second
+      pin(); window.__dbg.tick(1);
+      if(!stopped){
+        slide++;
+        if(Math.hypot(p.vx, p.vy) < top*0.10) stopped = true;
+      }
+      worstYaw  = Math.max(worstYaw,  Math.abs(look.yaw - yaw0));
+      worstZoom = Math.max(worstZoom, Math.abs(camZoom - zoom0));
+    }
+
+    if(top < 3)          bad.push('never reached speed ('+top.toFixed(2)+')');
+    if(worstYaw > 0.01)  bad.push('the view yawed on release ('+worstYaw.toFixed(4)+')');
+    if(worstZoom > 0.01) bad.push('the camera changed distance on release ('+worstZoom.toFixed(4)+')');
+    if(!stopped)         bad.push('still sliding after half a second');
+
+    return { name:'V releasing the stick moves nothing but the bean', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'slid '+slide+' frames (want 4-6), yaw moved '+worstYaw.toFixed(4)+', zoom '+worstZoom.toFixed(4) };
+  }
+
+  // ---------- W: a hard turn does not skid ----------
+  // The body turns at TURN_RATE_GROUND; if the velocity does not follow, the bean
+  // reads as facing one way and travelling another. Measured as: how long after a
+  // 90 degree change of input before the velocity is -- and stays -- within 15
+  // degrees of the facing. Counting the first frame the two agree would be
+  // meaningless: at the instant of the turn neither has moved yet.
+  function checkW(){
+    const bad = [];
+    const { p, pin } = steerRig();
+    window.__dbg.hold('w', true);
+    for(let i=0;i<120;i++){ pin(); window.__dbg.tick(1); }
+    const top = Math.hypot(p.vx, p.vy);
+    window.__dbg.hold('w', false); window.__dbg.hold('a', true);   // hard left
+    const trace = [];
+    let peak = 0, settle = 0;
+    for(let i=0;i<40;i++){
+      pin(); window.__dbg.tick(1);
+      const gap = Math.abs(wrapDeg(Math.atan2(p.vy,p.vx)*DEG - p.facing*DEG));
+      trace.push({ f:i+1, face:+(p.facing*DEG).toFixed(1), vel:+(Math.atan2(p.vy,p.vx)*DEG).toFixed(1),
+                   gap:+gap.toFixed(1), spd:+Math.hypot(p.vx,p.vy).toFixed(2) });
+      if(gap > peak) peak = gap;
+      if(gap >= 15) settle = i+2;                 // not settled until after this frame
+    }
+    window.__dbg.hold('a', false);
+    window.__turnTrace = trace;
+
+    if(top < 3)     bad.push('never reached speed');
+    if(settle > 8)  bad.push('velocity trailed the facing for '+settle+' frames, want <= 8 (peak '+peak.toFixed(0)+' deg)');
+
+    return { name:'W a 90 degree turn does not skid', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'velocity settled within 15 deg after '+settle+' frames, peak '+peak.toFixed(0)+' deg' };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -1438,7 +1573,7 @@
         ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
         ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
-        ['T',checkT],['X',checkX],
+        ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['4',check4],
         ['6',check6],['7',check7],['9',check9],['0',check0],

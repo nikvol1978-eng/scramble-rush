@@ -127,24 +127,27 @@
     // drag it yourself.
     look.sinceInput += dt;
     if(settings.autoCentre && look.sinceInput > CAM_RECENTRE_DELAY){
-      const sp = Math.hypot(p.vx, p.vy);
-      // heading measured from straight-ahead: the camera settles behind it
-      const want = sp > 1.2 ? clamp(Math.atan2(p.vx, p.vy), -0.7, 0.7) : 0;
+      // The camera settles back behind the COURSE heading, never behind the
+      // direction you happen to be running. Settling behind your velocity while
+      // steering is camera-relative made W+A curve into a spiral: the input was
+      // rotated by a yaw that was itself chasing the input.
+      const want = 0;
       const k = 1 - Math.exp(-2.2*dt);
       let d = want - look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
       look.yaw   += d*k;
       look.pitch += (0 - look.pitch)*k;
     }
 
-    // Pull back a little when you are quick, and again when the pack is on top
-    // of you, so you can still see what is coming.
-    const speed = Math.hypot(p.vx, p.vy);
+    // Pull back a little when the pack is on top of you, so you can still see
+    // what is coming.
     let crowd = 0;
     for(const o of racers){
       if(o===p || o.falling || o.finished || o.lavaOut) continue;
       if(Math.abs(o.y-p.y) < 230 && Math.abs(o.x-p.x) < 230) crowd++;
     }
-    const wantZoom = 1 + clamp(speed/7.5, 0, 1)*0.15 + clamp(crowd/5, 0, 1)*0.12;
+    // Distance no longer breathes with speed -- that read as the camera lurching
+    // every time you let go of the stick. Only the crowd pulls it back.
+    const wantZoom = 1 + clamp(crowd/5, 0, 1)*0.12;
     camZoom += (wantZoom - camZoom) * (snap ? 1 : 1 - Math.exp(-2.4*dt));
 
     const back = CAM_BACK*settings.camDist*camZoom, height = CAM_UP*settings.camDist*camZoom;
@@ -164,7 +167,7 @@
     const pivotW = toWorld(p.x, p.y + CAM_LEAD*0.35, footH + CAM_FOCUS);
     // Vertical follow is quick -- a lagging pivot is the same as a tilting
     // camera -- while the horizontal follow keeps a little weight.
-    const kXZ = snap ? 1 : 1 - Math.exp(-9*dt);
+    const kXZ = snap ? 1 : 1 - Math.exp(-16*dt);
     const kY  = snap ? 1 : 1 - Math.exp(-36*dt);
     if(camPos.y===undefined || snap){ camPos.y = pivotW.y; }
     camPos.x += (pivotW.x-camPos.x)*kXZ;
