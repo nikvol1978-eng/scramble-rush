@@ -3,7 +3,9 @@
     const hard = n>=2;
     const spd  = n===1?1.0 : n===2?1.22 : 1.42;
     // A map whose whole mechanic is losing ground needs less ground to lose.
-    const total = Math.round((n===1?7000 : n===2?6000 : 5200) * (currentMap.lenScale||1));
+    // v20 slowed the beans by 12% and the field was home in 24-33 s against a
+    // 40-50 s target, so round 1 is 25% longer and round 2 15% longer.
+    const total = Math.round((n===1?8800 : n===2?6900 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
     // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
     // crumbling bridge at y=560: anyone walking straight was stopped dead and
