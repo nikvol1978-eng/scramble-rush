@@ -1301,6 +1301,35 @@
                : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
   }
 
+  // ---------- b (3b): hazards are the loudest thing on screen ----------
+  // On every race map, the colour each hazard mesh is painted with must be at
+  // least 0.35 more saturated (HSL) than the floor it stands on. Read off the
+  // materials as built -- the accent a mesh's body or stripe carries -- rather
+  // than off pixels, which shadows and stripes would make a lottery.
+  function checkB2(){
+    const bad = [], rep = {};
+    const sat = hex => { const h = {}; new THREE.Color(hex).getHSL(h); return h.s; };
+    for(const key of CORRIDOR_MAPS.concat(PATH_MAPS)){
+      begin(key);
+      const floorHex = currentMap.__floorHex || currentMap.ground;
+      const floorS = sat(floorHex);
+      const seen = {};
+      courseGroup.traverse(o=>{
+        if(!o.isMesh || !o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for(const m of mats) if(m.userData && m.userData.hazard) seen[m.userData.hazard] = (seen[m.userData.hazard]||0) + 1;
+      });
+      const hexes = Object.keys(seen);
+      if(!hexes.length){ bad.push(key+': no hazard mesh carries an accent'); continue; }
+      const minS = Math.min(...hexes.map(sat));
+      const count = hexes.reduce((n,h)=>n+seen[h], 0);
+      rep[key] = 'floor '+floorS.toFixed(2)+', hazards '+minS.toFixed(2)+'+ over '+count+' meshes';
+      if(minS < floorS + 0.35) bad.push(key+': hazards at '+minS.toFixed(2)+' saturation over a '+floorS.toFixed(2)+' floor, want +0.35');
+    }
+    return { name:'b (3b) hazards are the loudest thing on screen', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   // ---------- 5: the bean rig ----------
   // Proportions and the small animations that make a bean read as a bean: it
   // stands about twice as tall as it is wide, its arms reach below the waist,
@@ -1701,7 +1730,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

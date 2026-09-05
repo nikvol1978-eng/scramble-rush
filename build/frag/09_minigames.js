@@ -5,6 +5,7 @@
   const CANNON_WARN = 0.75;          // seconds of floor warning before a cannon fires
   let shots=[];                     // cannonballs in flight
   const shotMat = new THREE.MeshPhongMaterial({color:0x2b2140, shininess:50});
+  function shotMaterial(){ return courseLook ? courseLook.stripeMat(0) : shotMat; }
   const rockMat = new THREE.MeshPhongMaterial({color:0x6b5545, shininess:8, flatShading:true});
   const rockTopMat = new THREE.MeshLambertMaterial({color:0x8a7060, flatShading:true});
 
@@ -64,13 +65,17 @@
 
   function buildMinigameMeshes(){
     const accent = new THREE.Color(currentMap.accent);
+    const look = courseLook || { accents:[currentMap.accent,currentMap.accent,currentMap.accent],
+      hazardMat:(i)=>new THREE.MeshLambertMaterial({color:currentMap.accent}),
+      stripeMat:(i)=>new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', currentMap.accent)}),
+      softMat:(i)=>new THREE.MeshLambertMaterial({color:softAccent(currentMap.accent)}), paleWall:paleOf(currentMap.ground) };
     for(const o of obstacles){
       if(o.type==='doors'){
         o.meshes = o.items.map(it=>{
           const g=new THREE.Group();
-          const mat = it.fake
-            ? new THREE.MeshLambertMaterial({color:0xfff1c9, transparent:true, opacity:0.94})
-            : new THREE.MeshPhongMaterial({color:0x5b3aa8, shininess:30});
+          // every door wears the same stripe: a paper one must not give itself away
+          const mat = look.stripeMat(0);
+          if(it.fake){ mat.transparent = true; mat.opacity = 0.96; }
           const panel=new THREE.Mesh(new THREE.BoxGeometry(it.w, 74, o.d), mat);
           panel.position.y=37; panel.castShadow=true; g.add(panel); registerFadeable(panel);
           const frameMat=new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -146,10 +151,10 @@
         const g=new THREE.Group();
         const len = o.yEnd - o.wallFrom;
         const wall=new THREE.Mesh(new THREE.BoxGeometry(16, 44, len),
-          new THREE.MeshLambertMaterial({color:currentMap.wall}));
+          new THREE.MeshLambertMaterial({color:look.paleWall}));
         wall.position.y=22; wall.castShadow=true; g.add(wall);
         const cap=new THREE.Mesh(new THREE.BoxGeometry(22, 6, len),
-          new THREE.MeshLambertMaterial({color:accent.getHex()}));
+          new THREE.MeshLambertMaterial({color:look.accents[0]}));
         cap.position.y=46; g.add(cap);
         placeAt(g, o.cx, (o.wallFrom+o.yEnd)/2, 0);
         courseGroup.add(g); registerFadeable(wall);
@@ -173,12 +178,19 @@
           if(i<edges.length-2) x1 -= o.gapW/2;
           const w = x1-x0; if(w<=4) continue;
           const seg=new THREE.Mesh(new THREE.BoxGeometry(w, o.h, o.d),
-            new THREE.MeshLambertMaterial({color:currentMap.wall}));
+            new THREE.MeshLambertMaterial({color:look.paleWall}));
           seg.position.set(x0 + w/2 - TRACK_W/2, o.h/2, 0); seg.castShadow=true; g.add(seg);
           registerFadeable(seg);
           const top=new THREE.Mesh(new THREE.BoxGeometry(w+4, 7, o.d+4),
-            new THREE.MeshLambertMaterial({color:accent.getHex()}));
+            new THREE.MeshLambertMaterial({color:look.accents[0]}));
           top.position.set(seg.position.x, o.h+3, 0); g.add(top);
+        }
+        // striped posts either side of each door: the bit you run into
+        for(const dx of o.xs){
+          [-1,1].forEach(sd=>{
+            const post=new THREE.Mesh(new THREE.BoxGeometry(10, o.h+6, o.d+6), look.stripeMat(1));
+            post.position.set(dx + sd*(o.gapW/2+5) - TRACK_W/2, (o.h+6)/2, 0); post.castShadow=true; g.add(post);
+          });
         }
         placeAt(g, TRACK_W/2, o.y, 0);
         courseGroup.add(g);
@@ -254,8 +266,8 @@
 
       //<<shelved:mesh-log-roller>>
       } else if(o.type==='cannon'){
-        const barrelMat=new THREE.MeshPhongMaterial({color:0xe6c27a, shininess:40});
-        const bandMat=new THREE.MeshLambertMaterial({color:0x1a1033});
+        const barrelMat=look.hazardMat(1);
+        const bandMat=look.stripeMat(1);
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
           const barrel=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.45, it.r*1.2, 92, 14), barrelMat);
@@ -284,16 +296,15 @@
         placeAt(beam, TRACK_W/2, o.y, o.pivotH); courseGroup.add(beam);
         const rod=new THREE.Mesh(new THREE.CylinderGeometry(3,3,o.armLen,8), barMat);
         rod.castShadow=true; g.add(rod);
-        const ball=new THREE.Mesh(new THREE.SphereGeometry(o.r,16,12),
-          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:36}));
+        const ball=new THREE.Mesh(new THREE.SphereGeometry(o.r,16,12), look.stripeMat(0));
         ball.castShadow=true; g.add(ball);
         courseGroup.add(g);
         o.mesh=g; o.rod=rod; o.ball=ball;
 
       } else if(o.type==='bumper'){
-        const capMat=new THREE.MeshPhongMaterial({color:0xff4fa3, shininess:60});
+        const capMat=look.hazardMat(2);
         const postMat=new THREE.MeshLambertMaterial({color:0xfff8ec});
-        const ringMat=new THREE.MeshBasicMaterial({color:0xffcb3d});
+        const ringMat=look.stripeMat(2);
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
           const post=new THREE.Mesh(new THREE.CylinderGeometry(it.r*0.86,it.r,30,16), postMat);
@@ -330,7 +341,7 @@
 
       //<<shelved:mesh-spinlaser>>
       } else if(o.type==='shortcut'){
-        const deckMat = new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:28});
+        const deckMat = look.softMat(0);                  // a reward, not a threat: soft
         const railMat = new THREE.MeshLambertMaterial({color:0x1a1033});
         const step = 40;
         for(let z=o.yStart; z<o.yEnd; z+=step){
@@ -370,7 +381,7 @@
         ];
         geo.setAttribute('position', new THREE.Float32BufferAttribute(v,3));
         geo.computeVertexNormals();
-        const mesh=new THREE.Mesh(geo, new THREE.MeshLambertMaterial({color:accent.getHex(), side:THREE.DoubleSide}));
+        const mesh=new THREE.Mesh(geo, new THREE.MeshLambertMaterial({color:softAccent(look.accents[0]), side:THREE.DoubleSide}));
         mesh.receiveShadow=true; mesh.castShadow=true;
         const g=new THREE.Group(); g.add(mesh);
         const lip=new THREE.Mesh(new THREE.BoxGeometry(w+8,6,10), new THREE.MeshLambertMaterial({color:0x1a1033}));
@@ -384,6 +395,17 @@
     if(currentMap.mode==='boulder'){ boulderTimer=1.2; }
   }
 
+  let _finishBanner = null;
+  function finishBanner(){
+    if(!_finishBanner){
+      const cv=document.createElement('canvas'); cv.width=512; cv.height=104; const g=cv.getContext('2d');
+      g.fillStyle='#ff4fa3'; g.fillRect(0,0,512,104);
+      g.fillStyle='#ffffff'; g.font='bold 78px Fredoka, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+      g.fillText('FINISH', 256, 56);
+      _finishBanner = new THREE.CanvasTexture(cv); _finishBanner.encoding = THREE.sRGBEncoding;
+    }
+    return _finishBanner;
+  }
   // The line itself plus the pen you can wander in once you are over it.
   function buildFinishArea(){
     const z = trackLength;
@@ -391,16 +413,20 @@
       new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
     placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);
 
-    const postMat=new THREE.MeshPhongMaterial({color:0xff4fa3, shininess:30});
+    const postMat=new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', (courseLook?courseLook.accents[0]:currentMap.accent))});
     const barMat =new THREE.MeshLambertMaterial({color:0x1a1033});
     [-1,1].forEach(s=>{
-      const post=new THREE.Mesh(new THREE.CylinderGeometry(9,11,120,10), postMat);
-      placeAt(post, TRACK_W/2 + s*(TRACK_W/2-14), z, 60); post.castShadow=true; courseGroup.add(post);
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(9,11,150,10), postMat);
+      placeAt(post, TRACK_W/2 + s*(TRACK_W/2-14), z, 75); post.castShadow=true; courseGroup.add(post);
     });
-    const beam=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-8,20,16), postMat);
-    placeAt(beam, TRACK_W/2, z, 120); beam.castShadow=true; courseGroup.add(beam);
+    // an arch with a chequered banner, and the word on it
+    const chk=checkerTexture('#ffffff','#1a1033',8); chk.repeat.set(TRACK_W/64, 1);
+    const beam=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-8,44,16), new THREE.MeshLambertMaterial({map:chk}));
+    placeAt(beam, TRACK_W/2, z, 150); beam.castShadow=true; courseGroup.add(beam);
+    const sign=new THREE.Mesh(new THREE.PlaneGeometry(200, 40), new THREE.MeshBasicMaterial({map:finishBanner(), transparent:true, side:THREE.DoubleSide}));
+    placeAt(sign, TRACK_W/2, z-9, 150); sign.rotation.y = Math.PI; courseGroup.add(sign);
     const trim=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W+4,6,20), barMat);
-    placeAt(trim, TRACK_W/2, z, 132); courseGroup.add(trim);
+    placeAt(trim, TRACK_W/2, z, 175); courseGroup.add(trim);
     // bunting either side of the pen so the area reads as somewhere to stand
     for(let i=0;i<10;i++){
       const f=new THREE.Mesh(new THREE.ConeGeometry(7,16,4),
@@ -519,7 +545,7 @@
           it.cool = it.interval;
           const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
                       vx: it.side<0 ? it.speed : -it.speed, spin:0 };
-          const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMat);
+          const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMaterial());
           g.castShadow=true; placeAt(g, b.x, b.y, it.r+26);
           courseGroup.add(g); b.mesh=g;
           shots.push(b);

@@ -162,7 +162,10 @@
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }
       if(r.y>=trackLength&&!r.finished){
         r.finished=true; r.finishTime=raceTime; r.vy*=0.4; r.diveT=0; r.getUpT=0;
-        spawnBurst3D(r.x,r.y,0xffcb3d,14); if(r.isPlayer) SFX.win();
+        // confetti for the first three across, a spark for everyone after
+        if(racers.filter(q=>q.finished).length <= 3) spawnConfetti(r.x, r.y);
+        else spawnBurst3D(r.x,r.y,0xffcb3d,14);
+        if(r.isPlayer) SFX.win();
       }
     }
 

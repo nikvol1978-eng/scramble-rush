@@ -5,6 +5,10 @@
   // A fixed frame: back and up, looking slightly down, with the racer in the
   // middle of it. Nothing here changes on its own except distance.
   const CAM_BACK = 190, CAM_UP = 135, CAM_FOCUS = 20, CAM_LEAD = 60;
+  // One warm key and a cool hemisphere fill. With ACES tone mapping on, the
+  // v19 levels (1.0 / 0.9) blew the floor out to white; these keep the floor a
+  // mid tone so the saturated hazards have something to be louder than.
+  const KEY_LIGHT = 0.95, FILL_LIGHT = 0.5;
   const CAM_RECENTRE_DELAY = 0.6;   // hands off this long and the view comes home
   let camZoom = 1, camReach = 0;
   const _camRay = new THREE.Raycaster();
@@ -117,10 +121,10 @@
   function syncCamera(snap, dt){
     // whoever the camera is on: the player, or a survivor while spectating
     const p=camSubject(); if(!p) return;
-    if(state==='mapintro'){ dirLight.intensity=1.0; hemi.intensity=0.9; sky.visible=true; flyCamera(); return; }
+    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true; flyCamera(); return; }
     dt = dt||0.016;
     // the profile stage dims these; put them back for play
-    dirLight.intensity=1.0; hemi.intensity=0.9; sky.visible=true;
+    dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true;
 
     // Hands off for a moment and the view eases back behind the way the racer
     // is actually running -- not instantly, and not so slowly you give up and

@@ -348,6 +348,30 @@
       forcedGap:false, obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
 
   ];
+  // Three saturated accents a map paints its hazards with. Anything that can
+  // hurt you wears one of these, or a white-and-accent stripe; walls, floors
+  // and safe geometry are pale, so the dangerous thing is always the loudest.
+  const MAP_ACCENTS = {
+    sunny:   ['#ff4fa3', '#ff7a3d', '#8b5cf6'],
+    cannonc: ['#ff4fa3', '#ffcb3d', '#23e6c9'],
+    slide:   ['#ff5a4d', '#ffd54f', '#ff4fa3'],
+    neon:    ['#23e6c9', '#ff2d95', '#ffcb3d'],
+    lava:    ['#ff5a4d', '#ffcb3d', '#ff4fa3'],
+    doors:   ['#ff4fa3', '#23e6c9', '#ffcb3d'],
+    tiles:   ['#ff4fa3', '#ffcb3d', '#23e6c9'],
+    shrink:  ['#ff4fa3', '#ffcb3d', '#23e6c9']
+  };
+  function mapAccents(){ const a = MAP_ACCENTS[currentMap.key]; return a || [currentMap.accent, currentMap.accent, currentMap.accent]; }
+  // Colour arithmetic in HSL, returned as a hex string.
+  function withHSL(hex, fn){ const c = new THREE.Color(hex), h = {}; c.getHSL(h); fn(h); c.setHSL(h.h, h.s, h.l); return '#' + c.getHexString(); }
+  // A neutral floor: the map's hue, never more than moderately saturated and
+  // never so light that the tone mapper turns it white.
+  function neutralFloor(hex){ return withHSL(hex, h=>{ h.s = Math.min(h.s, 0.42); h.l = Math.min(h.l, 0.62); }); }
+  // Pale and desaturated: walls and anything that cannot hurt you.
+  function paleOf(hex){ return withHSL(hex, h=>{ h.s = h.s*0.35; h.l = Math.max(h.l, 0.80); }); }
+  function softAccent(hex){ return withHSL(hex, h=>{ h.s = h.s*0.55; h.l = Math.max(h.l, 0.70); }); }
+  function mixHex(a, b, k){ const c = new THREE.Color(a).lerp(new THREE.Color(b), k); return '#' + c.getHexString(); }
+
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
     { key:'lava', name:'Lava Rise', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',

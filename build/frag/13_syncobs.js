@@ -48,5 +48,6 @@
     for(const c of courseGroup.children){
       if(c.userData.deco){ c.position.y=c.userData.deco.y+Math.sin(t*1.2+c.userData.deco.ph)*6; c.rotation.y+=0.004; }
       if(c.userData.cloud){ c.position.x+=c.userData.cloud*0.03; if(c.position.x>1000) c.position.x=-1000; }
+      if(c.userData.crowd){ const cr=c.userData.crowd; c.position.y = cr.y + Math.abs(Math.sin(t*cr.rate + cr.ph))*3.2; }
     }
   }

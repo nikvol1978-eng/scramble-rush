@@ -30,6 +30,7 @@
     return g;
   }
 
+  let courseLook = null;
   function buildCourseMeshes(){
     clearGroup(courseGroup);
     clearFadeables();
@@ -40,12 +41,27 @@
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
     // the usual corridor under them would just floor the whole arena.
     const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin';
+    // ---- the v20 look: a neutral floor, pale walls, loud hazards ----
+    // One warm key, a cool fill from the sky, and a haze that matches it.
+    const accents = mapAccents();
+    const floorHex = neutralFloor(currentMap.ground);
+    const floorAltHex = mixHex(floorHex, neutralFloor(currentMap.groundAlt), 0.5);   // half the old contrast
+    currentMap.__floorHex = floorHex;
+    hemi.color.set(currentMap.skyTop); hemi.groundColor.set(floorHex);
+    fillLight.color.set(currentMap.skyMid);
+    if(scene.fog){ scene.fog.color.set(currentMap.skyMid); scene.fog.near = 900; scene.fog.far = 2700; }
+    const paleWall = paleOf(currentMap.ground);
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
-    const wallMat = new THREE.MeshLambertMaterial({color:currentMap.wall});
-    const wallTopMat = new THREE.MeshLambertMaterial({color:currentMap.wallTop});
-    const skirtMat = new THREE.MeshLambertMaterial({color:currentMap.groundAlt});
-    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 2);
-    const mapStripeTex = stripeTexture(currentMap.accent, '#1a1033');
+    const wallMat = new THREE.MeshLambertMaterial({color:paleWall});
+    const wallTopMat = new THREE.MeshLambertMaterial({color:accents[0]});       // the accent rail
+    const skirtMat = new THREE.MeshLambertMaterial({color:mixHex(paleWall, floorHex, 0.5)});
+    const mapGroundTex = checkerTexture(floorHex, floorAltHex, 1);
+    const mapStripeTex = stripeTexture('#ffffff', accents[0]);
+    // Materials for the things that hit you. Tagged with their accent so the
+    // contrast check can read the colour a mesh is painted with.
+    const hazardMat = (i, extra)=>{ const m = new THREE.MeshLambertMaterial(Object.assign({color:accents[i%3]}, extra||{})); m.userData.hazard = accents[i%3]; return m; };
+    const stripeMat = (i)=>{ const m = new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', accents[i%3])}); m.userData.hazard = accents[i%3]; return m; };
+    courseLook = { accents, floorHex, paleWall, hazardMat, stripeMat, softMat:(i)=>new THREE.MeshLambertMaterial({color:softAccent(accents[i%3])}) };
 
     function addGround(x0,x1,z0,z1,sunken){
       const w=x1-x0, d=z1-z0; if(w<=0||d<=0) return;
@@ -147,12 +163,16 @@
     const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
 
-    const pillarMat=new THREE.MeshPhongMaterial({color:0x8b5cf6, shininess:40});
-    const pillarCapMat=new THREE.MeshLambertMaterial({color:0xc084fc});
-    const maceMat=new THREE.MeshPhongMaterial({color:0xff5a4d, shininess:50});
+    // Pillars only block, so they are soft; everything that swings, spins or
+    // shoves is a saturated accent with a white-and-accent stripe on the face
+    // that hits you.
+    const pillarMat=courseLook.softMat(2);
+    const pillarCapMat=new THREE.MeshLambertMaterial({color:accents[2]});
+    const maceMat=courseLook.stripeMat(0);
     const poleMat=new THREE.MeshLambertMaterial({color:0x1a1033});
-    const barMat=new THREE.MeshLambertMaterial({map:mapStripeTex});
-    const pusherMat=new THREE.MeshPhongMaterial({color:0x60a5fa, shininess:30});
+    const barMat=courseLook.stripeMat(1);
+    const pusherMat=courseLook.hazardMat(1);
+    const pusherFaceMat=courseLook.stripeMat(1);
 
     for(const o of obstacles){
       if(o.type==='pillars'){
@@ -193,7 +213,7 @@
           const g=new THREE.Group();
           const box=new THREE.Mesh(new THREE.BoxGeometry(it.width,34,it.d), pusherMat); box.castShadow=true; g.add(box);
           const out=new THREE.Mesh(new THREE.BoxGeometry(it.width+5,38,it.d+5), outlineMat); g.add(out);
-          const face=new THREE.Mesh(new THREE.BoxGeometry(it.width-10,10,2), new THREE.MeshLambertMaterial({color:0x1a1033})); face.position.set(0,6,-it.d/2-1); g.add(face);
+          const face=new THREE.Mesh(new THREE.BoxGeometry(it.width-6,30,3), pusherFaceMat); face.position.set(0,0,-it.d/2-1.2); g.add(face);
           placeAt(g, TRACK_W/2, o.y, 17); courseGroup.add(g); return g;
         });
       }
@@ -202,26 +222,39 @@
     buildMinigameMeshes();
     buildWaveMeshes(); resetWaves(); resetEvents(); startMusic(currentMap.key);
 
-    // decorations flanking the track
-    const decoMats=[0xff4fa3,0x23e6c9,0x8b5cf6,0xffcb3d,0x60a5fa].map(c=>new THREE.MeshLambertMaterial({color:c}));
-    for(let z=-100; z<endZ; z+=rand(140,260)){
-      [-1,1].forEach(s=>{
-        const offX = TRACK_W/2 + s*(TRACK_W/2 + rand(80,260));
-        const kind=Math.random();
-        let m, hh;
-        if(kind<0.4){ m=new THREE.Mesh(new THREE.SphereGeometry(rand(14,32),10,8), pick(decoMats)); hh=rand(-20,60); }
-        else if(kind<0.7){ m=new THREE.Mesh(new THREE.ConeGeometry(rand(12,24),rand(40,90),7), pick(decoMats)); hh=-60+rand(20,40); }
-        else { m=new THREE.Mesh(new THREE.TorusGeometry(rand(14,24),5,8,16), pick(decoMats)); hh=rand(20,80); m.rotation.set(rand(0,3),rand(0,3),0); }
-        const w=toWorld(offX, z, hh); m.position.set(w.x,w.y,w.z);
-        m.userData.deco={y:m.position.y, ph:rand(0,6.28)}; courseGroup.add(m);
-      });
+    // The floating spheres, cones and rings are gone. What flanks the track
+    // now is on the ground: crowd stands with a handful of tiny beans in them,
+    // every 900 units, bobbing along.
+    if(!arenaOnly){
+      const standMat = new THREE.MeshLambertMaterial({color:paleWall});
+      const standRail = new THREE.MeshLambertMaterial({color:accents[0]});
+      const crowdSkins = SKINS.filter(s=>s.rarity==='common' || s.rarity==='rare');
+      for(let z=450; z<trackLength-200; z+=900){
+        [-1,1].forEach(s=>{
+          const x = s<0 ? -78 : TRACK_W+78;
+          const stand = new THREE.Mesh(new THREE.BoxGeometry(100, 24, 230), standMat);
+          placeAt(stand, x, z, 12); courseGroup.add(stand);
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 230), standRail);
+          placeAt(rail, s<0 ? x+50 : x-50, z, 28); courseGroup.add(rail);
+          const n = 8 + Math.floor(rand(0,5));
+          for(let i=0;i<n;i++){
+            const sk = pick(crowdSkins);
+            const bean = new THREE.Mesh(beanGeometry(), new THREE.MeshToonMaterial({color:skinBaseColor(sk), gradientMap:toonRamp()}));
+            bean.scale.setScalar(0.55);
+            placeAt(bean, x + rand(-28, 28), z + (i/(n-1) - 0.5)*200, 24 + 9);
+            bean.rotation.y = (s<0 ? -1 : 1) * Math.PI/2 + rand(-0.4, 0.4);
+            bean.userData.crowd = { y: bean.position.y, ph: rand(0,6.28), rate: rand(2.5,4.5) };
+            courseGroup.add(bean);
+          }
+        });
+      }
     }
-    // clouds sit in the sky, not on the ribbon
-    for(let i=0;i<14;i++){
-      const g=new THREE.Group(); const cm=new THREE.MeshLambertMaterial({color:0xfff8ec, transparent:true, opacity:0.9});
-      for(let j=0;j<4;j++){ const c=new THREE.Mesh(new THREE.SphereGeometry(rand(16,30),8,6), cm); c.position.set(j*22-30, rand(-6,6), rand(-8,8)); g.add(c); }
+    // Big flat low-poly clouds, drifting slowly, well above the course.
+    for(let i=0;i<12;i++){
+      const g=new THREE.Group(); const cm=new THREE.MeshLambertMaterial({color:0xffffff});
+      for(let j=0;j<3;j++){ const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(38,66),0), cm); c.scale.set(1.6, 0.42, 1.0); c.position.set(j*64-64, rand(-6,6), rand(-14,14)); g.add(c); }
       const w=toWorld(TRACK_W/2, rand(-200,endZ), 0);
-      g.position.set(w.x+rand(-900,900), w.y+rand(160,300), w.z); g.userData.cloud=rand(4,10); courseGroup.add(g);
+      g.position.set(w.x+rand(-1100,1100), w.y+rand(260,420), w.z); g.userData.cloud=rand(3,8); courseGroup.add(g);
     }
 
     lavaMesh=null; lavaGlow=null;

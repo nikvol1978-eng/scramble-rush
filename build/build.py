@@ -111,6 +111,15 @@ sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.se
     "  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
     "resize guard")
 
+# v20 look: filmic tone mapping, and a shadow bias that keeps the beans on the floor
+sub("  renderer.outputEncoding = THREE.sRGBEncoding;",
+    "  renderer.outputEncoding = THREE.sRGBEncoding;"
+    + chr(10) + "  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;",
+    "tone mapping")
+sub("  dirLight.shadow.bias = -0.0008;",
+    "  dirLight.shadow.bias = -0.00025; dirLight.shadow.normalBias = 1.6;",
+    "shadow bias")
+
 # a wider lens: obstacles need to be on screen sooner than 1.5s before impact
 sub("  const camera = new THREE.PerspectiveCamera(58, W/H, 0.1, 4000);",
     "  const camera = new THREE.PerspectiveCamera(64, W/H, 0.1, 4000);",

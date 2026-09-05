@@ -99,6 +99,8 @@ hook = """
     alive:()=>racers.filter(r=>!r.lavaOut).length,
     finishes:()=>racers.map(r=>({p:!!r.isPlayer, fin:!!r.finished, t:r.finished?+r.finishTime.toFixed(1):null})),
     len:()=>Math.round(trackLength),
+    renderMs:(n)=>{ n=n||30; renderer.render(scene,camera); const t0=performance.now(); for(let i=0;i<n;i++) renderer.render(scene,camera); renderer.getContext().finish(); return +((performance.now()-t0)/n).toFixed(2); },
+    shadows:(on)=>{ settings.shadows=!!on; applySettings(); return settings.shadows; },
     me:()=>{ const p=racers.find(r=>r.isPlayer); return {x:Math.round(p.x), y:Math.round(p.y), h:+p.h.toFixed(2), vh:+p.vh.toFixed(2), vx:+p.vx.toFixed(2), vy:+p.vy.toFixed(2), tum:Math.round(p.tumbleT||0), stum:Math.round(p.stumbleT||0), inv:Math.round(p.invuln||0), getUp:Math.round(p.getUpT||0), falling:!!p.falling, floor:Math.round(p.floorH||0), spin:+(p.tumbleSpin||0).toFixed(2), tumbles:p.__tumbles||0}; },
     setMe:(o)=>{ const p=racers.find(r=>r.isPlayer); Object.assign(p,o); return window.__dbg.me(); },
     obsDump:(ty)=>obstacles.filter(o=>!ty||o.type===ty).map(o=>({t:o.type, y:Math.round(o.y!==undefined?o.y:o.yStart), y0:Math.round(o.y0), y1:Math.round(o.y1), cx:o.cx===undefined?null:Math.round(o.cx), hw:o.halfWidth===undefined?null:Math.round(o.halfWidth), xs:o.xs?o.xs.map(Math.round):null, items:(o.items||[]).map(i=>Math.round(i.x===undefined?(i.pivotX||0):i.x))})),
