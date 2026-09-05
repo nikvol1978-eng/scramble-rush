@@ -296,44 +296,6 @@
   .shopCard .orb.pat{background:#cfd3dd;background-blend-mode:multiply;background-size:64px 64px;}
   .sw.pat{background-color:#cfd3dd;background-size:34px 34px;}
 
-  /* ============ MAP LOADER ============ */
-  #mapLoader{
-    position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:20px;
-    background:radial-gradient(ellipse at center, rgba(61,26,91,0.92), rgba(12,6,26,0.97));
-  }
-  .loaderTitle{
-    font-weight:700;font-size:clamp(1.1rem,3.4vw,1.7rem);color:var(--cream);letter-spacing:3px;
-    -webkit-text-stroke:2px var(--line);text-shadow:0 4px 0 var(--line);
-  }
-  .loaderWindow{
-    position:relative;width:min(760px,94vw);height:172px;overflow:hidden;
-    border:4px solid var(--line);border-radius:20px;background:rgba(0,0,0,0.35);
-    box-shadow:0 8px 0 var(--line), inset 0 0 40px rgba(0,0,0,0.6);
-  }
-  .loaderStrip{position:absolute;top:14px;left:0;display:flex;gap:14px;will-change:transform;}
-  .loadCard{
-    width:180px;flex:0 0 180px;border:4px solid var(--line);border-radius:14px;overflow:hidden;
-    background:var(--cream);box-shadow:0 4px 0 var(--line);transition:transform .18s ease, box-shadow .18s ease;
-  }
-  .loadCard .loadArt{height:96px;}
-  .loadCard .loadName{
-    font-weight:700;font-size:0.82rem;color:var(--line);padding:6px 8px;text-align:center;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .loadCard.mini .loadName{background:var(--gold);}
-  .loadCard.landed{transform:scale(1.10);box-shadow:0 0 0 5px var(--gold), 0 6px 0 var(--line);}
-  .loaderMarker{
-    position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;
-    background:linear-gradient(180deg,transparent,var(--gold),transparent);opacity:0.55;pointer-events:none;
-  }
-  .loaderHint{font-weight:600;color:var(--cream);opacity:0.8;font-size:0.9rem;}
-  @media (max-width:640px){
-    .loaderWindow{height:150px;}
-    .loadCard{width:150px;flex:0 0 150px;}
-    .loadCard .loadArt{height:78px;}
-  }
-
   /* the map card rides along with the opening flyover, so keep the view clear */
   #mapIntro{
     background:linear-gradient(180deg, rgba(0,0,0,0.40), rgba(0,0,0,0) 26%,
@@ -470,6 +432,84 @@
   }
   .shopCard.sel{ outline:4px solid var(--gold); outline-offset:2px; }
   @media (max-width:860px){ .lockerInfo{ display:none; } }
+
+  /* ============ LOBBY (v20) ============ */
+  #home.lobby{justify-content:space-between;padding:14px clamp(12px,2.6vw,30px) 16px;gap:0;pointer-events:none;}
+  #home.lobby > *{pointer-events:auto;}
+  .lobbyTop{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;width:100%;gap:12px;}
+  .lobbyBrand{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;}
+  .wordmark{display:flex;flex-direction:column;line-height:0.86;font-size:clamp(1.9rem,4.6vw,3.2rem);transform:rotate(-3deg);
+    text-shadow:0 5px 0 var(--line);animation:wordIn .7s cubic-bezier(.2,1.5,.4,1) both;}
+  .wordmark .w1{color:var(--pink);-webkit-text-stroke:2.5px var(--line);}
+  .wordmark .w2{color:var(--gold);-webkit-text-stroke:2.5px var(--line);margin-left:0.5em;}
+  @keyframes wordIn{from{transform:rotate(-3deg) translateY(-24px) scale(0.85);opacity:0}60%{transform:rotate(-3deg) translateY(4px) scale(1.04);opacity:1}to{transform:rotate(-3deg);opacity:1}}
+  .seasonTag{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(1rem,2vw,1.4rem);color:var(--cream);-webkit-text-stroke:1.5px var(--line);text-shadow:0 3px 0 var(--line);margin-top:4px;letter-spacing:1px;}
+  .seasonLbl{font-weight:700;font-size:0.72rem;color:var(--line);letter-spacing:1px;margin-top:8px;}
+  .seasonBar{display:flex;align-items:center;gap:8px;}
+  .lvlBadge{width:38px;height:38px;border-radius:12px;background:var(--pink);color:var(--cream);border:3px solid var(--line);box-shadow:0 3px 0 var(--line);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.05rem;transform:rotate(-6deg);}
+  .seasonTrack{position:relative;width:min(230px,34vw);height:22px;background:var(--cream);border:3px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 3px 0 var(--line);}
+  .seasonFill{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),#ff7ac0);transition:width .4s;}
+  .seasonText{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:0.72rem;color:var(--line);}
+
+  .lobbyTabs{display:flex;align-items:center;gap:8px;justify-self:center;background:rgba(26,16,51,0.78);padding:6px 8px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}
+  .tabWrap{position:relative;}
+  .tabPill{width:52px;height:38px;border-radius:999px;border:3px solid transparent;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;transition:transform .08s,background .15s;}
+  .tabPill svg{width:24px;height:24px;fill:none;stroke:var(--cream);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+  .tabPill:hover{background:rgba(255,255,255,0.12);}
+  .tabPill.sel{background:var(--pink);border-color:var(--line);box-shadow:0 3px 0 var(--line);}
+  .tabPill.sel svg{stroke:var(--cream);fill:var(--cream);}
+  .dailyBadge{position:absolute;top:-12px;right:-12px;width:26px;height:26px;border-radius:50%;background:var(--gold);border:2.5px solid var(--line);box-shadow:0 2px 0 var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .dailyBadge svg{width:14px;height:14px;fill:none;stroke:var(--line);stroke-width:2.2;}
+  .dailyBadge .pip{top:-6px;right:-6px;width:12px;height:12px;border-width:2px;}
+
+  .lobbyCurrency{display:flex;gap:8px;justify-self:end;align-items:center;}
+  .crownChip{display:inline-flex;align-items:center;gap:8px;background:var(--line);color:var(--gold);font-weight:700;font-size:1.05rem;padding:6px 16px 6px 10px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}
+  .crownIcon{width:20px;height:16px;display:inline-block;background:var(--gold);clip-path:polygon(0% 100%,0% 30%,25% 60%,50% 0%,75% 60%,100% 30%,100% 100%);flex-shrink:0;}
+
+  .lobbyBottom{display:flex;justify-content:space-between;align-items:flex-end;width:100%;gap:16px;}
+  .nameCard{display:flex;align-items:center;gap:10px;background:var(--blue);border:4px solid var(--line);border-radius:14px;padding:10px 16px;box-shadow:0 5px 0 var(--line);min-width:220px;}
+  .nameCard .crownIcon{background:var(--cream);}
+  #homeName{font-family:'Fredoka',sans-serif;font-weight:700;font-size:1.05rem;color:var(--line);background:transparent;border:none;outline:none;width:9ch;min-width:60px;padding:0;cursor:text;}
+  #homeName:focus{background:rgba(255,255,255,0.35);border-radius:6px;padding:0 6px;}
+  .nameCrowns{font-weight:700;color:var(--line);opacity:0.8;}
+  .playStack{display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
+  .inviteLink{font-family:'Fredoka',sans-serif;font-weight:700;font-size:0.95rem;color:var(--cream);background:transparent;border:none;cursor:pointer;text-shadow:0 2px 0 var(--line);display:flex;align-items:center;gap:8px;padding:6px 8px;}
+  .inviteLink:hover{text-decoration:underline;}
+  .keyHint{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--cream);font-size:0.78rem;display:inline-flex;align-items:center;justify-content:center;font-weight:700;}
+  .keyHint.dark{background:var(--line);color:var(--cream);}
+  .playBig{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(1.6rem,3.6vw,2.6rem);color:var(--cream);background:var(--pink);border:4px solid var(--line);
+    border-radius:14px;padding:10px 44px 10px 30px;box-shadow:0 7px 0 var(--line);cursor:pointer;display:flex;align-items:center;gap:14px;
+    transform:skewX(-8deg) rotate(-2deg);letter-spacing:1px;transition:transform .08s,filter .1s;}
+  .playBig:hover{filter:brightness(1.06);}
+  .playBig:active{transform:skewX(-8deg) rotate(-2deg) translateY(5px);box-shadow:0 2px 0 var(--line);}
+  @media (max-width:760px){
+    .lobbyTop{grid-template-columns:1fr auto;grid-template-areas:'brand cur' 'tabs tabs';}
+    .lobbyBrand{grid-area:brand;} .lobbyTabs{grid-area:tabs;justify-self:center;} .lobbyCurrency{grid-area:cur;}
+    .nameCard{min-width:0;} .playBig{font-size:1.5rem;padding:8px 28px 8px 20px;}
+  }
+
+  /* ============ ROUND REVEAL ============ */
+  #mapLoader{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;overflow:hidden;background:#ffcb3d;}
+  .revealRings{position:absolute;left:50%;top:55%;width:260vmax;height:260vmax;transform:translate(-50%,-50%);border-radius:50%;
+    background:repeating-radial-gradient(circle at center,#ffd45a 0 9vmax,#ffb020 9vmax 18vmax);opacity:0.95;}
+  .revealRings::after{content:'';position:absolute;inset:0;border-radius:50%;
+    background:repeating-conic-gradient(from 0deg,rgba(255,255,255,0.16) 0 8deg,rgba(255,255,255,0) 8deg 24deg);animation:ringSpin 40s linear infinite;}
+  @keyframes ringSpin{to{transform:rotate(360deg)}}
+  .revealBar{position:relative;z-index:2;width:100%;background:var(--line);color:var(--cream);font-family:'Fredoka',sans-serif;font-weight:700;
+    font-size:clamp(1.4rem,3.4vw,2.2rem);padding:12px 4vw;text-align:left;letter-spacing:1px;box-shadow:0 4px 0 rgba(0,0,0,0.3);}
+  .revealStage{position:relative;z-index:2;flex:1;width:100%;display:flex;align-items:center;overflow:hidden;}
+  .revealStrip{display:flex;gap:2vw;padding-left:0;will-change:transform;}
+  .revealCard{flex:0 0 auto;width:28vw;min-width:200px;aspect-ratio:16/9;border:4px solid var(--line);border-radius:10px;overflow:hidden;background:var(--cream);
+    box-shadow:0 8px 0 rgba(0,0,0,0.25);position:relative;transform:scale(0.72);opacity:0.55;filter:saturate(0.8);transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .3s,filter .3s;}
+  .revealCard .revealArt{position:absolute;inset:0;background-size:cover;background-position:center;}
+  .revealCard .revealName{position:absolute;left:0;right:0;bottom:0;background:rgba(26,16,51,0.82);color:var(--cream);font-weight:700;font-size:clamp(0.9rem,1.6vw,1.2rem);padding:6px 10px;text-align:left;}
+  .revealCard .revealTip{position:absolute;left:0;right:0;top:0;background:rgba(255,248,236,0.9);color:var(--line);font-weight:600;font-size:0.72rem;padding:4px 10px;text-align:left;display:none;}
+  .revealCard.near{transform:scale(0.78);opacity:0.7;}
+  .revealCard.landed{transform:scale(1.06);opacity:1;filter:none;z-index:3;}
+  .revealCard.landed .revealTip{display:block;}
+  .revealCard.expand{transform:scale(3.4);opacity:1;transition:transform .6s cubic-bezier(.6,0,.4,1),opacity .4s;}
+  .revealCard.expand .revealName,.revealCard.expand .revealTip{opacity:0;transition:opacity .2s;}
 </style>
 </head>
 <body>
@@ -522,50 +562,72 @@
   </div>
 </div>
 
-<!-- ================= MAP LOADER ================= -->
+<!-- ================= ROUND REVEAL ("NEXT UP IS...") ================= -->
 <div id="mapLoader" class="hidden">
-  <div class="loaderTitle">LOADING COURSE</div>
-  <div class="loaderWindow">
-    <div class="loaderStrip" id="loaderStrip"></div>
-    <div class="loaderMarker"></div>
+  <div class="revealRings"></div>
+  <div class="revealBar">NEXT UP IS&hellip;</div>
+  <div class="revealStage" id="revealStage">
+    <div class="revealStrip" id="loaderStrip"></div>
   </div>
-  <div class="loaderHint">Get ready…</div>
 </div>
 
-<!-- ================= HOME ================= -->
-<div id="home" class="screen menuScreen">
-  <!-- corner icon buttons -->
-  <button class="iconBtn" id="profileBtn" aria-label="Profile" title="Profile">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
-  </button>
-  <button class="iconBtn right" id="settingsBtn" aria-label="Settings" title="Settings">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
-  </button>
+<!-- ================= HOME (lobby) ================= -->
+<div id="home" class="screen lobby">
+  <div class="lobbyTop">
+    <div class="lobbyBrand">
+      <h1 class="title wordmark"><span class="w1">SCRAMBLE</span><span class="w2">RUSH</span></h1>
+      <div class="seasonTag">SEASON 1</div>
+      <div class="seasonLbl">SEASON PROGRESS</div>
+      <div class="seasonBar">
+        <div class="lvlBadge" id="seasonLevel">1</div>
+        <div class="seasonTrack"><div class="seasonFill" id="seasonFill"></div><div class="seasonText" id="seasonText">0/100</div></div>
+      </div>
+    </div>
 
-  <div class="menuTop">
-    <h1 class="title">SCRAMBLE RUSH</h1>
-    <div class="topRowChips">
-      <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
-      <button class="dailyBtn" id="dailyBtn" aria-label="Daily spin">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/><path d="M12 5.5C12 3.6 10.6 2.5 9.2 2.5S6.6 3.6 6.6 5c0 .3 0 .5.1.5H12z"/><path d="M12 5.5c0-1.9 1.4-3 2.8-3s2.6 1.1 2.6 2.5c0 .3 0 .5-.1.5H12z"/></svg>
-        <span class="pip hidden" id="dailyPip"></span>
+    <div class="lobbyTabs" role="tablist">
+      <div class="tabWrap">
+        <button class="tabPill sel" id="tabPlay" data-lobby="play" aria-label="Play" title="Play">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+        </button>
+        <button class="dailyBadge" id="dailyBtn" aria-label="Daily spin" title="Daily spin">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/></svg>
+          <span class="pip hidden" id="dailyPip"></span>
+        </button>
+      </div>
+      <button class="tabPill" id="profileBtn" data-lobby="locker" aria-label="Locker" title="Locker">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l2 4-3 1v13H9V8L6 7z"/><path d="M12 3v5"/></svg>
+      </button>
+      <button class="tabPill" id="badgesBtn" data-lobby="badges" aria-label="Badges" title="Badges">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5 5 2.5-1.5-7.5"/></svg>
+        <span class="pip hidden" id="badgePip"></span>
+      </button>
+      <button class="tabPill" id="shopBtn" data-lobby="shop" aria-label="Shop" title="Shop">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg>
+        <span class="pip hidden" id="shopPip"></span>
+      </button>
+      <button class="tabPill" id="settingsBtn" data-lobby="settings" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
       </button>
     </div>
-  </div>
 
-  <div class="menuGrid">
-    <div class="menuCol left">
-      <button class="btn menuBig pink" id="playBtn">PLAY</button>
-      <button class="btn menuBig purple" id="shopBtn">SHOP<span class="pip hidden" id="shopPip"></span></button>
-    </div>
-    <div class="menuStage"><!-- the 3D blob sits behind this --></div>
-    <div class="menuCol right">
-      <button class="btn menuBig" id="mpBtn">FRIENDS</button>
-      <button class="btn menuBig gold" id="badgesBtn">BADGES<span class="pip hidden" id="badgePip"></span></button>
+    <div class="lobbyCurrency">
+      <div class="crownChip" id="homeCrowns"><span class="crownIcon"></span><span class="crownNum">0</span></div>
+      <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
     </div>
   </div>
 
-  <div class="menuFoot"><p id="homeTip">Three rounds, one winner. Survive the cuts to reach a six-player final.</p></div>
+  <div class="lobbyBottom">
+    <div class="nameCard" id="nameCard" title="Click to edit your name">
+      <span class="crownIcon"></span>
+      <input type="text" id="homeName" maxlength="12" placeholder="YOU" aria-label="Your name" autocomplete="off">
+      <span class="nameCrowns" id="nameCrowns">0</span>
+    </div>
+    <div class="playStack">
+      <button class="inviteLink" id="mpBtn"><span class="keyHint">Y</span>Invite players</button>
+      <button class="playBig" id="playBtn"><span class="keyHint dark">A</span>PLAY!</button>
+    </div>
+  </div>
+  <p id="homeTip" class="hidden"></p>
 </div>
 
 <!-- ================= DAILY SPIN ================= -->
@@ -2979,7 +3041,7 @@
 
   // The opening shot: sweep the whole arena from beyond the finish back to the
   // start line, then settle exactly where the chase camera wants to be.
-  const FLY_MS = 4200;
+  const FLY_MS = 3800;      // 4200 before the reveal took its 400 ms
   function flyCamera(){
     const p=racers.find(r=>r.isPlayer); if(!p) return;
     const px=toSceneX(p.x), py=p.y;
@@ -3144,33 +3206,79 @@
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
 
-  // ---- the Stumble-Guys style map reel that plays while the course builds ----
-  const LOADER_MS = 2200;
+  // ---- "NEXT UP IS..." -- a carousel of course cards that spins for 1.4 s,
+  // settles on the round we are about to play, then expands into the flyover.
+  // Round end to countdown is no longer than the old reel + flyover was: the
+  // reveal takes 2600 ms and the flyover gave up the difference (4200 -> 3800).
+  const LOADER_MS = 2600, REVEAL_SPIN_MS = 1400;
+  // A snapshot of each course the first time it is built, so the side cards
+  // can show a real render of a round once you have seen it.
+  const courseThumbs = {};
+  let _thumbRT = null;
+  function captureCourseThumb(){
+    try{
+      const W_ = 480, H_ = 270;
+      if(!_thumbRT) _thumbRT = new THREE.WebGLRenderTarget(W_, H_);
+      const p = racers.find(r=>r.isPlayer);
+      const s = Math.max(600, Math.min(trackLength*0.45, trackLength-600));
+      const cw = toWorld(TRACK_W/2 - 420, s - 520, 300), tw = toWorld(TRACK_W/2, s + 420, 20);
+      const savedPos = camera.position.clone(), savedAspect = camera.aspect;
+      camera.aspect = W_/H_; camera.updateProjectionMatrix();
+      camera.position.set(cw.x, cw.y, cw.z); camera.lookAt(tw.x, tw.y, tw.z);
+      sky.position.set(camera.position.x, 0, camera.position.z);
+      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, sky.visible];
+      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; sky.visible = true;
+      renderer.setRenderTarget(_thumbRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+      const px = new Uint8Array(W_*H_*4);
+      renderer.readRenderTargetPixels(_thumbRT, 0, 0, W_, H_, px);
+      const cv = document.createElement('canvas'); cv.width = W_; cv.height = H_;
+      const g = cv.getContext('2d'), img = g.createImageData(W_, H_);
+      for(let y=0;y<H_;y++){ const src=(H_-1-y)*W_*4, dst=y*W_*4; img.data.set(px.subarray(src, src+W_*4), dst); }
+      g.putImageData(img, 0, 0);
+      courseThumbs[currentMap.key] = cv.toDataURL('image/jpeg', 0.82);
+      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; sky.visible = vis[3];
+      camera.aspect = savedAspect; camera.updateProjectionMatrix(); camera.position.copy(savedPos);
+      if(p) syncCamera(true);
+    }catch(e){ /* no thumbnail is not a failure */ }
+  }
+  function cardArt(m){
+    return courseThumbs[m.key] ? `background-image:url(${courseThumbs[m.key]})`
+                               : `background:linear-gradient(160deg,${m.skyTop},${m.skyMid} 52%,${m.ground})`;
+  }
   function showMapLoader(map){
     const host=$('mapLoader'), strip=$('loaderStrip');
     if(!host||!strip) return;
-    const pool=[...MAPS,...MINIGAMES];
+    const pool=[...MAPS,...MINIGAMES].filter(m=>m.key!==map.key);
     const idx=8, cards=[];
     for(let i=0;i<13;i++) cards.push(i===idx ? map : pick(pool));
     strip.innerHTML = cards.map(m=>
-      `<div class="loadCard${m.isMinigame?' mini':''}">
-         <div class="loadArt" style="background:linear-gradient(160deg,${m.skyTop},${m.skyMid} 52%,${m.ground})"></div>
-         <div class="loadName">${m.name}</div>
+      `<div class="revealCard${m.isMinigame?' mini':''}">
+         <div class="revealArt" style="${cardArt(m)}"></div>
+         <div class="revealTip">${m.tip}</div>
+         <div class="revealName">${m.name}</div>
        </div>`).join('');
     host.classList.remove('hidden');
     strip.style.transition='none';
     strip.style.transform='translateX(0px)';
     void strip.offsetWidth;                       // force a reflow so the transition takes
-    // measure rather than hardcode — the cards are narrower on small screens
-    const first = strip.children[0];
-    const cw = first ? first.getBoundingClientRect().width : 180;
-    const cardW = cw + 14;                        // + the flex gap
-    // the strip is positioned inside the window, so centre against the window, not the screen
+    // Land the chosen card dead centre. Measured off that card's own layout
+    // position rather than card width times count, so a gap in vw or a card
+    // that clamped to its min-width cannot push the landing off by a card.
+    const chosen = strip.children[idx];
     const win = strip.parentElement;
-    const target = -(idx*cardW) + (win.clientWidth/2 - cw/2);
-    strip.style.transition='transform '+(LOADER_MS/1000)+'s cubic-bezier(0.10,0.70,0.14,1)';
+    const target = chosen ? -chosen.offsetLeft + (win.clientWidth/2 - chosen.offsetWidth/2) : 0;
+    strip.style.transition='transform '+(REVEAL_SPIN_MS/1000)+'s cubic-bezier(0.10,0.70,0.14,1)';
     strip.style.transform='translateX('+target+'px)';
-    setTimeout(()=>{ const el=strip.children[idx]; if(el) el.classList.add('landed'); }, LOADER_MS-200);
+    // settle with a soft thunk: the chosen card pops up, its neighbours lean in
+    setTimeout(()=>{
+      const el=strip.children[idx]; if(!el) return;
+      el.classList.add('landed');
+      if(strip.children[idx-1]) strip.children[idx-1].classList.add('near');
+      if(strip.children[idx+1]) strip.children[idx+1].classList.add('near');
+      try{ SFX.bump(); }catch(e){}
+    }, REVEAL_SPIN_MS-60);
+    // ...then the card grows into the flyover
+    setTimeout(()=>{ const el=strip.children[idx]; if(el) el.classList.add('expand'); }, LOADER_MS-520);
   }
   function hideMapLoader(){ const h=$('mapLoader'); if(h) h.classList.add('hidden'); }
 
@@ -3209,6 +3317,7 @@
     clearParticles(); resetLook();
     courseGroup.visible=true; racerGroup.visible=true; previewGroup.visible=false;
     syncCamera(true);
+    captureCourseThumb();                         // the reveal card shows this course, live
     raceTime=0;
     $('mapIntroName').textContent=currentMap.name.toUpperCase();
     $('mapIntroTip').textContent=currentMap.tip;
@@ -3230,7 +3339,7 @@
     ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro','daily'].forEach(id=>$(id).classList.add('hidden'));
     $('home').classList.remove('hidden');
     courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();
-    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip();
+    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip(); if(typeof selectLobbyTab==='function') selectLobbyTab('play');
   }
   function togglePause(){
     if(mp.role) return;
@@ -5607,6 +5716,7 @@
         if(me && !me.fallCount) stats.noFallFinishes++;
         checkAchievements();
         addCoins(round===1?25:40, roundLabel(round)+' survived');
+        if(!currentMap.isMinigame && me && me.finished) awardXp(20);      // a race finished
       }
       if(mp.role==='host') broadcast({type:'roundEnd', sorted:sorted.map(serializeRacer), keepCount, victory:false});
       showResults(sorted,keepCount,()=>{
@@ -5677,11 +5787,11 @@
       if(me && !me.fallCount){ stats.noFallFinishes++; stats.cleanWins = (stats.cleanWins||0)+1; }
       addCoins(150,'Victory');
       if(stats.winStreak>=2) addCoins(50*Math.min(stats.winStreak,6), stats.winStreak+' win streak');
-      awardXp(60);
+      awardXp(150);
     } else {
       stats.winStreak = 0;
       addCoins(myRank===2?80:myRank===3?60:30, myRank<=3?('Podium — '+myRank+(myRank===2?'nd':'rd')):'Finalist');
-      awardXp(30);
+      awardXp(myRank<=3 ? 60 : (me && me.finished ? 20 : 0));
     }
     checkAchievements(); saveProfile();
     const btnRow = mp.role==='client'
@@ -5706,6 +5816,26 @@
   // MENU: 3D PREVIEW + IDLE PERFORMANCE
   // ============================================================
   let stageSpot=null, stageRing=null, stageBackdrop=null;
+  let lobbyBackdrop=null, stageFloor=null;
+  // Concentric warm rings with a faint sunburst over them; the plane that
+  // carries it turns slowly, so the rays drift.
+  let _lobbyRingTex=null;
+  function lobbyRingTexture(){
+    if(_lobbyRingTex) return _lobbyRingTex;
+    const N=1024, cv=document.createElement('canvas'); cv.width=cv.height=N; const g=cv.getContext('2d');
+    const cx=N/2, cy=N/2;
+    for(let r=N*0.75; r>0; r-=N*0.045){
+      g.fillStyle = (Math.round(r/(N*0.045))%2===0) ? '#ffd45a' : '#ffb020';
+      g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fill();
+    }
+    g.globalAlpha=0.16; g.fillStyle='#ffffff';
+    for(let a=0;a<Math.PI*2;a+=Math.PI/9){
+      g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/27); g.closePath(); g.fill();
+    }
+    g.globalAlpha=1;
+    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.encoding=THREE.sRGBEncoding;
+    return _lobbyRingTex;
+  }
   // Browsing the shop shows the item on the model without committing to it.
   // Cleared on equip, on leaving the tab, and on closing the profile.
   let previewSkin = null, previewPattern = null;
@@ -5724,10 +5854,18 @@
     clearGroup(previewGroup);
     animatedMats=[];
 
-    // ---- a small stage: raised disc, dark backdrop, spotlight from above
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(46,54,16,32),
-      new THREE.MeshPhongMaterial({color:0x2a1f4d, shininess:60}));
+    // ---- the lobby: a round podium in front of a slowly turning ring of
+    //      warm colour. The locker keeps its dark stage and spotlight.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(40,46,16,40),
+      new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
     ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(50,54,8,40),
+      new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
+    pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
+    lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
+      new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
+    lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
+    previewGroup.add(lobbyBackdrop);
     stageRing=new THREE.Mesh(new THREE.CylinderGeometry(48,48,3,32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
@@ -5740,6 +5878,7 @@
     const floor=new THREE.Mesh(new THREE.CircleGeometry(460,40),
       new THREE.MeshLambertMaterial({color:0x140e2a}));
     floor.rotation.x=-Math.PI/2; floor.position.y=-RADIUS-16; floor.receiveShadow=true; previewGroup.add(floor);
+    stageFloor=floor;
 
     stageBackdrop=new THREE.Mesh(new THREE.SphereGeometry(620,20,14, 0, Math.PI*2, 0, Math.PI/2),
       new THREE.MeshBasicMaterial({color:0x120a26, side:THREE.BackSide}));
@@ -5911,6 +6050,8 @@
     previewGroup.visible = (!profOpen || W>=861) && !dailyOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
+    if(stageFloor) stageFloor.visible = profOpen;
+    if(lobbyBackdrop){ lobbyBackdrop.visible = !profOpen; lobbyBackdrop.rotation.z += dt*0.05; }
     if(stageSpot) stageSpot.intensity = profOpen ? 1.6 : 0.0;
     // Close in while the locker is open: this is the shot the screen is built
     // around, and the character should fill their half of it.
@@ -5918,10 +6059,10 @@
     const camZ = (profOpen && W>=861) ? -186 : -150;
     camera.position.set(0,40,camZ); camera.lookAt(0,4,0);
     // dim the room so the spotlight reads
-    dirLight.intensity = profOpen ? 0.30 : 1.0;
-    hemi.intensity     = profOpen ? 0.20 : 0.9;
+    dirLight.intensity = profOpen ? 0.30 : KEY_LIGHT;
+    hemi.intensity     = profOpen ? 0.20 : FILL_LIGHT;
     dirLight.position.set(120,300,-150); dirLight.target.position.set(0,0,0);
-    sky.visible = !profOpen;
+    sky.visible = false;                                    // the ring backdrop is the sky here
     sky.position.set(camera.position.x,0,camera.position.z);
   }
 
@@ -5930,6 +6071,7 @@
   // ============================================================
   function fmtNum(n){ return (n||0).toLocaleString('en-GB'); }
   function refreshCoinChips(){
+    if(typeof refreshLobby==='function') refreshLobby();
     document.querySelectorAll('.coinChip .coinNum').forEach(el=>{ el.textContent = fmtNum(stats.coins); });
     const n = unclaimedBadges().length;
     ['badgePip','badgePip2'].forEach(id=>{ const e=$(id); if(e) e.classList.toggle('hidden', n===0); });
@@ -6334,12 +6476,58 @@
   // keep custom.color in step with the equipped skin (multiplayer sends a flat colour)
   function syncCustomColor(){ custom.color = skinBaseColor(skinOf(custom.skin)); }
 
-  $('profileBtn').onclick = ()=>{ SFX.click(); openProfile('character'); };
-  $('shopBtn').onclick    = ()=>{ SFX.click(); openProfile('shop'); };
-  $('badgesBtn').onclick  = ()=>{ SFX.click(); openProfile('badges'); };
-  $('profBackBtn').onclick= ()=>{ SFX.click(); clearPreview(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); };
+  // ---- the lobby: five tabs across the top, Q / E cycle them ----
+  const LOBBY_TABS = ['play','locker','badges','shop','settings'];
+  function selectLobbyTab(name){
+    document.querySelectorAll('.tabPill').forEach(b=>b.classList.toggle('sel', b.dataset.lobby===name));
+  }
+  function lobbyTabSelected(){
+    const b = document.querySelector('.tabPill.sel');
+    return b ? b.dataset.lobby : 'play';
+  }
+  function backToLobby(){
+    if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
+    ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
+    $('home').classList.remove('hidden');
+    refreshPreview(); refreshCoinChips(); refreshDailyChip();
+  }
+  function openLobbyTab(name){
+    selectLobbyTab(name);
+    switch(name){
+      case 'play':     backToLobby(); break;
+      case 'locker':   backToLobby(); openProfile('character'); break;
+      case 'badges':   backToLobby(); openProfile('badges'); break;
+      case 'shop':     backToLobby(); openProfile('shop'); break;
+      case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
+    }
+  }
+  function cycleLobbyTab(dir){
+    const i = LOBBY_TABS.indexOf(lobbyTabSelected());
+    openLobbyTab(LOBBY_TABS[(i + dir + LOBBY_TABS.length) % LOBBY_TABS.length]);
+  }
+  window.addEventListener('keydown', e=>{
+    if(state!=='menu') return;
+    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+    if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
+    if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+  });
+  function refreshLobby(){
+    const lvl=$('seasonLevel'), fill=$('seasonFill'), txt=$('seasonText');
+    if(lvl){ const need = xpForLevel(stats.level||1); lvl.textContent = stats.level||1;
+             fill.style.width = clamp(((stats.xp||0)/need)*100, 0, 100)+'%'; txt.textContent = (stats.xp||0)+'/'+need; }
+    document.querySelectorAll('#homeCrowns .crownNum, #nameCrowns').forEach(e=>{ e.textContent = stats.wins||0; });
+    const nm=$('homeName'); if(nm && document.activeElement!==nm) nm.value = custom.name==='YOU' ? '' : (custom.name||'');
+  }
+  $('tabPlay').onclick    = ()=>{ SFX.click(); openLobbyTab('play'); };
+  $('profileBtn').onclick = ()=>{ SFX.click(); selectLobbyTab('locker'); openProfile('character'); };
+  $('shopBtn').onclick    = ()=>{ SFX.click(); selectLobbyTab('shop'); openProfile('shop'); };
+  $('badgesBtn').onclick  = ()=>{ SFX.click(); selectLobbyTab('badges'); openProfile('badges'); };
+  $('homeName').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12).trim()||'YOU'; $('profNameLbl').textContent=custom.name; saveProfile(); refreshLobby(); });
+  $('homeName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); e.stopPropagation(); });
+  $('nameCard').onclick = ()=>{ $('homeName').focus(); };
+  $('profBackBtn').onclick= ()=>{ SFX.click(); clearPreview(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); selectLobbyTab('play'); };
   document.querySelectorAll('#profile .tab').forEach(t=>{ t.onclick=()=>{ SFX.click(); switchTab(t.dataset.tab); }; });
-  $('nameInput').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12); $('profNameLbl').textContent=custom.name||'YOU'; saveProfile(); });
+  $('nameInput').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12); $('profNameLbl').textContent=custom.name||'YOU'; saveProfile(); refreshLobby(); });
   $('randomBlobBtn').onclick = ()=>{
     const owned=[...ownedSkins()], ownedP=[...ownedPatterns()];
     custom.skin    = owned[Math.floor(Math.random()*owned.length)];
@@ -6396,7 +6584,7 @@
   function applySettings(){ renderer.shadowMap.enabled=settings.shadows; scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; }); updateHint(); $('touchControls').classList.toggle('hidden', !(settings.touch && (state==='racing'||state==='countdown'||state==='paused'))); }
   $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };
   $('pauseSettingsBtn').onclick=()=>{ SFX.click(); buildSettings(); $('settings').classList.remove('hidden'); };
-  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu') $('home').classList.remove('hidden'); };
+  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };
   $('resetSettingsBtn').onclick=()=>{ settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); SFX.click(); applySettings(); buildSettings(); };
 
   $('playBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); startRound(1,null); };

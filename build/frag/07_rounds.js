@@ -28,33 +28,79 @@
     return Math.max(2, Math.min(raceKeep, Math.ceil(total*0.55)));
   }
 
-  // ---- the Stumble-Guys style map reel that plays while the course builds ----
-  const LOADER_MS = 2200;
+  // ---- "NEXT UP IS..." -- a carousel of course cards that spins for 1.4 s,
+  // settles on the round we are about to play, then expands into the flyover.
+  // Round end to countdown is no longer than the old reel + flyover was: the
+  // reveal takes 2600 ms and the flyover gave up the difference (4200 -> 3800).
+  const LOADER_MS = 2600, REVEAL_SPIN_MS = 1400;
+  // A snapshot of each course the first time it is built, so the side cards
+  // can show a real render of a round once you have seen it.
+  const courseThumbs = {};
+  let _thumbRT = null;
+  function captureCourseThumb(){
+    try{
+      const W_ = 480, H_ = 270;
+      if(!_thumbRT) _thumbRT = new THREE.WebGLRenderTarget(W_, H_);
+      const p = racers.find(r=>r.isPlayer);
+      const s = Math.max(600, Math.min(trackLength*0.45, trackLength-600));
+      const cw = toWorld(TRACK_W/2 - 420, s - 520, 300), tw = toWorld(TRACK_W/2, s + 420, 20);
+      const savedPos = camera.position.clone(), savedAspect = camera.aspect;
+      camera.aspect = W_/H_; camera.updateProjectionMatrix();
+      camera.position.set(cw.x, cw.y, cw.z); camera.lookAt(tw.x, tw.y, tw.z);
+      sky.position.set(camera.position.x, 0, camera.position.z);
+      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, sky.visible];
+      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; sky.visible = true;
+      renderer.setRenderTarget(_thumbRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+      const px = new Uint8Array(W_*H_*4);
+      renderer.readRenderTargetPixels(_thumbRT, 0, 0, W_, H_, px);
+      const cv = document.createElement('canvas'); cv.width = W_; cv.height = H_;
+      const g = cv.getContext('2d'), img = g.createImageData(W_, H_);
+      for(let y=0;y<H_;y++){ const src=(H_-1-y)*W_*4, dst=y*W_*4; img.data.set(px.subarray(src, src+W_*4), dst); }
+      g.putImageData(img, 0, 0);
+      courseThumbs[currentMap.key] = cv.toDataURL('image/jpeg', 0.82);
+      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; sky.visible = vis[3];
+      camera.aspect = savedAspect; camera.updateProjectionMatrix(); camera.position.copy(savedPos);
+      if(p) syncCamera(true);
+    }catch(e){ /* no thumbnail is not a failure */ }
+  }
+  function cardArt(m){
+    return courseThumbs[m.key] ? `background-image:url(${courseThumbs[m.key]})`
+                               : `background:linear-gradient(160deg,${m.skyTop},${m.skyMid} 52%,${m.ground})`;
+  }
   function showMapLoader(map){
     const host=$('mapLoader'), strip=$('loaderStrip');
     if(!host||!strip) return;
-    const pool=[...MAPS,...MINIGAMES];
+    const pool=[...MAPS,...MINIGAMES].filter(m=>m.key!==map.key);
     const idx=8, cards=[];
     for(let i=0;i<13;i++) cards.push(i===idx ? map : pick(pool));
     strip.innerHTML = cards.map(m=>
-      `<div class="loadCard${m.isMinigame?' mini':''}">
-         <div class="loadArt" style="background:linear-gradient(160deg,${m.skyTop},${m.skyMid} 52%,${m.ground})"></div>
-         <div class="loadName">${m.name}</div>
+      `<div class="revealCard${m.isMinigame?' mini':''}">
+         <div class="revealArt" style="${cardArt(m)}"></div>
+         <div class="revealTip">${m.tip}</div>
+         <div class="revealName">${m.name}</div>
        </div>`).join('');
     host.classList.remove('hidden');
     strip.style.transition='none';
     strip.style.transform='translateX(0px)';
     void strip.offsetWidth;                       // force a reflow so the transition takes
-    // measure rather than hardcode — the cards are narrower on small screens
-    const first = strip.children[0];
-    const cw = first ? first.getBoundingClientRect().width : 180;
-    const cardW = cw + 14;                        // + the flex gap
-    // the strip is positioned inside the window, so centre against the window, not the screen
+    // Land the chosen card dead centre. Measured off that card's own layout
+    // position rather than card width times count, so a gap in vw or a card
+    // that clamped to its min-width cannot push the landing off by a card.
+    const chosen = strip.children[idx];
     const win = strip.parentElement;
-    const target = -(idx*cardW) + (win.clientWidth/2 - cw/2);
-    strip.style.transition='transform '+(LOADER_MS/1000)+'s cubic-bezier(0.10,0.70,0.14,1)';
+    const target = chosen ? -chosen.offsetLeft + (win.clientWidth/2 - chosen.offsetWidth/2) : 0;
+    strip.style.transition='transform '+(REVEAL_SPIN_MS/1000)+'s cubic-bezier(0.10,0.70,0.14,1)';
     strip.style.transform='translateX('+target+'px)';
-    setTimeout(()=>{ const el=strip.children[idx]; if(el) el.classList.add('landed'); }, LOADER_MS-200);
+    // settle with a soft thunk: the chosen card pops up, its neighbours lean in
+    setTimeout(()=>{
+      const el=strip.children[idx]; if(!el) return;
+      el.classList.add('landed');
+      if(strip.children[idx-1]) strip.children[idx-1].classList.add('near');
+      if(strip.children[idx+1]) strip.children[idx+1].classList.add('near');
+      try{ SFX.bump(); }catch(e){}
+    }, REVEAL_SPIN_MS-60);
+    // ...then the card grows into the flyover
+    setTimeout(()=>{ const el=strip.children[idx]; if(el) el.classList.add('expand'); }, LOADER_MS-520);
   }
   function hideMapLoader(){ const h=$('mapLoader'); if(h) h.classList.add('hidden'); }
 
@@ -93,6 +139,7 @@
     clearParticles(); resetLook();
     courseGroup.visible=true; racerGroup.visible=true; previewGroup.visible=false;
     syncCamera(true);
+    captureCourseThumb();                         // the reveal card shows this course, live
     raceTime=0;
     $('mapIntroName').textContent=currentMap.name.toUpperCase();
     $('mapIntroTip').textContent=currentMap.tip;
@@ -131,6 +178,7 @@
         if(me && !me.fallCount) stats.noFallFinishes++;
         checkAchievements();
         addCoins(round===1?25:40, roundLabel(round)+' survived');
+        if(!currentMap.isMinigame && me && me.finished) awardXp(20);      // a race finished
       }
       if(mp.role==='host') broadcast({type:'roundEnd', sorted:sorted.map(serializeRacer), keepCount, victory:false});
       showResults(sorted,keepCount,()=>{
@@ -201,11 +249,11 @@
       if(me && !me.fallCount){ stats.noFallFinishes++; stats.cleanWins = (stats.cleanWins||0)+1; }
       addCoins(150,'Victory');
       if(stats.winStreak>=2) addCoins(50*Math.min(stats.winStreak,6), stats.winStreak+' win streak');
-      awardXp(60);
+      awardXp(150);
     } else {
       stats.winStreak = 0;
       addCoins(myRank===2?80:myRank===3?60:30, myRank<=3?('Podium — '+myRank+(myRank===2?'nd':'rd')):'Finalist');
-      awardXp(30);
+      awardXp(myRank<=3 ? 60 : (me && me.finished ? 20 : 0));
     }
     checkAchievements(); saveProfile();
     const btnRow = mp.role==='client'

@@ -9,7 +9,8 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-19.0.html` | **19.0 (current)** | Eight rounds that work, Fall Guys movement, bots that race you, layered Tile Tumble, per-map acceptance test |
+| `scramble-rush-20.0.html` | **20.0 (current)** | Jumping and diving no longer beat running, a taller toon-shaded bean, courses that read like the reference, the lobby and the "NEXT UP IS…" reveal |
+| `scramble-rush-19.0.html` | 19.0 | Eight rounds that work, Fall Guys movement, bots that race you, layered Tile Tumble, per-map acceptance test |
 | `scramble-rush-18.0.html` | 18.0 | The last "everything" build: 13 race maps and 11 minigames, kept as the reference for the maps cut in v19 |
 | `index.html` | 5.0 | The original two-round build. The build system splices every release out of this file, so it is never modified |
 
@@ -23,7 +24,8 @@ is still in git history (`git log --oneline -- scramble-rush-13.0.html`, then
 npm run dev
 ```
 
-- current: http://localhost:5173/scramble-rush-19.0.html
+- current: http://localhost:5173/scramble-rush-20.0.html
+- v19: http://localhost:5173/scramble-rush-19.0.html
 - v18 reference: http://localhost:5173/scramble-rush-18.0.html
 
 Live reload is on — save the file and the browser refreshes.
@@ -34,7 +36,14 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 ## Controls
 
 - **WASD / arrows** move, **SPACE** jump (hold for height), **SHIFT** dive, **ESC** pause
+- In the lobby, **Q / E** cycle the five tabs (Play, Locker, Badges, Shop, Settings);
+  click your name to edit it
 - Jumps have coyote time and input buffering, so late and early presses still register
+- Running is the fast way to travel. A jump covers 5% less ground than a run
+  over the same time and a dive 11% less: the dive is a commitment (prone
+  380 ms, 450 ms to get up, 1.6 s cooldown) for winning a gap, a ledge or a
+  photo finish. Nothing moves faster than 1.35× top speed, boost pads and
+  cannons included; ice has its own, higher, ceiling
 - Steering is relative to the camera, and the camera sits behind the course
   heading and stays there — a held diagonal is an exact 45°, and letting go
   moves nothing but the bean. Mouse look is off by default; turn it on in
@@ -59,7 +68,30 @@ Round 3 is always the Closing Circle final.
 
 Bots run at the player's speed, have a plan for every obstacle type on these
 maps, and have a fall-loop breaker so one unlucky pit does not cost a bot the
-whole round.
+whole round. They wear colourways and patterns from the wardrobe, so the pack
+looks like a pack from behind.
+
+Every round opens with **NEXT UP IS…**: a carousel of course cards that spins
+for 1.4 s and settles on the round you are about to play, showing a live
+render of the course, then grows into the flyover. Round end to countdown is
+no longer than it was in v19.
+
+## The look
+
+Hazards are the loudest thing on screen. Each map paints the things that can
+hit you from a set of three saturated accents, with a white-and-accent stripe
+on the face that hits you; floors are a neutral mid tone with a large,
+low-contrast check; walls and safe geometry are pale. Lighting is one warm key,
+a hemisphere fill in the map's own sky and floor colours, ACES tone mapping and
+soft shadows; no post-processing. Side walls carry crowd stands every 900 units,
+the finish is an arch with a chequered banner, and the first three across get
+confetti. The bean is 1.9 : 1 tall, toon-shaded with a soft rim, and squashes
+on landing.
+
+## Season progress
+
+The lobby shows a season bar wired to XP: 20 for a race finished, 60 for a
+top-three in the final, 150 for a win. Crowns are wins.
 
 The generator and obstacle code for the maps cut in v19 (Honey Hive, Candy
 Canyon, Bumper Bash, Jungle Jam, Frostbite Peak, Cloud Nine, Cyber Grid, Orbit
@@ -113,15 +145,20 @@ is how v7 once got clobbered.
 `build/mkdebug.py` also injects `build/checks.js`. Open `__debug.html` and run:
 
 ```
-window.__checks.run()                     // everything (34 checks)
+window.__checks.run()                     // everything (37 checks)
 window.__checks.run({only:'DE'})          // just the named checks
 window.__checks.run({only:'G', half:1})   // G is heavy; run it in halves
 window.__checks.run({accept:true})        // + the five-seed per-map acceptance test
 ```
 
 They assert that things *happen* — cannonballs in flight, tiles crumbling, a
-climb gaining height, a held diagonal staying at 45° — not merely that a round
-reaches state `racing`. A state-only check is what let `updateMinigames()` sit
+climb gaining height, a held diagonal staying at 45°, a hopper covering no
+more ground than a runner (8), the bean's proportions and squash keyframes
+(5), hazards more saturated than the floor (b) — not merely that a round
+reaches state `racing`. Three are known to be noisy: N (Tile Tumble is a
+cascade, so nine rounds can land either side of its window), Q (one Super
+Slide layout in many lands the shortcut's end on another obstacle) and the
+acceptance's Super Slide hurt-in-4-of-5 target (about one run in four). A state-only check is what let `updateMinigames()` sit
 uncalled for three versions while every regression pass went green.
 
 The acceptance test runs each race map on five layouts with a player that only
@@ -145,7 +182,7 @@ This folder is a git repository. Every release is committed, so an accidental
 overwrite is one command away from being undone:
 
 ```
-git checkout -- scramble-rush-19.0.html
+git checkout -- scramble-rush-20.0.html
 ```
 
 Commit after each release rather than relying on the files alone.
@@ -159,3 +196,4 @@ somewhere outside OneDrive is the permanent fix.
 
 - [docs/ROADMAP.md](docs/ROADMAP.md) — the live plan and the version history
 - [docs/CLAUDE-CODE-BRIEF.md](docs/CLAUDE-CODE-BRIEF.md) — the v19 brief, kept as a record of what was changed and why
+- [docs/CLAUDE-CODE-BRIEF-v20.md](docs/CLAUDE-CODE-BRIEF-v20.md) — the v20 brief; what shipped and what was changed on the way is in the four §-commits

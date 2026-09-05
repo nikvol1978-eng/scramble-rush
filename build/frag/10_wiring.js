@@ -1,12 +1,58 @@
   // keep custom.color in step with the equipped skin (multiplayer sends a flat colour)
   function syncCustomColor(){ custom.color = skinBaseColor(skinOf(custom.skin)); }
 
-  $('profileBtn').onclick = ()=>{ SFX.click(); openProfile('character'); };
-  $('shopBtn').onclick    = ()=>{ SFX.click(); openProfile('shop'); };
-  $('badgesBtn').onclick  = ()=>{ SFX.click(); openProfile('badges'); };
-  $('profBackBtn').onclick= ()=>{ SFX.click(); clearPreview(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); };
+  // ---- the lobby: five tabs across the top, Q / E cycle them ----
+  const LOBBY_TABS = ['play','locker','badges','shop','settings'];
+  function selectLobbyTab(name){
+    document.querySelectorAll('.tabPill').forEach(b=>b.classList.toggle('sel', b.dataset.lobby===name));
+  }
+  function lobbyTabSelected(){
+    const b = document.querySelector('.tabPill.sel');
+    return b ? b.dataset.lobby : 'play';
+  }
+  function backToLobby(){
+    if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
+    ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
+    $('home').classList.remove('hidden');
+    refreshPreview(); refreshCoinChips(); refreshDailyChip();
+  }
+  function openLobbyTab(name){
+    selectLobbyTab(name);
+    switch(name){
+      case 'play':     backToLobby(); break;
+      case 'locker':   backToLobby(); openProfile('character'); break;
+      case 'badges':   backToLobby(); openProfile('badges'); break;
+      case 'shop':     backToLobby(); openProfile('shop'); break;
+      case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
+    }
+  }
+  function cycleLobbyTab(dir){
+    const i = LOBBY_TABS.indexOf(lobbyTabSelected());
+    openLobbyTab(LOBBY_TABS[(i + dir + LOBBY_TABS.length) % LOBBY_TABS.length]);
+  }
+  window.addEventListener('keydown', e=>{
+    if(state!=='menu') return;
+    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+    if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
+    if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+  });
+  function refreshLobby(){
+    const lvl=$('seasonLevel'), fill=$('seasonFill'), txt=$('seasonText');
+    if(lvl){ const need = xpForLevel(stats.level||1); lvl.textContent = stats.level||1;
+             fill.style.width = clamp(((stats.xp||0)/need)*100, 0, 100)+'%'; txt.textContent = (stats.xp||0)+'/'+need; }
+    document.querySelectorAll('#homeCrowns .crownNum, #nameCrowns').forEach(e=>{ e.textContent = stats.wins||0; });
+    const nm=$('homeName'); if(nm && document.activeElement!==nm) nm.value = custom.name==='YOU' ? '' : (custom.name||'');
+  }
+  $('tabPlay').onclick    = ()=>{ SFX.click(); openLobbyTab('play'); };
+  $('profileBtn').onclick = ()=>{ SFX.click(); selectLobbyTab('locker'); openProfile('character'); };
+  $('shopBtn').onclick    = ()=>{ SFX.click(); selectLobbyTab('shop'); openProfile('shop'); };
+  $('badgesBtn').onclick  = ()=>{ SFX.click(); selectLobbyTab('badges'); openProfile('badges'); };
+  $('homeName').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12).trim()||'YOU'; $('profNameLbl').textContent=custom.name; saveProfile(); refreshLobby(); });
+  $('homeName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); e.stopPropagation(); });
+  $('nameCard').onclick = ()=>{ $('homeName').focus(); };
+  $('profBackBtn').onclick= ()=>{ SFX.click(); clearPreview(); syncCustomColor(); saveProfile(); $('profile').classList.add('hidden'); $('home').classList.remove('hidden'); selectLobbyTab('play'); };
   document.querySelectorAll('#profile .tab').forEach(t=>{ t.onclick=()=>{ SFX.click(); switchTab(t.dataset.tab); }; });
-  $('nameInput').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12); $('profNameLbl').textContent=custom.name||'YOU'; saveProfile(); });
+  $('nameInput').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12); $('profNameLbl').textContent=custom.name||'YOU'; saveProfile(); refreshLobby(); });
   $('randomBlobBtn').onclick = ()=>{
     const owned=[...ownedSkins()], ownedP=[...ownedPatterns()];
     custom.skin    = owned[Math.floor(Math.random()*owned.length)];

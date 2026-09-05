@@ -77,7 +77,7 @@
 
   // The opening shot: sweep the whole arena from beyond the finish back to the
   // start line, then settle exactly where the chase camera wants to be.
-  const FLY_MS = 4200;
+  const FLY_MS = 3800;      // 4200 before the reveal took its 400 ms
   function flyCamera(){
     const p=racers.find(r=>r.isPlayer); if(!p) return;
     const px=toSceneX(p.x), py=p.y;

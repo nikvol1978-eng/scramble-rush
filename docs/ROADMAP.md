@@ -8,7 +8,7 @@ the version they shipped in.
 - [x] Slipstream: drafting tows a trailing racer by ~7% *(v13)*
 - [x] Improved jumping — variable height, coyote time, input buffering *(v8)*
 - [x] Dive with a real lunge, slide and get-up *(v8)*
-- [ ] Make diving more tactically useful (not just faster)
+- [x] Make diving more tactically useful (not just faster) — a dive is a commitment, and never faster than running *(v20)*
 - [x] Satisfying stumble / fall animations — ragdoll tumbles off big hits *(v17)*
 - [x] Better landing and collision reactions — impulse, squash, knocked off your feet *(v13)*
 - [x] Collisions that feel deliberate rather than random — racers block and
@@ -59,6 +59,7 @@ the version they shipped in.
 - [ ] Daily and weekly challenges
 - [x] Win streak rewards, and 13 grind badges *(v13)*
 - [ ] Level-up rewards
+- [x] Season progress bar in the lobby, XP for finishing, podiums and wins *(v20)*
 - [ ] Cosmetics locked behind hard achievements
 
 ## Update 5 — Polish
@@ -71,7 +72,10 @@ the version they shipped in.
 - [ ] Better mobile controls
 - [x] Camera that handles falling behind objects — occluders fade, auto-tilt on drops *(v14)*
 - [ ] Tutorial for new players
-- [ ] Better countdown, clearer finish line
+- [ ] Better countdown
+- [x] Clearer finish line — an arch with a chequered banner, confetti for the top three *(v20)*
+- [x] Courses that read at a glance — neutral floors, striped hazards, ACES lighting *(v20)*
+- [x] Lobby and round reveal in the Fall Guys arrangement *(v20)*
 
 ## Cosmetics (purely cosmetic — never a gameplay advantage)
 
@@ -107,3 +111,4 @@ launch forward. The core game stays about movement and obstacles.
 | v17 | Ragdoll tumbles, second wind, catch-up draft, Gem Grab, cannonball chain reactions, per-map music |
 | v18 | Gradients drive movement: hills finally cost and pay |
 | v19 | Eight maps that work, Fall Guys movement, bots that actually race, layered Tile Tumble, per-map acceptance test |
+| v20 | Jumping and diving no longer beat running; a taller toon-shaded bean; neutral floors and loud hazards; the lobby and the "NEXT UP IS…" reveal |

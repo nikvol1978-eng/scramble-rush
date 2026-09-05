@@ -2,6 +2,26 @@
   // MENU: 3D PREVIEW + IDLE PERFORMANCE
   // ============================================================
   let stageSpot=null, stageRing=null, stageBackdrop=null;
+  let lobbyBackdrop=null, stageFloor=null;
+  // Concentric warm rings with a faint sunburst over them; the plane that
+  // carries it turns slowly, so the rays drift.
+  let _lobbyRingTex=null;
+  function lobbyRingTexture(){
+    if(_lobbyRingTex) return _lobbyRingTex;
+    const N=1024, cv=document.createElement('canvas'); cv.width=cv.height=N; const g=cv.getContext('2d');
+    const cx=N/2, cy=N/2;
+    for(let r=N*0.75; r>0; r-=N*0.045){
+      g.fillStyle = (Math.round(r/(N*0.045))%2===0) ? '#ffd45a' : '#ffb020';
+      g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fill();
+    }
+    g.globalAlpha=0.16; g.fillStyle='#ffffff';
+    for(let a=0;a<Math.PI*2;a+=Math.PI/9){
+      g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/27); g.closePath(); g.fill();
+    }
+    g.globalAlpha=1;
+    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.encoding=THREE.sRGBEncoding;
+    return _lobbyRingTex;
+  }
   // Browsing the shop shows the item on the model without committing to it.
   // Cleared on equip, on leaving the tab, and on closing the profile.
   let previewSkin = null, previewPattern = null;
@@ -20,10 +40,18 @@
     clearGroup(previewGroup);
     animatedMats=[];
 
-    // ---- a small stage: raised disc, dark backdrop, spotlight from above
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(46,54,16,32),
-      new THREE.MeshPhongMaterial({color:0x2a1f4d, shininess:60}));
+    // ---- the lobby: a round podium in front of a slowly turning ring of
+    //      warm colour. The locker keeps its dark stage and spotlight.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(40,46,16,40),
+      new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
     ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(50,54,8,40),
+      new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
+    pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
+    lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
+      new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
+    lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
+    previewGroup.add(lobbyBackdrop);
     stageRing=new THREE.Mesh(new THREE.CylinderGeometry(48,48,3,32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
@@ -36,6 +64,7 @@
     const floor=new THREE.Mesh(new THREE.CircleGeometry(460,40),
       new THREE.MeshLambertMaterial({color:0x140e2a}));
     floor.rotation.x=-Math.PI/2; floor.position.y=-RADIUS-16; floor.receiveShadow=true; previewGroup.add(floor);
+    stageFloor=floor;
 
     stageBackdrop=new THREE.Mesh(new THREE.SphereGeometry(620,20,14, 0, Math.PI*2, 0, Math.PI/2),
       new THREE.MeshBasicMaterial({color:0x120a26, side:THREE.BackSide}));
@@ -207,6 +236,8 @@
     previewGroup.visible = (!profOpen || W>=861) && !dailyOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
+    if(stageFloor) stageFloor.visible = profOpen;
+    if(lobbyBackdrop){ lobbyBackdrop.visible = !profOpen; lobbyBackdrop.rotation.z += dt*0.05; }
     if(stageSpot) stageSpot.intensity = profOpen ? 1.6 : 0.0;
     // Close in while the locker is open: this is the shot the screen is built
     // around, and the character should fill their half of it.
@@ -214,10 +245,10 @@
     const camZ = (profOpen && W>=861) ? -186 : -150;
     camera.position.set(0,40,camZ); camera.lookAt(0,4,0);
     // dim the room so the spotlight reads
-    dirLight.intensity = profOpen ? 0.30 : 1.0;
-    hemi.intensity     = profOpen ? 0.20 : 0.9;
+    dirLight.intensity = profOpen ? 0.30 : KEY_LIGHT;
+    hemi.intensity     = profOpen ? 0.20 : FILL_LIGHT;
     dirLight.position.set(120,300,-150); dirLight.target.position.set(0,0,0);
-    sky.visible = !profOpen;
+    sky.visible = false;                                    // the ring backdrop is the sky here
     sky.position.set(camera.position.x,0,camera.position.z);
   }
 
@@ -226,6 +257,7 @@
   // ============================================================
   function fmtNum(n){ return (n||0).toLocaleString('en-GB'); }
   function refreshCoinChips(){
+    if(typeof refreshLobby==='function') refreshLobby();
     document.querySelectorAll('.coinChip .coinNum').forEach(el=>{ el.textContent = fmtNum(stats.coins); });
     const n = unclaimedBadges().length;
     ['badgePip','badgePip2'].forEach(id=>{ const e=$(id); if(e) e.classList.toggle('hidden', n===0); });

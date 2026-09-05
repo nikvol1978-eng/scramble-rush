@@ -512,6 +512,12 @@ sub("    ['results','gameover','pause','settings','customize','mpHome','lobby'].
 sub("    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    refreshPreview();",
     "    courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();\n    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip();",
     "goHome refresh")
+sub("    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip();",
+    "    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip(); if(typeof selectLobbyTab==='function') selectLobbyTab('play');",
+    "goHome lights the play tab")
+sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu') $('home').classList.remove('hidden'); };",
+    "  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };",
+    "settings back lights the play tab")
 
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",

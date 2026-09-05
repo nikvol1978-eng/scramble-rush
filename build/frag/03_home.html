@@ -17,50 +17,72 @@
   </div>
 </div>
 
-<!-- ================= MAP LOADER ================= -->
+<!-- ================= ROUND REVEAL ("NEXT UP IS...") ================= -->
 <div id="mapLoader" class="hidden">
-  <div class="loaderTitle">LOADING COURSE</div>
-  <div class="loaderWindow">
-    <div class="loaderStrip" id="loaderStrip"></div>
-    <div class="loaderMarker"></div>
+  <div class="revealRings"></div>
+  <div class="revealBar">NEXT UP IS&hellip;</div>
+  <div class="revealStage" id="revealStage">
+    <div class="revealStrip" id="loaderStrip"></div>
   </div>
-  <div class="loaderHint">Get ready…</div>
 </div>
 
-<!-- ================= HOME ================= -->
-<div id="home" class="screen menuScreen">
-  <!-- corner icon buttons -->
-  <button class="iconBtn" id="profileBtn" aria-label="Profile" title="Profile">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
-  </button>
-  <button class="iconBtn right" id="settingsBtn" aria-label="Settings" title="Settings">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
-  </button>
+<!-- ================= HOME (lobby) ================= -->
+<div id="home" class="screen lobby">
+  <div class="lobbyTop">
+    <div class="lobbyBrand">
+      <h1 class="title wordmark"><span class="w1">SCRAMBLE</span><span class="w2">RUSH</span></h1>
+      <div class="seasonTag">SEASON 1</div>
+      <div class="seasonLbl">SEASON PROGRESS</div>
+      <div class="seasonBar">
+        <div class="lvlBadge" id="seasonLevel">1</div>
+        <div class="seasonTrack"><div class="seasonFill" id="seasonFill"></div><div class="seasonText" id="seasonText">0/100</div></div>
+      </div>
+    </div>
 
-  <div class="menuTop">
-    <h1 class="title">SCRAMBLE RUSH</h1>
-    <div class="topRowChips">
-      <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
-      <button class="dailyBtn" id="dailyBtn" aria-label="Daily spin">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/><path d="M12 5.5C12 3.6 10.6 2.5 9.2 2.5S6.6 3.6 6.6 5c0 .3 0 .5.1.5H12z"/><path d="M12 5.5c0-1.9 1.4-3 2.8-3s2.6 1.1 2.6 2.5c0 .3 0 .5-.1.5H12z"/></svg>
-        <span class="pip hidden" id="dailyPip"></span>
+    <div class="lobbyTabs" role="tablist">
+      <div class="tabWrap">
+        <button class="tabPill sel" id="tabPlay" data-lobby="play" aria-label="Play" title="Play">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+        </button>
+        <button class="dailyBadge" id="dailyBtn" aria-label="Daily spin" title="Daily spin">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/></svg>
+          <span class="pip hidden" id="dailyPip"></span>
+        </button>
+      </div>
+      <button class="tabPill" id="profileBtn" data-lobby="locker" aria-label="Locker" title="Locker">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l2 4-3 1v13H9V8L6 7z"/><path d="M12 3v5"/></svg>
+      </button>
+      <button class="tabPill" id="badgesBtn" data-lobby="badges" aria-label="Badges" title="Badges">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5 5 2.5-1.5-7.5"/></svg>
+        <span class="pip hidden" id="badgePip"></span>
+      </button>
+      <button class="tabPill" id="shopBtn" data-lobby="shop" aria-label="Shop" title="Shop">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg>
+        <span class="pip hidden" id="shopPip"></span>
+      </button>
+      <button class="tabPill" id="settingsBtn" data-lobby="settings" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
       </button>
     </div>
-  </div>
 
-  <div class="menuGrid">
-    <div class="menuCol left">
-      <button class="btn menuBig pink" id="playBtn">PLAY</button>
-      <button class="btn menuBig purple" id="shopBtn">SHOP<span class="pip hidden" id="shopPip"></span></button>
-    </div>
-    <div class="menuStage"><!-- the 3D blob sits behind this --></div>
-    <div class="menuCol right">
-      <button class="btn menuBig" id="mpBtn">FRIENDS</button>
-      <button class="btn menuBig gold" id="badgesBtn">BADGES<span class="pip hidden" id="badgePip"></span></button>
+    <div class="lobbyCurrency">
+      <div class="crownChip" id="homeCrowns"><span class="crownIcon"></span><span class="crownNum">0</span></div>
+      <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
     </div>
   </div>
 
-  <div class="menuFoot"><p id="homeTip">Three rounds, one winner. Survive the cuts to reach a six-player final.</p></div>
+  <div class="lobbyBottom">
+    <div class="nameCard" id="nameCard" title="Click to edit your name">
+      <span class="crownIcon"></span>
+      <input type="text" id="homeName" maxlength="12" placeholder="YOU" aria-label="Your name" autocomplete="off">
+      <span class="nameCrowns" id="nameCrowns">0</span>
+    </div>
+    <div class="playStack">
+      <button class="inviteLink" id="mpBtn"><span class="keyHint">Y</span>Invite players</button>
+      <button class="playBig" id="playBtn"><span class="keyHint dark">A</span>PLAY!</button>
+    </div>
+  </div>
+  <p id="homeTip" class="hidden"></p>
 </div>
 
 <!-- ================= DAILY SPIN ================= -->
