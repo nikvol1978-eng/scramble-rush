@@ -79,10 +79,59 @@
       pattern.draw(g, TEX, TEX);
       g.restore();
     }
-    const t = new THREE.CanvasTexture(c);
+    // The lathe wraps this once round the body, so the left and right edges
+    // meet at the back. Nothing drawn above tiles, and the join showed as a
+    // seam. Rainbows are cyclic already; everything else gets blended round.
+    const seamless = (skin.type==='rainbow' || skin.type==='rainbowneon') ? c : wrapSeamless(c);
+    const t = new THREE.CanvasTexture(seamless);
     t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
     skinTexCache[key] = t;
     return t;
+  }
+  // Roll the image half a turn so its old edges meet in the middle, then fade
+  // the original back in over that join. The new edges come from the middle
+  // of the original, so they match; the join is a blend, so it does not show.
+  function wrapSeamless(src){
+    const out = blankCanvas(), g = out.getContext('2d'), half = TEX/2, band = TEX*0.22;
+    g.drawImage(src, half, 0, half, TEX, 0, 0, half, TEX);
+    g.drawImage(src, 0, 0, half, TEX, half, 0, half, TEX);
+    for(let x=Math.floor(half-band); x<half+band; x++){
+      const w = 1 - Math.abs(x-half)/band;
+      g.globalAlpha = w*w*(3-2*w);
+      g.drawImage(src, x, 0, 1, TEX, x, 0, 1, TEX);
+    }
+    g.globalAlpha = 1;
+    return out;
+  }
+
+  // Four-step toon ramp, shared by every bean.
+  let _toonRamp = null;
+  function toonRamp(){
+    if(!_toonRamp){
+      // Darker than a straight 0..1 ramp: the toon step lights anything facing
+      // the key at full, and with the hemisphere fill on top of that a pink
+      // bean came out nearly white.
+      const data = new Uint8Array([64, 112, 158, 196]);
+      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.LuminanceFormat);
+      _toonRamp.minFilter = THREE.NearestFilter; _toonRamp.magFilter = THREE.NearestFilter;
+      _toonRamp.generateMipmaps = false; _toonRamp.needsUpdate = true;
+    }
+    return _toonRamp;
+  }
+  // A soft rim light, folded into whichever material asks for it. Skips the
+  // hard black outline the old rig used to separate a bean from the floor.
+  function addRim(mat, colorHex, strength){
+    mat.onBeforeCompile = shader=>{
+      shader.uniforms.uRim = { value: new THREE.Color(colorHex).multiplyScalar(strength) };
+      shader.fragmentShader = 'uniform vec3 uRim;\n' + shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        'float rimF = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);\n'
+        + 'gl_FragColor.rgb += uRim * rimF * gl_FragColor.a;\n'
+        + '#include <dithering_fragment>');
+    };
+    // a different shader per material, or three.js would share the compiled one
+    mat.customProgramCacheKey = ()=>'rim'+colorHex+strength;
+    return mat;
   }
 
   // Materials that need per-frame work (scrolling rainbow, pulsing neon).
@@ -100,52 +149,54 @@
     const limb = base.clone().offsetHSL(0,0,-0.16);
     const map = skinTexture(skin, pattern);
     let bodyMat;
+    // Toon shading with a four-step ramp for the matte skins; the shiny ones
+    // stay Phong, because the highlight is their whole point. Both carry the
+    // baked crease darkening in the bean's vertex colours and a soft rim.
+    const toon = (extra)=>new THREE.MeshToonMaterial(Object.assign({ map, gradientMap: toonRamp(),
+      vertexColors:true, transparent:true, opacity:1 }, extra||{}));
     switch(skin.type){
       case 'neon': {
         const col=new THREE.Color(skin.color);
-        bodyMat = new THREE.MeshPhongMaterial({ color:col, map, emissive:col, emissiveIntensity:0.85,
-          shininess:90, specular:0x888888, transparent:true, opacity:1 });
+        bodyMat = toon({ color:col, emissive:col, emissiveIntensity:0.85 });
         animatedMats.push({mat:bodyMat, pulse:3.2, base:0.85, amp:0.22});
         break;
       }
       case 'metal': {
         bodyMat = new THREE.MeshPhongMaterial({ color:new THREE.Color(skin.color), map,
-          shininess:skin.shine||160, specular:0xffffff, reflectivity:1, transparent:true, opacity:1 });
+          shininess:skin.shine||160, specular:0xffffff, reflectivity:1, vertexColors:true, transparent:true, opacity:1 });
         break;
       }
       case 'gradient': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:60, specular:0x666666, transparent:true, opacity:1 });
+        bodyMat = toon({});
         break;
       }
       case 'galaxy': {
-        bodyMat = new THREE.MeshPhongMaterial({ map,
-          emissive:new THREE.Color(skin.colors[skin.colors.length-1]), emissiveIntensity:0.16,
-          shininess:80, specular:0x555555, transparent:true, opacity:1 });
+        bodyMat = toon({ emissive:new THREE.Color(skin.colors[skin.colors.length-1]), emissiveIntensity:0.16 });
         animatedMats.push({mat:bodyMat, scroll:0.012});
         break;
       }
       case 'oil': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:170, specular:0xffffff, transparent:true, opacity:1 });
+        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:170, specular:0xffffff, vertexColors:true, transparent:true, opacity:1 });
         animatedMats.push({mat:bodyMat, scroll:0.05});
         break;
       }
       case 'rainbow': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:70, specular:0x777777, transparent:true, opacity:1 });
+        bodyMat = toon({});
         animatedMats.push({mat:bodyMat, scroll: skin.slow?0.04:0.13});
         break;
       }
       case 'rainbowneon': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, emissive:0xffffff, emissiveIntensity:0.42,
-          shininess:120, specular:0xffffff, transparent:true, opacity:1 });
+        bodyMat = toon({ emissive:0xffffff, emissiveIntensity:0.42 });
         bodyMat.emissiveMap = map;
         animatedMats.push({mat:bodyMat, scroll:0.2, pulse:4.0, base:0.45, amp:0.18});
         break;
       }
       default: {
-        bodyMat = new THREE.MeshPhongMaterial({ color:base.clone(), map, shininess:60,
-          specular:0x666666, transparent:true, opacity:1 });
+        bodyMat = toon({ color:base.clone() });
       }
     }
-    return { bodyMat, limbMat: new THREE.MeshLambertMaterial({color:limb}) };
+    addRim(bodyMat, 0xbfe6ff, 0.35);
+    const limbMat = new THREE.MeshToonMaterial({color:limb, gradientMap:toonRamp()});
+    return { bodyMat, limbMat };
   }
 

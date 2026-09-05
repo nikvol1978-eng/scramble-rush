@@ -62,12 +62,14 @@
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
   const DIVE_IMPULSE = 6.5, DIVE_PRONE_MS = 380, DIVE_CD_MS = 1600, DIVE_GETUP_MS = 450;
+  // squash-and-stretch keyframes: how long the landing squash and the take-off stretch hold
+  const LAND_MS = 90, STRETCH_MS = 60;
 
   function doJump(r){
     if(r.falling||r.stumbleT>0||r.diveT>0||r.getUpT>0) return false;
     const grounded = r.h<=0 || (r.coyote||0)>0;
     if(!grounded) return false;
-    r.vh=JUMP_V; r.h=Math.max(r.h,0.01); r.coyote=0; r.jumpCut=false; r.squash=0;
+    r.vh=JUMP_V; r.h=Math.max(r.h,0.01); r.coyote=0; r.jumpCut=false; r.squash=0; r.landT=0; r.stretchT=STRETCH_MS;
     if(r.isPlayer) SFX.jump();
     return true;
   }

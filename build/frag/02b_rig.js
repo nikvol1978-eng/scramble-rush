@@ -7,25 +7,44 @@
   // arm that reaches past the body's waist looks like a growth, not a limb.
   // The whole figure still occupies the 34-unit box the old sphere did, so the
   // physics (RADIUS = 17) is untouched.
+  // v20: taller. The v19 bean was 26 high by 23 wide, which read as squat
+  // next to the reference; this one stands 1.9 : 1 from crown to sole. It
+  // still sits on the same RADIUS = 17 collision sphere, feet on the floor.
   const RIG = {
-    topY:16.2, bottomY:-9.6, maxR:11.8,
-    faceY:8.4, faceZ:7.6, faceR:6.9,
-    hipY:-9.2, legLen:5.6, legR:2.7, legX:4.5,
-    footR:3.9, footY:-14.8,
-    shoulderY:6.4, shoulderX:9.6, armLen:6.0, armR:2.3,
+    topY:22.5, bottomY:-10.2, maxR:10.6,
+    faceY:14.2, faceZ:5.8, faceR:7.0,
+    hipY:-9.6, legLen:5.0, legR:2.6, legX:4.6,
+    footR:3.6, footY:-14.6,
+    // arms hang from the shoulder to just below the waist, thick at the top
+    shoulderY:9.5, shoulderX:9.9, armLen:14.0, armR:2.7, armTipR:1.8, mittR:2.6,
     hatScale:0.84
   };
+  RIG.waistY = (RIG.topY + RIG.bottomY)/2;
 
   // Profile of the bean, bottom to top. x is radius, y is height.
   const BEAN_PROFILE = [
-    [0.0, -10.2], [3.6, -10.1], [6.9, -9.4], [9.3, -7.7], [10.9, -5.0],
-    [11.5, -1.6], [11.6, 2.0], [11.5, 5.6], [11.0, 8.8], [10.0, 11.4],
-    [8.3, 13.5], [5.9, 15.2], [3.2, 16.0], [0.0, 16.2]
+    [0.0, -10.2], [3.4, -10.1], [6.6, -9.4], [8.8, -7.6], [10.1, -4.6],
+    [10.6, -0.8], [10.6, 3.6], [10.4, 7.6], [10.0, 11.2], [9.2, 14.6],
+    [7.9, 17.6], [6.0, 20.0], [3.4, 21.8], [0.0, 22.5]
   ];
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
     if(!_beanGeo){
       _beanGeo = new THREE.LatheGeometry(BEAN_PROFILE.map(p=>new THREE.Vector2(p[0],p[1])), 28);
+      // Baked ambient occlusion, as a vertex colour: the crease where the legs
+      // meet the body and the hollow under each shoulder go a shade darker.
+      const pos = _beanGeo.attributes.position, n = pos.count, col = new Float32Array(n*3);
+      for(let i=0;i<n;i++){
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        let ao = 1;
+        if(y < -4) ao -= 0.24 * Math.min(1, (-4 - y)/5.5);
+        for(const s of [-1,1]){
+          const d = Math.hypot(x - s*RIG.shoulderX, y - RIG.shoulderY, z);
+          if(d < 6.5) ao -= 0.16 * (1 - d/6.5);
+        }
+        col[i*3] = col[i*3+1] = col[i*3+2] = ao;
+      }
+      _beanGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     }
     return _beanGeo;
   }
@@ -40,9 +59,9 @@
 
   // A stubby capsule. No ball at the shoulder end — the joint sits inside the
   // body, and an extra sphere there just bulges through the surface.
-  function makeLimb(r, len, mat){
+  function makeLimb(r, len, mat, rTip){
     const g = new THREE.Group();
-    const mid = new THREE.Mesh(new THREE.CylinderGeometry(r, r*0.94, len, 10), mat);
+    const mid = new THREE.Mesh(new THREE.CylinderGeometry(r, rTip||r*0.94, len, 10), mat);
     mid.position.y = -len/2; mid.castShadow = true; g.add(mid);
     return g;
   }
@@ -61,10 +80,12 @@
     const body = new THREE.Mesh(beanGeometry(), bodyMat);
     body.castShadow = true; tilt.add(body);
 
-    // ---- a thin rim, not the heavy black outline the old rig had
-    const outMat = new THREE.MeshBasicMaterial({color:0x3a2560, side:THREE.BackSide, transparent:true, opacity:1});
+    // ---- no outline any more: the rim light in the material does that job.
+    // The shell is kept for the invulnerability flash, and is otherwise hidden.
+    const outMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.BackSide, transparent:true, opacity:0.55, depthWrite:false});
     const outline = new THREE.Group();
     outline.add(new THREE.Mesh(beanOutlineGeometry(), outMat));
+    outline.visible = false;
     tilt.add(outline);
 
     // ---- specials get an aura: a breathing shell plus motes drifting up off them
@@ -93,27 +114,27 @@
       glow.scale.setScalar(1.22); tilt.add(glow);
     }
 
-    // ---- legs: short stubs, small feet, tucked close together
+    // ---- legs: short stubs on two small rounded pads that lift on each step
     const legPivots=[], feet=[];
     [-1,1].forEach(s=>{
       const pivot=new THREE.Group(); pivot.position.set(s*RIG.legX, RIG.hipY, 0); tilt.add(pivot);
       pivot.add(makeLimb(RIG.legR, RIG.legLen, limbMat));
       const foot=new THREE.Mesh(new THREE.SphereGeometry(RIG.footR,12,9), limbMat);
-      foot.position.set(0, -RIG.legLen, 1.5);
-      foot.scale.set(0.95, 0.62, 1.4); foot.rotation.y = s*0.13; foot.castShadow=true;
+      foot.position.set(0, -RIG.legLen, 1.6);
+      foot.scale.set(1.0, 0.6, 1.35); foot.rotation.y = s*0.13; foot.castShadow=true;
       pivot.add(foot);
       legPivots.push(pivot); feet.push(foot);
     });
 
-    // ---- arms: small, hanging just past the waist
-    const armPivots=[];
+    // ---- arms: shoulder to just below the waist, tapering to a rounded mitt
+    const armPivots=[], hands=[];
     [-1,1].forEach(s=>{
       const pivot=new THREE.Group(); pivot.position.set(s*RIG.shoulderX, RIG.shoulderY, 0); tilt.add(pivot);
-      pivot.rotation.z = s*0.42;                         // flare clear of the waist
-      pivot.add(makeLimb(RIG.armR, RIG.armLen, limbMat));
-      const hand=new THREE.Mesh(new THREE.SphereGeometry(RIG.armR*1.12,10,8), limbMat);
-      hand.position.y=-RIG.armLen; hand.scale.set(1,1.05,1); hand.castShadow=true; pivot.add(hand);
-      armPivots.push(pivot);
+      pivot.rotation.z = s*0.30;                         // flare clear of the hips
+      pivot.add(makeLimb(RIG.armR, RIG.armLen, limbMat, RIG.armTipR));
+      const hand=new THREE.Mesh(new THREE.SphereGeometry(RIG.mittR,10,8), limbMat);
+      hand.position.y=-RIG.armLen; hand.scale.set(1,1.15,0.9); hand.castShadow=true; pivot.add(hand);
+      armPivots.push(pivot); hands.push(hand);
     });
 
     // ---- face. `head` pivots about the bean's centre so a small turn swings the
@@ -121,29 +142,32 @@
     const head = new THREE.Group(); tilt.add(head);
     const faceGroup = new THREE.Group(); faceGroup.position.y = RIG.faceY; head.add(faceGroup);
 
+    // A wide oval on the upper third of the body. Curved like the body, so
+    // it sits on the surface rather than cutting a flat dish into it.
     const plate = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR, 20, 16),
       new THREE.MeshLambertMaterial({color:0xfdfdff}));
-    plate.scale.set(1.02, 1.16, 0.30); plate.position.z = RIG.faceZ;
+    plate.scale.set(1.22, 0.98, 0.52); plate.position.z = RIG.faceZ;
     faceGroup.add(plate);
     // a hairline rim, or the plate vanishes on a pale skin
-    const plateRim = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR*1.035, 18, 14),
+    const plateRim = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR*1.03, 18, 14),
       new THREE.MeshBasicMaterial({color:0x2b1a4d, side:THREE.BackSide}));
-    plateRim.scale.set(1.02, 1.16, 0.30); plateRim.position.z = RIG.faceZ - 0.1;
+    plateRim.scale.set(1.22, 0.98, 0.52); plateRim.position.z = RIG.faceZ - 0.1;
     faceGroup.add(plateRim);
 
     // ---- eyes: two dots on the plate, shaped by the chosen expression
     const eyeGroup = new THREE.Group(); faceGroup.add(eyeGroup);
     const eyes = opts.eyes||'round';
     const pupils=[], scleras=[];
-    const ez = RIG.faceZ + 1.5;
-    [-2.9, 2.9].forEach((x,i)=>{
+    const ez = RIG.faceZ + RIG.faceR*0.52 - 0.6;
+    [-3.1, 3.1].forEach((x,i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
       const slot = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8),
         new THREE.MeshBasicMaterial({color:0xfdfdff}));
       slot.position.set(x, 0.5, ez-0.3); slot.scale.set(1,1,0.3); eyeGroup.add(slot); scleras.push(slot);
 
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.78, 12, 10), darkMat);
-      dot.position.set(x, 0.5, ez); dot.scale.set(1, 1.32, 0.45);
+      // two tall ovals
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.7, 12, 10), darkMat);
+      dot.position.set(x, 0.6, ez); dot.scale.set(1, 1.55, 0.45);
       eyeGroup.add(dot); pupils.push(dot);
 
       if(eyes==='happy'){ dot.scale.set(1.30, 0.50, 0.45); dot.position.y=1.0; }
@@ -187,7 +211,7 @@
 
     return {group, tilt, aura, bodyMat, outMat, outline, body, head, faceGroup, plate, hatGroup, eyeGroup,
             pupils, scleras, mouth, tongue, arms:armPivots, legs:legPivots,
-            armPivots, legPivots, feet};
+            armPivots, legPivots, feet, hands};
   }
   // v6 name kept so nothing downstream breaks
   const makeBlob = makeCharacter;

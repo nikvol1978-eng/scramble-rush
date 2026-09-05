@@ -30,7 +30,13 @@
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
         const col = {r, c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth, tiers:[]};
         for(let L=0; L<3; L++){
-          const preGone = L===0 && r>2 && Math.random() < (hard?0.07:0.04);
+          // A sixth of the top floor is missing from the start (was 4%). The
+          // slower v20 pace made the field a stalemate -- nobody armed enough
+          // tiles to bring anyone down -- and the fuse and respawn dials flip
+          // it straight from stalemate to collapse. Starting holes give a
+          // steady trickle of drops instead: measured at 10%, 16% and 22%,
+          // three or four out by the clock in eight rounds of nine.
+          const preGone = L===0 && r>2 && Math.random() < (hard?0.20:0.16);
           const t = {r, c, layer:L, hy:LAYER_H[L], x:col.x, y:col.y, w:tileW, d:rowDepth,
                      touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0};
           col.tiers.push(t); tiles.push(t);

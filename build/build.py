@@ -420,6 +420,10 @@ sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
 sub("x:s, speed:rand(0.84,1.04),",
     "x:s, speed:(i<3 ? rand(1.00,1.05) : rand(0.93,1.03)),",
     "bot speed spread, with a few elites")
+# bots wear skins and patterns, not one flat colour each
+sub("targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)}));",
+    "targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)}, botLook()));",
+    "bot look")
 
 # ------------------------------------------------------------ arena bot ai
 sub("  function racerCollisions(){",

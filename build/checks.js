@@ -1301,6 +1301,78 @@
                : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
   }
 
+  // ---------- 5: the bean rig ----------
+  // Proportions and the small animations that make a bean read as a bean: it
+  // stands about twice as tall as it is wide, its arms reach below the waist,
+  // its feet leave the floor one at a time when it runs, and it squashes on
+  // landing. Measured off the rendered meshes, not the constants.
+  function check5(){
+    const bad = [];
+    begin('sunny');
+    obstacles.length = 0; mapEvent = null;
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+    const p = player(), m = p.mesh;
+    const box = o => new THREE.Box3().setFromObject(o);
+    function reset(){
+      p.x = TRACK_W/2; p.y = 1200; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
+      p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.diveT = 0; p.diveCd = 0;
+      p.landT = 0; p.stretchT = 0; p.squash = 0; p.invuln = 9999; p.facing = Math.PI/2;
+      resetLook();
+    }
+    // (a) proportions, crown to sole against the body's width, standing still
+    reset();
+    window.__dbg.hold('w', false);
+    for(let i=0;i<30;i++) window.__dbg.tick(1);
+    const body = box(m.body), feet = box(m.feet[0]).union(box(m.feet[1]));
+    const height = body.max.y - feet.min.y, width = body.max.x - body.min.x, ratio = height/width;
+    if(ratio < 1.8 || ratio > 2.0) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.8-2.0');
+
+    // (b) arms hang to below the waist at rest
+    const waist = (body.max.y + body.min.y)/2;
+    for(const h of m.hands){
+      const hy = box(h).getCenter(new THREE.Vector3()).y;
+      if(hy > waist) bad.push('an arm ends at '+hy.toFixed(1)+', above the waist at '+waist.toFixed(1));
+    }
+
+    // (c) feet clear the floor on alternate steps while running
+    reset();
+    window.__dbg.hold('w', true);
+    for(let i=0;i<40;i++) window.__dbg.tick(1);            // up to speed
+    const floorY = toWorld(p.x, p.y, 0).y;
+    const lift = [0,0], leads = [0,0];
+    for(let i=0;i<40;i++){
+      window.__dbg.tick(1);
+      const f0 = box(m.feet[0]).min.y - floorY, f1 = box(m.feet[1]).min.y - floorY;
+      lift[0] = Math.max(lift[0], f0); lift[1] = Math.max(lift[1], f1);
+      if(f0 > f1 + 0.5) leads[0]++; else if(f1 > f0 + 0.5) leads[1]++;
+    }
+    window.__dbg.hold('w', false);
+    if(lift[0] < 1.5 || lift[1] < 1.5) bad.push('feet only lift '+lift[0].toFixed(1)+' / '+lift[1].toFixed(1)+' off the floor');
+    if(!leads[0] || !leads[1])         bad.push('feet do not alternate ('+leads[0]+' / '+leads[1]+' frames leading)');
+
+    // (d) the squash keyframes: stretch on take-off, squash on landing
+    reset();
+    for(let i=0;i<5;i++) window.__dbg.tick(1);
+    window.__dbg.hold(settings.keys.jump, true);
+    doJump(p); window.__dbg.tick(1);
+    const stretchY = m.group.scale.y;
+    if(stretchY < 1.05) bad.push('no take-off stretch (scale.y '+stretchY.toFixed(2)+')');
+    let landed = false, squashY = 1;
+    for(let i=0;i<120 && !landed;i++){
+      window.__dbg.tick(1);
+      if(p.h <= 0 && i > 3){ landed = true; squashY = m.group.scale.y; }
+    }
+    window.__dbg.hold(settings.keys.jump, false);
+    if(!landed)              bad.push('never landed');
+    else if(squashY > 0.90)  bad.push('no landing squash (scale.y '+squashY.toFixed(2)+')');
+    if(landed && !((p.landT||0) > 0)) bad.push('the landing keyframe did not fire');
+
+    return { name:'5 the bean rig: proportions, arms, feet and squash', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : ratio.toFixed(2)+' : 1, hands '+box(m.hands[0]).getCenter(new THREE.Vector3()).y.toFixed(1)+' vs waist '+waist.toFixed(1)
+                 +', feet lift '+lift[0].toFixed(1)+'/'+lift[1].toFixed(1)+', stretch '+stretchY.toFixed(2)+', squash '+squashY.toFixed(2) };
+  }
+
   // ---------- 8: no free speed ----------
   // A player who held forward and alternated jump and dive used to out-run one
   // who just ran: the air kept nearly all of your speed while the ground took a
@@ -1629,7 +1701,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['4',check4],
+        ['2',check2],['3',check3],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

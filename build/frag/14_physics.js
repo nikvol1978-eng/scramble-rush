@@ -53,7 +53,9 @@
           if(d>26){ r.facing=Math.atan2(dy,dx); r.vx+=dx/d*0.30*f; r.vy+=dy/d*0.30*f; }
           if(r.h===0 && Math.random()<0.008) doJump(r);
         }
-        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*gravK()*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.squash=0.6; } }
+        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*gravK()*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.landT=LAND_MS; } }
+        if(r.landT>0) r.landT-=dt*1000;
+        if(r.stretchT>0) r.stretchT-=dt*1000;
         const ffr=Math.pow(0.86,f); r.vx*=ffr; r.vy*=ffr;
         r.x+=r.vx*f; r.y+=r.vy*f;
         r.x=clamp(r.x, RADIUS+6, TRACK_W-RADIUS-6);
@@ -95,7 +97,7 @@
         r.tumbleT -= dt*1000;
         if(r.tumbleT<=0){
           if(r.h>0.5){ r.tumbleT = 60; }        // still airborne: hold the pose
-          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.windT = 1800; }
+          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.getUpTotal = r.getUpT; r.windT = 1800; }
         }
       }
       if(r.windT>0) r.windT-=dt*1000;
@@ -103,11 +105,13 @@
       if(r.diveCd>0)   r.diveCd-=dt*1000;
       if(r.invuln>0)   r.invuln-=dt*1000;
       if(r.getUpT>0)   r.getUpT-=dt*1000;
+      if(r.landT>0)    r.landT-=dt*1000;
+      if(r.stretchT>0) r.stretchT-=dt*1000;
       if(r.squash>0)   r.squash=Math.max(0,r.squash-dt*4);
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
-        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; }
+        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; r.getUpTotal=DIVE_GETUP_MS; }
       }
 
       // ---- vertical: floaty on the way up, snappier on the way down
@@ -118,8 +122,9 @@
         r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*apex*gravK()*f;
         r.h += r.vh*f;
         if(r.h<=0){
-          r.h=0; r.squash=clamp(0.45+Math.abs(r.vh)*0.075,0,1.1); r.vh=0;
-          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS);
+          r.h=0; r.vh=0;
+          r.landT = LAND_MS;                    // the landing squash keyframe
+          if(r.diveT>0){ r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS); r.getUpTotal=DIVE_GETUP_MS; }
         }
         r.coyote=0;
       } else {

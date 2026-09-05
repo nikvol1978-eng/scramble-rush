@@ -14,6 +14,15 @@
   const BOT_COLORS = ['#ff8a5c','#7ee8fa','#c084fc','#ffd166','#06d6a0','#f472b6','#a3e635','#60a5fa','#fca5a5','#fbbf24','#34d399','#ff5a4d','#e879f9','#fde68a','#5eead4','#f97316','#4ade80','#818cf8'];
   const BOT_NAMES = ['Waddle','Boingo','Muncher','Squiggle','Tofu','Biscuit','Nugget','Zippy','Doodle','Blorp','Pudge','Wobble','Gizmo','Splat','Noodle','Pickle','Mochi','Bingo'];
   const BOT_HATS = ['none','none','none','party','halo','horns','prop'];
+  // The pack wears the wardrobe too: a colourway from the cheaper tiers and a
+  // pattern about half the time, so sixteen beans do not read as one flat blob.
+  const BOT_SKIN_POOL = ['pink','teal','blue','gold0','red','lime','violet','orange','cream','rose','jade',
+                         'sunset','ocean','forest','lavafade','cotton','plum','frost'];
+  const BOT_PATTERN_POOL = ['none','none','none','spots','stripes','checker','zigzag','camo','stars','hearts','bubbles'];
+  function botLook(){
+    const sk = skinOf(pick(BOT_SKIN_POOL));
+    return { skinId: sk.id, patternId: pick(BOT_PATTERN_POOL), color: skinBaseColor(sk) };
+  }
 
   // ============================================================
   // RARITIES + SKINS (colourways bought with coins)

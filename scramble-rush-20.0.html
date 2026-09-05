@@ -739,6 +739,15 @@
   const BOT_COLORS = ['#ff8a5c','#7ee8fa','#c084fc','#ffd166','#06d6a0','#f472b6','#a3e635','#60a5fa','#fca5a5','#fbbf24','#34d399','#ff5a4d','#e879f9','#fde68a','#5eead4','#f97316','#4ade80','#818cf8'];
   const BOT_NAMES = ['Waddle','Boingo','Muncher','Squiggle','Tofu','Biscuit','Nugget','Zippy','Doodle','Blorp','Pudge','Wobble','Gizmo','Splat','Noodle','Pickle','Mochi','Bingo'];
   const BOT_HATS = ['none','none','none','party','halo','horns','prop'];
+  // The pack wears the wardrobe too: a colourway from the cheaper tiers and a
+  // pattern about half the time, so sixteen beans do not read as one flat blob.
+  const BOT_SKIN_POOL = ['pink','teal','blue','gold0','red','lime','violet','orange','cream','rose','jade',
+                         'sunset','ocean','forest','lavafade','cotton','plum','frost'];
+  const BOT_PATTERN_POOL = ['none','none','none','spots','stripes','checker','zigzag','camo','stars','hearts','bubbles'];
+  function botLook(){
+    const sk = skinOf(pick(BOT_SKIN_POOL));
+    return { skinId: sk.id, patternId: pick(BOT_PATTERN_POOL), color: skinBaseColor(sk) };
+  }
 
   // ============================================================
   // RARITIES + SKINS (colourways bought with coins)
@@ -1474,10 +1483,59 @@
       pattern.draw(g, TEX, TEX);
       g.restore();
     }
-    const t = new THREE.CanvasTexture(c);
+    // The lathe wraps this once round the body, so the left and right edges
+    // meet at the back. Nothing drawn above tiles, and the join showed as a
+    // seam. Rainbows are cyclic already; everything else gets blended round.
+    const seamless = (skin.type==='rainbow' || skin.type==='rainbowneon') ? c : wrapSeamless(c);
+    const t = new THREE.CanvasTexture(seamless);
     t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
     skinTexCache[key] = t;
     return t;
+  }
+  // Roll the image half a turn so its old edges meet in the middle, then fade
+  // the original back in over that join. The new edges come from the middle
+  // of the original, so they match; the join is a blend, so it does not show.
+  function wrapSeamless(src){
+    const out = blankCanvas(), g = out.getContext('2d'), half = TEX/2, band = TEX*0.22;
+    g.drawImage(src, half, 0, half, TEX, 0, 0, half, TEX);
+    g.drawImage(src, 0, 0, half, TEX, half, 0, half, TEX);
+    for(let x=Math.floor(half-band); x<half+band; x++){
+      const w = 1 - Math.abs(x-half)/band;
+      g.globalAlpha = w*w*(3-2*w);
+      g.drawImage(src, x, 0, 1, TEX, x, 0, 1, TEX);
+    }
+    g.globalAlpha = 1;
+    return out;
+  }
+
+  // Four-step toon ramp, shared by every bean.
+  let _toonRamp = null;
+  function toonRamp(){
+    if(!_toonRamp){
+      // Darker than a straight 0..1 ramp: the toon step lights anything facing
+      // the key at full, and with the hemisphere fill on top of that a pink
+      // bean came out nearly white.
+      const data = new Uint8Array([64, 112, 158, 196]);
+      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.LuminanceFormat);
+      _toonRamp.minFilter = THREE.NearestFilter; _toonRamp.magFilter = THREE.NearestFilter;
+      _toonRamp.generateMipmaps = false; _toonRamp.needsUpdate = true;
+    }
+    return _toonRamp;
+  }
+  // A soft rim light, folded into whichever material asks for it. Skips the
+  // hard black outline the old rig used to separate a bean from the floor.
+  function addRim(mat, colorHex, strength){
+    mat.onBeforeCompile = shader=>{
+      shader.uniforms.uRim = { value: new THREE.Color(colorHex).multiplyScalar(strength) };
+      shader.fragmentShader = 'uniform vec3 uRim;\n' + shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        'float rimF = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);\n'
+        + 'gl_FragColor.rgb += uRim * rimF * gl_FragColor.a;\n'
+        + '#include <dithering_fragment>');
+    };
+    // a different shader per material, or three.js would share the compiled one
+    mat.customProgramCacheKey = ()=>'rim'+colorHex+strength;
+    return mat;
   }
 
   // Materials that need per-frame work (scrolling rainbow, pulsing neon).
@@ -1495,53 +1553,55 @@
     const limb = base.clone().offsetHSL(0,0,-0.16);
     const map = skinTexture(skin, pattern);
     let bodyMat;
+    // Toon shading with a four-step ramp for the matte skins; the shiny ones
+    // stay Phong, because the highlight is their whole point. Both carry the
+    // baked crease darkening in the bean's vertex colours and a soft rim.
+    const toon = (extra)=>new THREE.MeshToonMaterial(Object.assign({ map, gradientMap: toonRamp(),
+      vertexColors:true, transparent:true, opacity:1 }, extra||{}));
     switch(skin.type){
       case 'neon': {
         const col=new THREE.Color(skin.color);
-        bodyMat = new THREE.MeshPhongMaterial({ color:col, map, emissive:col, emissiveIntensity:0.85,
-          shininess:90, specular:0x888888, transparent:true, opacity:1 });
+        bodyMat = toon({ color:col, emissive:col, emissiveIntensity:0.85 });
         animatedMats.push({mat:bodyMat, pulse:3.2, base:0.85, amp:0.22});
         break;
       }
       case 'metal': {
         bodyMat = new THREE.MeshPhongMaterial({ color:new THREE.Color(skin.color), map,
-          shininess:skin.shine||160, specular:0xffffff, reflectivity:1, transparent:true, opacity:1 });
+          shininess:skin.shine||160, specular:0xffffff, reflectivity:1, vertexColors:true, transparent:true, opacity:1 });
         break;
       }
       case 'gradient': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:60, specular:0x666666, transparent:true, opacity:1 });
+        bodyMat = toon({});
         break;
       }
       case 'galaxy': {
-        bodyMat = new THREE.MeshPhongMaterial({ map,
-          emissive:new THREE.Color(skin.colors[skin.colors.length-1]), emissiveIntensity:0.16,
-          shininess:80, specular:0x555555, transparent:true, opacity:1 });
+        bodyMat = toon({ emissive:new THREE.Color(skin.colors[skin.colors.length-1]), emissiveIntensity:0.16 });
         animatedMats.push({mat:bodyMat, scroll:0.012});
         break;
       }
       case 'oil': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:170, specular:0xffffff, transparent:true, opacity:1 });
+        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:170, specular:0xffffff, vertexColors:true, transparent:true, opacity:1 });
         animatedMats.push({mat:bodyMat, scroll:0.05});
         break;
       }
       case 'rainbow': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, shininess:70, specular:0x777777, transparent:true, opacity:1 });
+        bodyMat = toon({});
         animatedMats.push({mat:bodyMat, scroll: skin.slow?0.04:0.13});
         break;
       }
       case 'rainbowneon': {
-        bodyMat = new THREE.MeshPhongMaterial({ map, emissive:0xffffff, emissiveIntensity:0.42,
-          shininess:120, specular:0xffffff, transparent:true, opacity:1 });
+        bodyMat = toon({ emissive:0xffffff, emissiveIntensity:0.42 });
         bodyMat.emissiveMap = map;
         animatedMats.push({mat:bodyMat, scroll:0.2, pulse:4.0, base:0.45, amp:0.18});
         break;
       }
       default: {
-        bodyMat = new THREE.MeshPhongMaterial({ color:base.clone(), map, shininess:60,
-          specular:0x666666, transparent:true, opacity:1 });
+        bodyMat = toon({ color:base.clone() });
       }
     }
-    return { bodyMat, limbMat: new THREE.MeshLambertMaterial({color:limb}) };
+    addRim(bodyMat, 0xbfe6ff, 0.35);
+    const limbMat = new THREE.MeshToonMaterial({color:limb, gradientMap:toonRamp()});
+    return { bodyMat, limbMat };
   }
 
   // ============================================================
@@ -1553,25 +1613,44 @@
   // arm that reaches past the body's waist looks like a growth, not a limb.
   // The whole figure still occupies the 34-unit box the old sphere did, so the
   // physics (RADIUS = 17) is untouched.
+  // v20: taller. The v19 bean was 26 high by 23 wide, which read as squat
+  // next to the reference; this one stands 1.9 : 1 from crown to sole. It
+  // still sits on the same RADIUS = 17 collision sphere, feet on the floor.
   const RIG = {
-    topY:16.2, bottomY:-9.6, maxR:11.8,
-    faceY:8.4, faceZ:7.6, faceR:6.9,
-    hipY:-9.2, legLen:5.6, legR:2.7, legX:4.5,
-    footR:3.9, footY:-14.8,
-    shoulderY:6.4, shoulderX:9.6, armLen:6.0, armR:2.3,
+    topY:22.5, bottomY:-10.2, maxR:10.6,
+    faceY:14.2, faceZ:5.8, faceR:7.0,
+    hipY:-9.6, legLen:5.0, legR:2.6, legX:4.6,
+    footR:3.6, footY:-14.6,
+    // arms hang from the shoulder to just below the waist, thick at the top
+    shoulderY:9.5, shoulderX:9.9, armLen:14.0, armR:2.7, armTipR:1.8, mittR:2.6,
     hatScale:0.84
   };
+  RIG.waistY = (RIG.topY + RIG.bottomY)/2;
 
   // Profile of the bean, bottom to top. x is radius, y is height.
   const BEAN_PROFILE = [
-    [0.0, -10.2], [3.6, -10.1], [6.9, -9.4], [9.3, -7.7], [10.9, -5.0],
-    [11.5, -1.6], [11.6, 2.0], [11.5, 5.6], [11.0, 8.8], [10.0, 11.4],
-    [8.3, 13.5], [5.9, 15.2], [3.2, 16.0], [0.0, 16.2]
+    [0.0, -10.2], [3.4, -10.1], [6.6, -9.4], [8.8, -7.6], [10.1, -4.6],
+    [10.6, -0.8], [10.6, 3.6], [10.4, 7.6], [10.0, 11.2], [9.2, 14.6],
+    [7.9, 17.6], [6.0, 20.0], [3.4, 21.8], [0.0, 22.5]
   ];
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
     if(!_beanGeo){
       _beanGeo = new THREE.LatheGeometry(BEAN_PROFILE.map(p=>new THREE.Vector2(p[0],p[1])), 28);
+      // Baked ambient occlusion, as a vertex colour: the crease where the legs
+      // meet the body and the hollow under each shoulder go a shade darker.
+      const pos = _beanGeo.attributes.position, n = pos.count, col = new Float32Array(n*3);
+      for(let i=0;i<n;i++){
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        let ao = 1;
+        if(y < -4) ao -= 0.24 * Math.min(1, (-4 - y)/5.5);
+        for(const s of [-1,1]){
+          const d = Math.hypot(x - s*RIG.shoulderX, y - RIG.shoulderY, z);
+          if(d < 6.5) ao -= 0.16 * (1 - d/6.5);
+        }
+        col[i*3] = col[i*3+1] = col[i*3+2] = ao;
+      }
+      _beanGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     }
     return _beanGeo;
   }
@@ -1586,9 +1665,9 @@
 
   // A stubby capsule. No ball at the shoulder end — the joint sits inside the
   // body, and an extra sphere there just bulges through the surface.
-  function makeLimb(r, len, mat){
+  function makeLimb(r, len, mat, rTip){
     const g = new THREE.Group();
-    const mid = new THREE.Mesh(new THREE.CylinderGeometry(r, r*0.94, len, 10), mat);
+    const mid = new THREE.Mesh(new THREE.CylinderGeometry(r, rTip||r*0.94, len, 10), mat);
     mid.position.y = -len/2; mid.castShadow = true; g.add(mid);
     return g;
   }
@@ -1607,10 +1686,12 @@
     const body = new THREE.Mesh(beanGeometry(), bodyMat);
     body.castShadow = true; tilt.add(body);
 
-    // ---- a thin rim, not the heavy black outline the old rig had
-    const outMat = new THREE.MeshBasicMaterial({color:0x3a2560, side:THREE.BackSide, transparent:true, opacity:1});
+    // ---- no outline any more: the rim light in the material does that job.
+    // The shell is kept for the invulnerability flash, and is otherwise hidden.
+    const outMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.BackSide, transparent:true, opacity:0.55, depthWrite:false});
     const outline = new THREE.Group();
     outline.add(new THREE.Mesh(beanOutlineGeometry(), outMat));
+    outline.visible = false;
     tilt.add(outline);
 
     // ---- specials get an aura: a breathing shell plus motes drifting up off them
@@ -1639,27 +1720,27 @@
       glow.scale.setScalar(1.22); tilt.add(glow);
     }
 
-    // ---- legs: short stubs, small feet, tucked close together
+    // ---- legs: short stubs on two small rounded pads that lift on each step
     const legPivots=[], feet=[];
     [-1,1].forEach(s=>{
       const pivot=new THREE.Group(); pivot.position.set(s*RIG.legX, RIG.hipY, 0); tilt.add(pivot);
       pivot.add(makeLimb(RIG.legR, RIG.legLen, limbMat));
       const foot=new THREE.Mesh(new THREE.SphereGeometry(RIG.footR,12,9), limbMat);
-      foot.position.set(0, -RIG.legLen, 1.5);
-      foot.scale.set(0.95, 0.62, 1.4); foot.rotation.y = s*0.13; foot.castShadow=true;
+      foot.position.set(0, -RIG.legLen, 1.6);
+      foot.scale.set(1.0, 0.6, 1.35); foot.rotation.y = s*0.13; foot.castShadow=true;
       pivot.add(foot);
       legPivots.push(pivot); feet.push(foot);
     });
 
-    // ---- arms: small, hanging just past the waist
-    const armPivots=[];
+    // ---- arms: shoulder to just below the waist, tapering to a rounded mitt
+    const armPivots=[], hands=[];
     [-1,1].forEach(s=>{
       const pivot=new THREE.Group(); pivot.position.set(s*RIG.shoulderX, RIG.shoulderY, 0); tilt.add(pivot);
-      pivot.rotation.z = s*0.42;                         // flare clear of the waist
-      pivot.add(makeLimb(RIG.armR, RIG.armLen, limbMat));
-      const hand=new THREE.Mesh(new THREE.SphereGeometry(RIG.armR*1.12,10,8), limbMat);
-      hand.position.y=-RIG.armLen; hand.scale.set(1,1.05,1); hand.castShadow=true; pivot.add(hand);
-      armPivots.push(pivot);
+      pivot.rotation.z = s*0.30;                         // flare clear of the hips
+      pivot.add(makeLimb(RIG.armR, RIG.armLen, limbMat, RIG.armTipR));
+      const hand=new THREE.Mesh(new THREE.SphereGeometry(RIG.mittR,10,8), limbMat);
+      hand.position.y=-RIG.armLen; hand.scale.set(1,1.15,0.9); hand.castShadow=true; pivot.add(hand);
+      armPivots.push(pivot); hands.push(hand);
     });
 
     // ---- face. `head` pivots about the bean's centre so a small turn swings the
@@ -1667,29 +1748,32 @@
     const head = new THREE.Group(); tilt.add(head);
     const faceGroup = new THREE.Group(); faceGroup.position.y = RIG.faceY; head.add(faceGroup);
 
+    // A wide oval on the upper third of the body. Curved like the body, so
+    // it sits on the surface rather than cutting a flat dish into it.
     const plate = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR, 20, 16),
       new THREE.MeshLambertMaterial({color:0xfdfdff}));
-    plate.scale.set(1.02, 1.16, 0.30); plate.position.z = RIG.faceZ;
+    plate.scale.set(1.22, 0.98, 0.52); plate.position.z = RIG.faceZ;
     faceGroup.add(plate);
     // a hairline rim, or the plate vanishes on a pale skin
-    const plateRim = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR*1.035, 18, 14),
+    const plateRim = new THREE.Mesh(new THREE.SphereGeometry(RIG.faceR*1.03, 18, 14),
       new THREE.MeshBasicMaterial({color:0x2b1a4d, side:THREE.BackSide}));
-    plateRim.scale.set(1.02, 1.16, 0.30); plateRim.position.z = RIG.faceZ - 0.1;
+    plateRim.scale.set(1.22, 0.98, 0.52); plateRim.position.z = RIG.faceZ - 0.1;
     faceGroup.add(plateRim);
 
     // ---- eyes: two dots on the plate, shaped by the chosen expression
     const eyeGroup = new THREE.Group(); faceGroup.add(eyeGroup);
     const eyes = opts.eyes||'round';
     const pupils=[], scleras=[];
-    const ez = RIG.faceZ + 1.5;
-    [-2.9, 2.9].forEach((x,i)=>{
+    const ez = RIG.faceZ + RIG.faceR*0.52 - 0.6;
+    [-3.1, 3.1].forEach((x,i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
       const slot = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8),
         new THREE.MeshBasicMaterial({color:0xfdfdff}));
       slot.position.set(x, 0.5, ez-0.3); slot.scale.set(1,1,0.3); eyeGroup.add(slot); scleras.push(slot);
 
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.78, 12, 10), darkMat);
-      dot.position.set(x, 0.5, ez); dot.scale.set(1, 1.32, 0.45);
+      // two tall ovals
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.7, 12, 10), darkMat);
+      dot.position.set(x, 0.6, ez); dot.scale.set(1, 1.55, 0.45);
       eyeGroup.add(dot); pupils.push(dot);
 
       if(eyes==='happy'){ dot.scale.set(1.30, 0.50, 0.45); dot.position.y=1.0; }
@@ -1733,7 +1817,7 @@
 
     return {group, tilt, aura, bodyMat, outMat, outline, body, head, faceGroup, plate, hatGroup, eyeGroup,
             pupils, scleras, mouth, tongue, arms:armPivots, legs:legPivots,
-            armPivots, legPivots, feet};
+            armPivots, legPivots, feet, hands};
   }
   // v6 name kept so nothing downstream breaks
   const makeBlob = makeCharacter;
@@ -1864,7 +1948,13 @@
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
         const col = {r, c, x:c*tileW+tileW/2, y:yStart+r*rowDepth+rowDepth/2, w:tileW, d:rowDepth, tiers:[]};
         for(let L=0; L<3; L++){
-          const preGone = L===0 && r>2 && Math.random() < (hard?0.07:0.04);
+          // A sixth of the top floor is missing from the start (was 4%). The
+          // slower v20 pace made the field a stalemate -- nobody armed enough
+          // tiles to bring anyone down -- and the fuse and respawn dials flip
+          // it straight from stalemate to collapse. Starting holes give a
+          // steady trickle of drops instead: measured at 10%, 16% and 22%,
+          // three or four out by the clock in eight rounds of nine.
+          const preGone = L===0 && r>2 && Math.random() < (hard?0.20:0.16);
           const t = {r, c, layer:L, hy:LAYER_H[L], x:col.x, y:col.y, w:tileW, d:rowDepth,
                      touched:preGone, fuse:preGone?0:-1, gone:preGone, drop:preGone?1:0, back:preGone?2.0:0};
           col.tiers.push(t); tiles.push(t);
@@ -2566,7 +2656,7 @@
   function makeRacers(survivors){
     const list=[], cx=TRACK_W/2;
     if(survivors){
-      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, patternId:s.patternId, hat:s.hat, eyes:s.eyes, speed:s.speed, x:cx+(i-(survivors.length-1)/2)*58, targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)})); });
+      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, patternId:s.patternId, hat:s.hat, eyes:s.eyes, speed:s.speed, x:cx+(i-(survivors.length-1)/2)*58, targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)}, botLook())); });
     } else {
       const remotes = (mp.role==='host') ? mp.conns.filter(c=>c.peerProfile) : [];
       const n=clamp(settings.botCount,3,19);
@@ -2608,6 +2698,7 @@
   // absolutely each frame (no accumulation) so a state change reads instantly.
   function poseCharacter(m, r, t, moving, speed){
     const L=m.legPivots, A=m.armPivots;
+    L[0].position.y = L[1].position.y = RIG.hipY;      // feet down unless the run lifts them
     const setLegs=(l,rr)=>{ L[0].rotation.x=l; L[1].rotation.x=rr; };
     const setArms=(l,rr)=>{ A[0].rotation.x=l; A[1].rotation.x=rr; };
     const flare=(v)=>{ A[0].rotation.z=-v; A[1].rotation.z=v; L[0].rotation.z=-v*0.35; L[1].rotation.z=v*0.35; };
@@ -2641,10 +2732,21 @@
       return;
     }
     if(r.getUpT>0){
-      // pushing back upright off the floor
-      const k = clamp(r.getUpT/170, 0, 1);
-      setLegs(-0.5*k, -0.35*k); setArms(-1.5*k, -1.5*k); flare(0.30);
-      m.tilt.rotation.x = 1.05*k;
+      // Getting up is two moves, not a snap: roll from flat to sitting, then
+      // push up off the floor with both arms.
+      const k = clamp(r.getUpT/(r.getUpTotal||DIVE_GETUP_MS), 0, 1);   // 1 = just landed, 0 = up
+      if(k > 0.5){
+        const a = (k-0.5)/0.5;                              // 1 flat -> 0 sitting
+        m.tilt.rotation.x = 0.55 + 0.75*a;
+        setLegs(-0.9 + 0.5*a, -0.8 + 0.5*a);
+        setArms(-2.4*a - 0.6*(1-a), -2.4*a - 0.6*(1-a));
+      } else {
+        const a = k/0.5;                                    // 1 sitting -> 0 standing
+        m.tilt.rotation.x = 0.55*a;
+        setLegs(-0.4*a, -0.3*a);
+        setArms(0.9*a, 0.9*a);                              // arms back, pushing off
+      }
+      flare(0.30);
       return;
     }
     if(r.stumbleT>0){
@@ -2654,10 +2756,10 @@
       return;
     }
     if(r.h>0){
-      // airborne: legs tuck on the way up, reach for the floor on the way down
+      // airborne: arms fly up on the way up, reach for the floor on the way down
       const rising = r.vh > 0;
-      if(rising){ setLegs(0.75,-0.35); setArms(-1.9,-1.7); flare(0.34); }
-      else       { setLegs(-0.30,0.40); setArms(-0.8,-0.7); flare(0.42); }
+      if(rising){ setLegs(0.75,-0.35); setArms(-2.7,-2.55); flare(0.55); }
+      else       { setLegs(-0.30,0.40); setArms(-0.9,-0.8); flare(0.42); }
       return;
     }
     if(r.finished){
@@ -2676,6 +2778,9 @@
       const swing = Math.sin(ph);
       setLegs(swing*amp, -swing*amp);
       setArms(-swing*amp*0.85, swing*amp*0.85);
+      // each foot lifts clear of the floor on its forward swing
+      L[0].position.y = RIG.hipY + Math.max(0,  swing)*3.2;
+      L[1].position.y = RIG.hipY + Math.max(0, -swing)*3.2;
       flare(0.18);
       return;
     }
@@ -2698,7 +2803,8 @@
       const moving=speed>0.4;
       // a light bob from the run cycle, in step with the legs
       const gait = 8 + clamp(speed,0,7)*1.1;
-      const bob = (moving && r.h===0 && !r.diveT && !r.finished) ? Math.abs(Math.sin(t*gait+r.x*0.08))*1.6 : 0;
+      // a 6% bob at stride rate
+      const bob = (moving && r.h===0 && !r.diveT && !r.finished) ? Math.abs(Math.sin(t*gait+r.x*0.08))*2.4 : 0;
       const wp = toWorld(r.x, r.y, RADIUS+baseY+bob+(r.floorH||0)+r.h);
       m.group.position.set(wp.x, wp.y, wp.z);
 
@@ -2720,12 +2826,14 @@
       let sxs=1,sys=1,szs=1;
       if(r.stumbleT>0){ sxs=1.14; sys=0.84; szs=1.14; }
       else if(r.diveT>0){ sxs=0.94; sys=0.88; szs=1.18; }
+      else if(r.landT>0){ sys=0.82; sxs=szs=1.12; }               // landing squash, 90 ms
+      else if(r.stretchT>0){ sys=1.10; sxs=szs=0.94; }            // take-off stretch, 60 ms
       else if(r.h>0){ const st=clamp(r.vh*0.035,-0.10,0.10); sys=1+st; sxs=1-st*0.7; szs=1-st*0.7; }
       if(r.squash>0){ sys*=1-r.squash*0.32; sxs*=1+r.squash*0.22; szs*=1+r.squash*0.22; }
       m.group.scale.set(sxs,sys,szs);
 
-      m.bodyMat.opacity=opacity; m.outMat.opacity=opacity;
-      m.outline.visible = r.invuln>0 ? (Math.floor(t*14)%2===0) : true;
+      m.bodyMat.opacity=opacity; m.outMat.opacity=opacity*0.55;
+      m.outline.visible = r.invuln>0 && (Math.floor(t*14)%2===0);
       if(m.hatGroup.userData.spin) m.hatGroup.userData.spin.rotation.y=t*12;
       if(m.hatGroup.userData.float) m.hatGroup.position.y=(m.hatGroup.userData.floatBase||0)+Math.sin(t*3)*2;
       if(m.arrow) m.arrow.position.y=RADIUS+34+Math.sin(t*4)*3;
@@ -3134,12 +3242,14 @@
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
   const DIVE_IMPULSE = 6.5, DIVE_PRONE_MS = 380, DIVE_CD_MS = 1600, DIVE_GETUP_MS = 450;
+  // squash-and-stretch keyframes: how long the landing squash and the take-off stretch hold
+  const LAND_MS = 90, STRETCH_MS = 60;
 
   function doJump(r){
     if(r.falling||r.stumbleT>0||r.diveT>0||r.getUpT>0) return false;
     const grounded = r.h<=0 || (r.coyote||0)>0;
     if(!grounded) return false;
-    r.vh=JUMP_V; r.h=Math.max(r.h,0.01); r.coyote=0; r.jumpCut=false; r.squash=0;
+    r.vh=JUMP_V; r.h=Math.max(r.h,0.01); r.coyote=0; r.jumpCut=false; r.squash=0; r.landT=0; r.stretchT=STRETCH_MS;
     if(r.isPlayer) SFX.jump();
     return true;
   }
@@ -5198,7 +5308,9 @@
           if(d>26){ r.facing=Math.atan2(dy,dx); r.vx+=dx/d*0.30*f; r.vy+=dy/d*0.30*f; }
           if(r.h===0 && Math.random()<0.008) doJump(r);
         }
-        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*gravK()*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.squash=0.6; } }
+        if(r.h>0){ r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*gravK()*f; r.h+=r.vh*f; if(r.h<=0){ r.h=0; r.vh=0; r.landT=LAND_MS; } }
+        if(r.landT>0) r.landT-=dt*1000;
+        if(r.stretchT>0) r.stretchT-=dt*1000;
         const ffr=Math.pow(0.86,f); r.vx*=ffr; r.vy*=ffr;
         r.x+=r.vx*f; r.y+=r.vy*f;
         r.x=clamp(r.x, RADIUS+6, TRACK_W-RADIUS-6);
@@ -5240,7 +5352,7 @@
         r.tumbleT -= dt*1000;
         if(r.tumbleT<=0){
           if(r.h>0.5){ r.tumbleT = 60; }        // still airborne: hold the pose
-          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.windT = 1800; }
+          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.getUpTotal = r.getUpT; r.windT = 1800; }
         }
       }
       if(r.windT>0) r.windT-=dt*1000;
@@ -5248,11 +5360,13 @@
       if(r.diveCd>0)   r.diveCd-=dt*1000;
       if(r.invuln>0)   r.invuln-=dt*1000;
       if(r.getUpT>0)   r.getUpT-=dt*1000;
+      if(r.landT>0)    r.landT-=dt*1000;
+      if(r.stretchT>0) r.stretchT-=dt*1000;
       if(r.squash>0)   r.squash=Math.max(0,r.squash-dt*4);
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
-        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; }
+        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; r.getUpTotal=DIVE_GETUP_MS; }
       }
 
       // ---- vertical: floaty on the way up, snappier on the way down
@@ -5263,8 +5377,9 @@
         r.vh -= (r.vh>0?GRAV_UP:GRAV_DOWN)*apex*gravK()*f;
         r.h += r.vh*f;
         if(r.h<=0){
-          r.h=0; r.squash=clamp(0.45+Math.abs(r.vh)*0.075,0,1.1); r.vh=0;
-          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS);
+          r.h=0; r.vh=0;
+          r.landT = LAND_MS;                    // the landing squash keyframe
+          if(r.diveT>0){ r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS); r.getUpTotal=DIVE_GETUP_MS; }
         }
         r.coyote=0;
       } else {
