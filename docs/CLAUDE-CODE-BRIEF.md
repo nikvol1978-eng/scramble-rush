@@ -1,3 +1,10 @@
+> **Status: done.** Everything below shipped in v19 (commits 74f4438 → b7c737e,
+> 3–4 Sep 2026), with Claude Code's corrections: the toast element is `#coinPops`,
+> bots already had a ring plan, Tile Trap became the layered **Tile Tumble**, the
+> lava chases the pack instead of running on a cushion, and the acceptance test
+> is per-map over five seeds on medians. Kept as a record; the live plan is
+> `docs/ROADMAP.md`. Do not re-run this brief.
+
 # Scramble Rush v19 — brief for Claude Code
 
 Goal: make the game *feel* like Fall Guys / Stumble Guys with a small set of maps that

@@ -11,3 +11,7 @@ __debug.html
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# editor/tool state (only launch.json is kept)
+.claude/*
+!.claude/launch.json
