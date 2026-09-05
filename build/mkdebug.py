@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 19
+VERSION = 20
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -97,6 +97,14 @@ hook = """
     fadeMin:()=>fadeables.length? +Math.min(...fadeables.map(m=>m.material.opacity)).toFixed(3) : null,
     obsAt:(ty)=>obstacles.filter(o=>o.type===ty).map(o=>({y:Math.round(o.y), y0:Math.round(o.y0), y1:Math.round(o.y1), r:o.r!==undefined?Math.round(o.r):null})),
     alive:()=>racers.filter(r=>!r.lavaOut).length,
+    finishes:()=>racers.map(r=>({p:!!r.isPlayer, fin:!!r.finished, t:r.finished?+r.finishTime.toFixed(1):null})),
+    len:()=>Math.round(trackLength),
+    me:()=>{ const p=racers.find(r=>r.isPlayer); return {x:Math.round(p.x), y:Math.round(p.y), h:+p.h.toFixed(2), vh:+p.vh.toFixed(2), vx:+p.vx.toFixed(2), vy:+p.vy.toFixed(2), tum:Math.round(p.tumbleT||0), stum:Math.round(p.stumbleT||0), inv:Math.round(p.invuln||0), getUp:Math.round(p.getUpT||0), falling:!!p.falling, floor:Math.round(p.floorH||0), spin:+(p.tumbleSpin||0).toFixed(2), tumbles:p.__tumbles||0}; },
+    setMe:(o)=>{ const p=racers.find(r=>r.isPlayer); Object.assign(p,o); return window.__dbg.me(); },
+    obsDump:(ty)=>obstacles.filter(o=>!ty||o.type===ty).map(o=>({t:o.type, y:Math.round(o.y!==undefined?o.y:o.yStart), y0:Math.round(o.y0), y1:Math.round(o.y1), cx:o.cx===undefined?null:Math.round(o.cx), hw:o.halfWidth===undefined?null:Math.round(o.halfWidth), xs:o.xs?o.xs.map(Math.round):null, items:(o.items||[]).map(i=>Math.round(i.x===undefined?(i.pivotX||0):i.x))})),
+    bots:()=>racers.filter(r=>!r.isPlayer).map(r=>({n:r.name, x:Math.round(r.x), y:Math.round(r.y), tx:Math.round(r.targetX||0), thr:r.aiThrottle, falls:r.fallCount, hf:r.holeFalls||{}, falling:!!r.falling})),
+    holeFalls:()=>{ const t={}; for(const r of racers){ if(r.isPlayer) continue; for(const k in (r.holeFalls||{})) t[k]=(t[k]||0)+r.holeFalls[k]; } return t; },
+    obsKeys:()=>obstacles.filter(o=>o.yStart!==undefined).map(o=>obsKey(o)+':'+o.type+'@'+Math.round(o.yStart)),
     spread:()=>{ const a=racers.filter(r=>!r.lavaOut); const ring=obstacles.find(o=>o.type==='ring');
       if(!ring||!a.length) return null;
       const d=a.map(r=>Math.hypot(r.x-ring.cx, r.y-ring.y)).sort((x,y)=>x-y);

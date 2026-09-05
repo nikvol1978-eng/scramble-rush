@@ -33,7 +33,25 @@
   // ACCEL rises to match so top speed lands in the same place.
   // Friction is applied after acceleration, so top speed is A*fr/(1-fr), not
   // A/(1-fr): at 1.25 the bean topped out 15% slower than v18 did.
-  const ACCEL = 1.47;
+  // v20: 1.47 gave 5.2 a frame, too quick for the obstacle density. 1.30 puts
+  // top speed at 4.6; the friction stays where it is so the stop and turn feel
+  // of v19 (checks S, U, V, W) is untouched.
+  const ACCEL = 1.30;
+  const GROUND_FR = 0.78;
+  // A bean in the air used to keep nearly all of its speed (0.955 a frame)
+  // while one on the ground lost a fifth, so bunny-hopping was free speed.
+  // Air friction now sits close enough to ground that a jump never gains.
+  const AIR_FR = 0.84;
+  const ICE_FR = 0.845;
+  const V_MAX = ACCEL*GROUND_FR/(1-GROUND_FR);          // ~4.6 a frame, flat ground
+  // Nobody goes faster than this, ever: not off a boost pad, not in a draft,
+  // not out of a cannon. Boosts keep their multipliers underneath the cap.
+  // The cap follows the surface: ice has its own, higher, terminal speed (7.1
+  // a frame against 4.6), and a flat 6.2 cap would have pinned all of Super
+  // Slide to one speed, so the gradient there stopped paying (check L).
+  const V_CAP = V_MAX*1.35;
+  const V_CAP_ICE = ACCEL*ICE_FR/(1-ICE_FR)*1.35;
+  function speedCap(){ return (currentMap && currentMap.slippery) ? V_CAP_ICE : V_CAP; }
   const TURN_RATE_GROUND = 17, TURN_RATE_AIR = 9;   // radians per second
   // How hard a gradient pulls, per frame per unit of sin(slope). At the
   // steepest point of Cannon Climb this is about a fifth of ACCEL.
@@ -43,6 +61,7 @@
   const COYOTE_MS = 110;                    // grace after stepping off an edge
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
+  const DIVE_IMPULSE = 6.5, DIVE_PRONE_MS = 380, DIVE_CD_MS = 1600, DIVE_GETUP_MS = 450;
 
   function doJump(r){
     if(r.falling||r.stumbleT>0||r.diveT>0||r.getUpT>0) return false;
@@ -55,9 +74,11 @@
   function doDive(r){
     if(r.finished||r.falling||r.diveCd>0||r.stumbleT>0||r.getUpT>0) return false;
     const ang=r.facing||Math.PI/2;
-    // a committed lunge: you go further than a step, but you are prone at the end of it
-    r.vx+=Math.cos(ang)*7.5; r.vy+=Math.sin(ang)*7.5;
-    r.diveT=320; r.diveCd=900; r.invuln=420;
+    // A committed lunge: you go further than a step, but you are prone at the
+    // end of it and slow getting up. At 7.5 / 320 / 900 a dive cycle averaged
+    // faster than running, so diving down a straight was the fast way to travel.
+    r.vx+=Math.cos(ang)*DIVE_IMPULSE; r.vy+=Math.sin(ang)*DIVE_IMPULSE;
+    r.diveT=DIVE_PRONE_MS; r.diveCd=DIVE_CD_MS; r.invuln=420;
     if(r.h===0){ r.vh=2.2; r.h=0.01; }
     if(r.isPlayer){ SFX.dive(); stats.dives++; }
     return true;

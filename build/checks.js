@@ -978,12 +978,15 @@
 
     // Out of the bar's reach before timing the recovery: left where they were
     // hit, they simply get hit again on the next pass.
-    // somewhere clear: dropped beside another obstacle they simply fall again
-    let restY = o.y + 400;
-    for(let g=0; g<10; g++){
-      if(!obstacles.some(x=>x!==o && restY > (x.y0===undefined?-1e9:x.y0)-220 && restY < (x.y1===undefined?1e9:x.y1)+220)) break;
-      restY += 260;
-    }
+    // Somewhere clear: dropped beside another obstacle they simply get hit
+    // again. Ten steps of 260 used to give up inside a laser sweep on Neon's
+    // denser layouts, and a bean pinned inside a hazard never stops tumbling;
+    // so scan the whole course, and fall back to the clear run-in at the start.
+    let restY = null;
+    const clearAt = y => !obstacles.some(x=>x!==o && y > (x.y0===undefined?-1e9:x.y0)-220 && y < (x.y1===undefined?1e9:x.y1)+220);
+    for(let y=o.y+400; y<trackLength-300 && restY===null; y+=40) if(clearAt(y)) restY = y;
+    for(let y=120; y<o.y-300 && restY===null; y+=40) if(clearAt(y)) restY = y;
+    if(restY===null) restY = 150;
     p.x = TRACK_W/2; p.y = restY; p.floorH = 0;
     // and it has to end: no permanent cartwheel. Hold them where they were put:
     // the tumble carries them sideways, and drifting back into the bar restarts
@@ -1298,6 +1301,52 @@
                : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
   }
 
+  // ---------- 8: no free speed ----------
+  // A player who held forward and alternated jump and dive used to out-run one
+  // who just ran: the air kept nearly all of your speed while the ground took a
+  // fifth, and a dive cycle averaged above top speed. Three beans run the same
+  // flat, empty stretch for twelve seconds on the same held input, and neither
+  // the hopper nor the diver may get further than the runner.
+  function check8(){
+    const bad = [];
+    begin('sunny');
+    obstacles.length = 0;                       // a flat, empty course
+    mapEvent = null;                            // and no crosswind mid-run
+    // The bots sit this one out. Marking them finished would end the round on
+    // the one-straggler rule, so they are knocked out instead.
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+    function run(style){
+      const q = player();
+      q.x = TRACK_W/2; q.y = 0; q.h = 0; q.vx = 0; q.vy = 0; q.vh = 0; q.floorH = 0;
+      q.falling = false; q.stumbleT = 0; q.tumbleT = 0; q.getUpT = 0; q.windT = 0; q.diveT = 0; q.diveCd = 0; q.invuln = 9999;
+      q.finished = false; q.draft = 0; q.facing = Math.PI/2;
+      resetLook();
+      window.__dbg.hold('w', true);
+      window.__dbg.hold(settings.keys.jump, style === 'jump');   // held, so no jump-cut shortens the arc
+      let top = 0, dives = 0, jumps = 0;
+      for(let i=0;i<720 && state==='racing';i++){
+        if(style === 'jump' && i % 30 === 0 && doJump(q)) jumps++;
+        if(style === 'dive' && doDive(q)) dives++;
+        window.__dbg.tick(1);
+        top = Math.max(top, Math.hypot(q.vx, q.vy));
+      }
+      window.__dbg.hold('w', false);
+      window.__dbg.hold(settings.keys.jump, false);
+      return { dist: q.y, top, dives, jumps };
+    }
+    const a = run('run'), b = run('jump'), c = run('dive');
+    if(state !== 'racing')      bad.push('the round ended mid-run ('+state+')');
+    if(a.dist < 600)            bad.push('the runner barely moved ('+Math.round(a.dist)+')');
+    if(b.jumps < 20)            bad.push('the hopper only jumped '+b.jumps+' times');
+    if(c.dives < 4)             bad.push('the diver only dived '+c.dives+' times');
+    if(b.dist > a.dist*1.02)    bad.push('jumping covers '+Math.round(b.dist)+' vs running '+Math.round(a.dist)+' ('+(b.dist/a.dist*100-100).toFixed(1)+'% more)');
+    if(c.dist > a.dist*1.00)    bad.push('diving covers '+Math.round(c.dist)+' vs running '+Math.round(a.dist)+' ('+(c.dist/a.dist*100-100).toFixed(1)+'% more)');
+    if(a.top < 4.4 || a.top > 4.8) bad.push('v_max is '+a.top.toFixed(2)+' a frame, want 4.4-4.8');
+    return { name:'8 no free speed: a jump or a dive never beats a run', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'run '+Math.round(a.dist)+', jump '+Math.round(b.dist)+' ('+(b.dist/a.dist*100-100).toFixed(1)+'%), dive '+Math.round(c.dist)+' ('+(c.dist/a.dist*100-100).toFixed(1)+'%), v_max '+a.top.toFixed(2) };
+  }
+
   // ---------- +: the acceptance run, five seeds a map ----------
   // The brief's own test. A player who only holds forward and mashes jump used
   // to finish first or top-three on 8 of 13 race maps. Judged over five layouts
@@ -1341,8 +1390,11 @@
       const sorted = [...racers].sort(rankCompare);
       const me = racers.find(r=>r.isPlayer);
       const bots = racers.filter(r=>!r.isPlayer);
+      const finTimes = bots.filter(b=>b.finished).map(b=>b.finishTime);
       return {
         secs: Math.round(ticks/60), limit,
+        // when the field gets home: the v20 brief wants this between 35 and 50 s
+        medFinish: finTimes.length ? Math.round(median(finTimes)) : null,
         rank: sorted.findIndex(r=>r.isPlayer)+1,
         hurt: (me.fallCount||0) + (me.__tumbles||0) + (me.lavaOut?1:0),
         finished: bots.filter(b=>b.finished || b.y>=L).length,
@@ -1360,8 +1412,10 @@
       const medHome  = median(runs.map(r=>r.finished));
       const medStill = median(runs.map(r=>r.stillest));
       const wonAny   = runs.filter(r=>r.rank === 1).length;
+      const medFin   = median(runs.map(r=>r.medFinish===null ? 999 : r.medFinish));
       report[key] = 'hurt '+hurtIn+'/'+ACCEPT_SEEDS+(gapless?' (no forced hole)':'')+', worst-bot falls med '+medFalls
-                    +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' home, still '+medStill+'s';
+                    +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' home, still '+medStill+'s'
+                    +', field home at '+medFin+'s';
       if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+ACCEPT_SEEDS);
       const needHurt = HURT_MIN[key]===undefined ? 4 : HURT_MIN[key];
       const capFalls = FALL_MAX[key]===undefined ? 5 : FALL_MAX[key];
@@ -1576,7 +1630,7 @@
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['4',check4],
-        ['6',check6],['7',check7],['9',check9],['0',check0],
+        ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];
       // slow: five layouts a map, so only when asked for

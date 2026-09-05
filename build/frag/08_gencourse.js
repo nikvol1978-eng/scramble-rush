@@ -18,7 +18,10 @@
       // next; only the bottom one puts you out. A single layer made every miss
       // fatal, and with sixteen racers arming tiles a quarter of the grid was
       // compromised at any moment, so the whole field drowned.
-      const yStart=420, yEnd=yStart+6500;
+      // 6500 deep in v19. Racers are 12% slower in v20, so the same field was
+      // 12% quieter -- tiles got armed less often, nobody fell, and the round
+      // ran to the clock with two out. Trimmed by the same 12%.
+      const yStart=420, yEnd=yStart+5700;
       const cols=8, rowDepth=118;
       const rows=Math.max(6, Math.floor((yEnd-yStart)/rowDepth));
       const tileW=TRACK_W/cols;
@@ -114,6 +117,7 @@
       do{ type=pick(types); guard++; }while(guard<20 && (type===last || (type==='narrow'&&last==='pit') || (type==='pit'&&last==='narrow')));
       last=type;
       const gap = rand(60,120);
+      const placedFrom = obs.length, cursorWas = cursor;
       if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
@@ -279,6 +283,19 @@
                   // straight through you without touching.
                   phase: rand(0,6.28), span: rand(180,300), y0:y-360, y1:y+360});
         cursor=y+90;
+      }
+      // The reserved band was only checked against the cursor, and a fork or a
+      // shortcut runs 800 units past it. One Sunny layout in four laid a fork
+      // straight across the hole, and the bots taking the fork's lanes walked
+      // into it over and over: 125 falls in one round. Anything that reaches
+      // into the band is taken back and the cursor stepped past it instead.
+      if(wantGap){
+        let reaches = false;
+        for(let i=placedFrom;i<obs.length;i++){
+          const o = obs[i];
+          if(o.y1 > gapY-gapPad && o.y0 < gapY+gapLen+gapPad) reaches = true;
+        }
+        if(reaches){ obs.length = placedFrom; cursor = Math.max(cursorWas, gapY+gapLen+gapPad); last = null; }
       }
     }
     // Every race course needs at least two places you can actually fall off.

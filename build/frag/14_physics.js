@@ -107,7 +107,7 @@
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
-        if(r.diveT<=0 && r.h<=0){ r.getUpT=170; }
+        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; }
       }
 
       // ---- vertical: floaty on the way up, snappier on the way down
@@ -119,7 +119,7 @@
         r.h += r.vh*f;
         if(r.h<=0){
           r.h=0; r.squash=clamp(0.45+Math.abs(r.vh)*0.075,0,1.1); r.vh=0;
-          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, 140);
+          if(r.diveT>0) r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS);
         }
         r.coyote=0;
       } else {
@@ -141,10 +141,14 @@
       }
 
       // ---- horizontal: prone dives slide, ice holds your momentum
-      const slip = currentMap.slippery ? 0.845 : ((r.turnGrip||0) > 0 ? 0.70 : 0.78);
+      const slip = currentMap.slippery ? ICE_FR : ((r.turnGrip||0) > 0 ? 0.70 : GROUND_FR);
       if(r.turnGrip) r.turnGrip = Math.max(0, r.turnGrip - f);
-      const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? 0.955 : slip), f);
+      const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? AIR_FR : slip), f);
       r.vx*=fr; r.vy*=fr;
+      // The hard ceiling. Applied after every impulse of the frame has landed,
+      // so a cannon hit or a bumper cannot launch anyone past it either.
+      const cap__ = speedCap(), spd__ = Math.hypot(r.vx, r.vy);
+      if(spd__ > cap__){ r.vx *= cap__/spd__; r.vy *= cap__/spd__; }
       r.x+=r.vx*f; r.y+=r.vy*f;
       r.x = arenaMode() ? clamp(r.x, TRACK_W/2-1400, TRACK_W/2+1400) : clamp(r.x,4,TRACK_W-4);
       r.y = arenaMode() ? Math.max(r.y,-1400) : Math.max(r.y,-120);
