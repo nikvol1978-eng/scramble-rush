@@ -8,7 +8,7 @@ output filename and the <title> version are both derived from VERSION below, and
 an existing release is never overwritten without --force. A stale VERSION quietly
 eating a released file is how v7 got clobbered, twice.
 """
-import io, os, sys
+import io, os, re, sys
 
 VERSION = 19                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,9 +16,52 @@ FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
 OUT  = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 
+SHELF = os.path.join(FRAG, "25_shelved.js")
+WITH_SHELVED = "--with-shelved" in sys.argv
+SHELF_MARKER = re.compile(r"^[ \t]*//<<shelved:([A-Za-z0-9_-]+)>>[ \t]*\r?\n", re.M)
+SHELF_HEADER = re.compile(r"^// ===== shelved:([A-Za-z0-9_-]+) =====\r?\n", re.M)
+
+
+def shelf_sections():
+    """The cut maps' code, parked in 25_shelved.js and keyed by section name.
+
+    The default build drops these; --with-shelved splices each one back at the
+    marker left in its place, which is what makes a shelved build byte-identical
+    to the build the code was lifted out of.
+    """
+    with io.open(SHELF, encoding="utf-8") as f:
+        text = f.read()
+    out, hits = {}, list(SHELF_HEADER.finditer(text))
+    for n, m in enumerate(hits):
+        last = n + 1 == len(hits)
+        end = len(text) if last else hits[n + 1].start()
+        body = text[m.end():end]
+        # Sections are written one blank line apart so the file reads; that
+        # blank line belongs to the file, not to the code, so give it back.
+        # Blocks that genuinely end on a blank line keep theirs.
+        if not last:
+            body = body[:-1]
+        out[m.group(1)] = body
+    return out
+
+
+SHELVED = shelf_sections()
+SHELF_USED = set()
+
+
 def frag(name):
     with io.open(os.path.join(FRAG, name), encoding="utf-8") as f:
-        return f.read()
+        text = f.read()
+
+    def splice(m):
+        key = m.group(1)
+        if key not in SHELVED:
+            errors.append("no shelved section named " + key + " (in " + name + ")")
+            return ""
+        SHELF_USED.add(key)
+        return SHELVED[key] if WITH_SHELVED else ""
+
+    return SHELF_MARKER.sub(splice, text)
 
 def guard_output():
     """Released builds are immutable.
@@ -522,6 +565,11 @@ sub("        $('mapIntro').classList.add('hidden');",
     + chr(10) + "        $('hud').classList.remove('hidden'); $('pauseBtn').classList.remove('hidden');",
     "hud after flyover")
 
+
+# A section nothing splices back in is dead weight that no build would ever
+# notice was wrong, so say so rather than carrying it.
+for key in sorted(set(SHELVED) - SHELF_USED):
+    errors.append("shelved section '" + key + "' has no //<<shelved:" + key + ">> marker")
 
 if errors:
     print("FAILED:")

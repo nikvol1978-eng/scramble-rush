@@ -9,7 +9,7 @@
         }
       } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
       else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ placeAt(m, platX(o.platforms[i],t), (o.yStart+o.yEnd)/2, -6); }); }
-      else if(o.type==='mover'){ if(o.mesh) placeAt(o.mesh, moverX(o,t), (o.yStart+o.yEnd)/2, o.h); }
+      //<<shelved:sync-mover>>
       else if(o.type==='crumble'){
         if(o.meshes) o.meshes.forEach((m,i)=>{
           const sl=o.slabs[i];
@@ -18,17 +18,7 @@
           m.visible = sl.drop < 0.99;
         });
       }
-      else if(o.type==='log'){
-        if(o.mesh){
-          const a=logAngle(o,t), lp=logPos(o,t);
-          placeAt(o.mesh, lp.x, o.y, lp.h);
-          o.ropes.forEach((rope,i)=>{
-            const sz = i===0?-1:1;
-            rope.position.set(Math.sin(-a)*o.armLen/2, o.armLen/2*Math.cos(a), sz*o.len*0.34);
-            rope.rotation.z = a;
-          });
-        }
-      }
+      //<<shelved:sync-log>>
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
         const shift=blockShift(o,t);
@@ -45,7 +35,7 @@
           o.rod.rotation.z = a;
         }
       }
-      else if(o.type==='spinlaser'){ if(o.arms3d) o.arms3d.rotation.y = -spinlaserAngle(o,t); }
+      //<<shelved:sync-spinlaser>>
       else if(o.type==='boost'){ if(o.mesh) o.mesh.position.y = Math.sin(t*5)*0.8; }
       else if(o.type==='cannon'){
         if(o.meshes) o.meshes.forEach(m=>{
@@ -53,14 +43,7 @@
           m.barrel.scale.x = 1 - (m.recoil||0)*0.22;
         });
       }
-      else if(o.type==='roller'){
-        if(o.mesh){
-          const rx=rollerX(o,t);
-          placeAt(o.mesh, rx, o.y, o.r);
-          // roll about the track axis, in step with how far it has travelled
-          if(o.barrel) o.barrel.rotation.y = rx/o.r;
-        }
-      }
+      //<<shelved:sync-roller>>
     }
     for(const c of courseGroup.children){
       if(c.userData.deco){ c.position.y=c.userData.deco.y+Math.sin(t*1.2+c.userData.deco.ph)*6; c.rotation.y+=0.004; }

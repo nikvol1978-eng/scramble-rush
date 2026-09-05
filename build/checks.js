@@ -1408,7 +1408,7 @@
   // ---------- I: the finish is reachable inside the round timer ----------
   function checkI(full){
     const bad = [], rate = {};
-    const maps = full ? CORRIDOR_MAPS.concat(PATH_MAPS, MINIGAME_KEYS) : PATH_MAPS.concat(['sunny','doors','blockdash']);
+    const maps = full ? CORRIDOR_MAPS.concat(PATH_MAPS, MINIGAME_KEYS) : PATH_MAPS.concat(['sunny','doors']);
     for(const key of maps){
       begin(key);
       if(currentMap.knockout) continue;      // no finish line to pace towards

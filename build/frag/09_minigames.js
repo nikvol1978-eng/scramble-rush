@@ -237,24 +237,7 @@
         courseGroup.add(g);
         o.mesh=g;
 
-      } else if(o.type==='mover'){
-        const g=new THREE.Group();
-        const deck=new THREE.Mesh(new THREE.BoxGeometry(o.w, 14, o.d),
-          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:34}));
-        deck.position.y=-7; deck.castShadow=true; deck.receiveShadow=true; g.add(deck);
-        // a lip so the edge reads from above, which is where you are looking
-        const lip=new THREE.Mesh(new THREE.BoxGeometry(o.w+10, 5, o.d+10),
-          new THREE.MeshLambertMaterial({color:0x1a1033}));
-        lip.position.y=-16; g.add(lip);
-        for(const sx of [-1,1]){
-          const rail=new THREE.Mesh(new THREE.BoxGeometry(6, 22, o.d),
-            new THREE.MeshLambertMaterial({color:0xfff1c9}));
-          rail.position.set(sx*(o.w/2-3), 5, 0); g.add(rail);
-        }
-        placeAt(g, o.cx, o.y, o.h);
-        courseGroup.add(g);
-        o.mesh=g;
-
+      //<<shelved:mesh-mover>>
       } else if(o.type==='crumble'){
         o.meshes = o.slabs.map(sl=>{
           const g=new THREE.Group();
@@ -269,39 +252,7 @@
           return g;
         });
 
-      } else if(o.type==='log'){
-        const g=new THREE.Group();
-        const trunk=new THREE.Mesh(new THREE.CylinderGeometry(o.r, o.r, o.len, 12),
-          new THREE.MeshPhongMaterial({color:0x9a6533, shininess:14}));
-        trunk.rotation.x=Math.PI/2; trunk.castShadow=true; g.add(trunk);
-        for(const sz of [-1,1]){
-          const cap=new THREE.Mesh(new THREE.CylinderGeometry(o.r*1.03, o.r*1.03, 10, 12),
-            new THREE.MeshLambertMaterial({color:0xd8b47a}));
-          cap.rotation.x=Math.PI/2; cap.position.z=sz*o.len/2; g.add(cap);
-        }
-        // two ropes back up to the canopy, so the swing reads before it arrives
-        o.ropes=[];
-        for(const sz of [-1,1]){
-          const rope=new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, o.armLen, 6),
-            new THREE.MeshLambertMaterial({color:0xcbb26a}));
-          rope.position.set(0, o.armLen/2, sz*o.len*0.34); g.add(rope); o.ropes.push(rope);
-        }
-        placeAt(g, o.cx, o.y, o.pivotH);
-        courseGroup.add(g);
-        o.mesh=g; o.trunk=trunk;
-
-      } else if(o.type==='roller'){
-        const g=new THREE.Group();
-        const barrel=new THREE.Mesh(new THREE.CylinderGeometry(o.r,o.r,86,14),
-          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:26}));
-        barrel.rotation.x=Math.PI/2; barrel.castShadow=true; g.add(barrel);
-        const band=new THREE.Mesh(new THREE.CylinderGeometry(o.r*1.04,o.r*1.04,14,14),
-          new THREE.MeshLambertMaterial({color:0x1a1033}));
-        band.rotation.x=Math.PI/2; g.add(band);
-        placeAt(g, o.cx, o.y, o.r);
-        courseGroup.add(g);
-        o.mesh=g; o.barrel=barrel;
-
+      //<<shelved:mesh-log-roller>>
       } else if(o.type==='cannon'){
         const barrelMat=new THREE.MeshPhongMaterial({color:0xe6c27a, shininess:40});
         const bandMat=new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -377,31 +328,7 @@
         courseGroup.add(g);
         o.mesh=g;
 
-      } else if(o.type==='spinlaser'){
-        const g=new THREE.Group();
-        const hub=new THREE.Mesh(new THREE.CylinderGeometry(24,30,52,14),
-          new THREE.MeshPhongMaterial({color:0x1f2937, shininess:30}));
-        hub.position.y=26; hub.castShadow=true; g.add(hub);
-        const lamp=new THREE.Mesh(new THREE.SphereGeometry(11,12,10),
-          new THREE.MeshBasicMaterial({color:0xa3e635}));
-        lamp.position.y=56; g.add(lamp);
-        const arms=new THREE.Group(); arms.position.y=o.h; g.add(arms);
-        for(let i=0;i<o.arms;i++){
-          const arm=new THREE.Group(); arm.rotation.y = i*(Math.PI*2/o.arms); arms.add(arm);
-          const beam=new THREE.Mesh(new THREE.CylinderGeometry(4,4,o.len,8),
-            new THREE.MeshBasicMaterial({color:0xa3e635}));
-          beam.rotation.z=Math.PI/2; beam.position.x=o.len/2; arm.add(beam);
-          const halo=new THREE.Mesh(new THREE.CylinderGeometry(9,9,o.len,8),
-            new THREE.MeshBasicMaterial({color:0xa3e635, transparent:true, opacity:0.20, depthWrite:false}));
-          halo.rotation.z=Math.PI/2; halo.position.x=o.len/2; arm.add(halo);
-          const tip=new THREE.Mesh(new THREE.SphereGeometry(8,10,8),
-            new THREE.MeshBasicMaterial({color:0xd9f99d}));
-          tip.position.x=o.len; arm.add(tip);
-        }
-        placeAt(g, o.cx, o.y, 0);
-        courseGroup.add(g);
-        o.mesh=g; o.arms3d=arms;
-
+      //<<shelved:mesh-spinlaser>>
       } else if(o.type==='shortcut'){
         const deckMat = new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:28});
         const railMat = new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -970,21 +897,7 @@
           }
         }
 
-      } else if(o.type==='roller'){
-        const rx=rollerX(o,t);
-        if(r.h < o.r*1.4){
-          const dx=r.x-rx, dy=r.y-o.y, d=Math.hypot(dx,dy);
-          if(d < o.r+RADIUS-6){
-            const nx=dx/(d||1), ny=dy/(d||1);
-            r.vx += nx*8 + Math.cos(t*o.speed+o.phase)*o.speed*o.amp*0.02;
-            r.vy += ny*4;
-            r.stumbleT=430; r.invuln=600; r.vh=3; if(r.h===0) r.h=0.01;
-            spawnBurst3D(r.x,r.y,0xffcb3d,8);
-            if(r.isPlayer){ SFX.hit(); camShake=6; }
-            return;
-          }
-        }
-
+      //<<shelved:hit-roller>>
       } else if(o.type==='bumper'){
         for(const it of o.items){
           const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
@@ -1009,20 +922,7 @@
           if(r.isPlayer && Math.random()<0.30) spawnBurst3D(r.x,r.y,0xffd54f,3);
         }
 
-      } else if(o.type==='log'){
-        const lp = logPos(o,t);
-        if(Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-lp.x) < o.r+RADIUS-2){
-          const top = r.h + (r.diveT>0?18:34);
-          if(top > lp.h-o.r && r.h < lp.h+o.r){
-            // a trunk this size does not nudge you sideways, it sends you back
-            const away = Math.sign(r.x-lp.x) || 1;
-            r.vy = Math.min(r.vy, 0) - 5.4;
-            sendTumbling(r, 9, away, 0);
-            r.invuln=750;
-            spawnBurst3D(r.x,r.y,0xa3e635,14);
-            return;
-          }
-        }
+      //<<shelved:hit-log>>
       } else if(o.type==='pendulum'){
         const pp = pendPos(o,t);
         if(Math.abs(r.y-o.y) < o.r+RADIUS && Math.abs(r.x-pp.x) < o.r+RADIUS-4){
@@ -1038,29 +938,7 @@
           }
         }
 
-      } else if(o.type==='spinlaser'){
-        const foot = (r.floorH||0) + r.h;
-        const top = foot + (r.diveT>0?18:33);
-        if(top > o.h-6 && foot < o.h+6){
-          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
-          if(dist > 14 && dist < o.len){
-            const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
-            for(let i=0;i<o.arms;i++){
-              let d = ang - (base + i*step);
-              while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
-              // perpendicular distance to the arm, and only the half it points down
-              if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 10+RADIUS-8){
-                const away = Math.sign(Math.sin(d)) || 1;
-                const px=-Math.sin(base+i*step)*away, py=Math.cos(base+i*step)*away;
-                sendTumbling(r, 7, px, py);
-                r.invuln=680;
-                spawnBurst3D(r.x,r.y,0xa3e635,10);
-                return;
-              }
-            }
-          }
-        }
-
+      //<<shelved:hit-spinlaser>>
       } else if(o.type==='hammer'){
         if(Math.abs(r.y-o.y)<o.band/2+RADIUS){
           for(const it of o.items){

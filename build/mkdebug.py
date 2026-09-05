@@ -18,7 +18,11 @@ s = io.open(SRC, encoding="utf-8").read()
 
 old = "      const finals = MINIGAMES.filter(m=>m.final);"
 new = ("      if(window.__forceMap){ currentMap = [...MAPS,...MINIGAMES].find(x=>x.key===window.__forceMap);\n"
-       "                             if(currentMap) currentMap.__forced = true; }\n"
+       "                             // A key naming no map used to leave currentMap alone, so the check\n"
+       "                             // quietly measured whatever happened to be loaded, under the wrong\n"
+       "                             // label. Say so instead of measuring the wrong thing.\n"
+       "                             if(!currentMap) throw new Error('__forceMap: no map named ' + window.__forceMap);\n"
+       "                             currentMap.__forced = true; }\n"
        "      else if(currentMap) currentMap.__forced = false;\n"
        "      const finals = MINIGAMES.filter(m=>m.final);")
 assert s.count(old) == 1, "map-pick anchor: %d" % s.count(old)
