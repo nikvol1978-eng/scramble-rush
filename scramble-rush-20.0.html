@@ -4751,6 +4751,7 @@
 
   function botAntiStall(r, dt){
     if(r.escapeT > 0){ r.escapeT -= dt; return; }
+    if(r.pitWait){ r.deadT = 0; return; }        // standing at a pit edge on purpose
     if(Math.abs(r.vy) >= 0.3 || r.falling || r.lavaOut || r.finished
        || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ r.deadT = 0; return; }
     r.deadT = (r.deadT||0) + dt;
@@ -4786,8 +4787,37 @@
     // yStart/yEnd spans -- so it compared against undefined and never fired for
     // the four types that need it. One Sunny pit collected ninety falls.
     const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble' || o.type==='gap');
+    if(o.type !== 'pit' && r.pitWait) r.pitWait = null;          // past it, or somewhere else entirely
     if(HOLE){
       const hereFalls = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
+
+      // ---- the pit has its own rule ----
+      // A moving platform punishes the generic breaker: crawling at 0.6 gives
+      // the platform longer to move out from under you, and one Sunny layout
+      // in five looped a bot twenty-plus times. After two falls here the bot
+      // stops dead at the edge, waits until the platform is actually under
+      // its line, then commits at full throttle and does not steer again
+      // until it is past the far side.
+      if(o.type === 'pit' && hereFalls >= 2 && o.platforms && o.platforms.length && r.y < o.y1 + 120){
+        // a fresh wait after every fall: a commit that failed is not carried over
+        if(!r.pitWait || r.pitWait.o !== o || r.pitWait.falls !== hereFalls){
+          let best = null, bestD = 1e9;
+          for(const pl of o.platforms){ const d = Math.abs(pl.baseX - r.x); if(d < bestD){ bestD = d; best = pl; } }
+          r.pitWait = { o, plat: best, committed:false, falls: hereFalls };
+        }
+        const pw = r.pitWait;
+        if(pw.committed){
+          if(r.y > o.y1) { r.pitWait = null; return set(r.x, 1); }
+          return set(r.x, 1);                                  // straight on, no steering
+        }
+        const px = platX(pw.plat, t);
+        const edge = o.yStart - RADIUS - 6;
+        if(r.y < edge - 90) return set(px, 1);                 // still walking up to the edge
+        // at the edge: stand still until the platform is under us
+        if(Math.abs(px - r.x) <= pw.plat.width/2){ pw.committed = true; return set(r.x, 1); }
+        r.vy *= 0.6; if(r.y > edge){ r.y = edge; r.vy = Math.min(r.vy, 0); }
+        return set(r.x, 0);
+      }
       if(hereFalls >= 3 && r.y < o.y1 + 120){
         const lane = safeLaneFor(o, r);
         // five is the ceiling: past that it barely moves until it is through
