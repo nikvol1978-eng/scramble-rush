@@ -67,6 +67,9 @@
     }
     _cloudTex = new THREE.CanvasTexture(cv);
     _cloudTex.colorSpace = THREE.SRGBColorSpace;
+    _cloudTex.generateMipmaps = true;
+    _cloudTex.minFilter = THREE.LinearMipmapLinearFilter;
+    _cloudTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return _cloudTex;
   }
 

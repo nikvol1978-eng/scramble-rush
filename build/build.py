@@ -218,6 +218,13 @@ sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.Repeat
     + chr(10) + "    tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;"
     + chr(10) + "    tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;",
     "ground texture filtering")
+# The diagonal stripes moired at distance for the same reason the chequers did.
+sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace; return tex;",
+    "    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace;"
+    + chr(10) + "    tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;"
+    + chr(10) + "    tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;",
+    "stripe texture filtering")
+
 # ...and the checks are half as dense, so the pattern reads instead of shimmering
 sub("    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 2);",
     "    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 1);",

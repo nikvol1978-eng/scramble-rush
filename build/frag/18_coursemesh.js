@@ -62,6 +62,8 @@
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     _v21Tex[k] = t; return t;
   }
 
@@ -204,11 +206,16 @@
       const padEnd = startSec.len;
       const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
       const segs = Math.max(3, Math.round(padEnd/150));
+      // One texture for the whole apron, not one per plate: every segment is
+      // the same size and so wants the same repeat, and a clone is a separate
+      // upload to the card for an identical image.
+      const padTex = chk.clone(); padTex.needsUpdate = true;
+      padTex.repeat.set(4, (padEnd/segs)/90);
+      const padMat = new THREE.MeshFloorMaterial({map:padTex});
       for(let i=0;i<segs;i++){
         const sy = padEnd*(i+0.5)/segs;
-        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
-          new THREE.MeshFloorMaterial({map:tex}));
+          padMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
       }

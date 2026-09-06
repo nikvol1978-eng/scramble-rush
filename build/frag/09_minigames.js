@@ -271,20 +271,23 @@
         const segLen = (o.yEnd-o.yStart)/segs;
         const chev = chevronTexture(look.accents[0]);
         const net  = netTexture(look.accents[1]);
+        // the chevrons and the netting are the same on every segment, so the
+        // slope is two textures and two materials rather than two per segment
+        const chevTex = chev.clone(); chevTex.needsUpdate = true;
+        chevTex.repeat.set(1, segLen/150);
+        const chevMat = new THREE.MeshFloorMaterial({map:chevTex});
+        const netTex = net.clone(); netTex.needsUpdate = true;
+        netTex.repeat.set(segLen/110, 0.8);
+        const netMat = new THREE.MeshLambertMaterial({map:netTex, transparent:true, side:THREE.DoubleSide});
         for(let i=0;i<segs;i++){
           const sy = o.yStart + segLen*(i+0.5);
-          const tex = chev.clone(); tex.needsUpdate = true;
-          tex.repeat.set(1, segLen/150);
           const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
-            new THREE.MeshFloorMaterial({map:tex}));
+            chevMat);
           plate.receiveShadow = true;
           placeAt(plate, TRACK_W/2, sy, 1.8);
           courseGroup.add(plate);
           if(o.nets) for(const sx of [8, TRACK_W-8]){
-            const ntex = net.clone(); ntex.needsUpdate = true;
-            ntex.repeat.set(segLen/110, 0.8);
-            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88),
-              new THREE.MeshLambertMaterial({map:ntex, transparent:true, side:THREE.DoubleSide}));
+            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88), netMat);
             const w = toWorld(sx, sy, 44);
             wall.position.set(w.x, w.y, w.z);
             wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
@@ -524,11 +527,14 @@
       const chk = checkerTexture('#ffffff', '#1a1033', 6);
       const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
       const span = runIn + FINISH_ZONE;
+      // one texture and one material for the whole apron
+      const finTex = chk.clone(); finTex.needsUpdate = true;
+      finTex.repeat.set(4, (span/segs)/90);
+      const finMat = new THREE.MeshFloorMaterial({map:finTex});
       for(let i=0;i<segs;i++){
         const sy = z - runIn + span*(i+0.5)/segs;
-        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
-          new THREE.MeshFloorMaterial({map:tex}));
+          finMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
       }

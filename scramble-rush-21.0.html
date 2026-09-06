@@ -1692,7 +1692,9 @@ const QUALITY = {
     const cv=document.createElement('canvas'); cv.width=cv.height=128; const g=cv.getContext('2d');
     g.fillStyle=c1; g.fillRect(0,0,128,128); g.fillStyle=c2;
     for(let i=-128;i<256;i+=32){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+16,0); g.lineTo(i+16-128,128); g.lineTo(i-128,128); g.fill(); }
-    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace; return tex;
+    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace;
+    tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;
+    tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;
   }
   const groundTex = checkerTexture('#ffe17a','#ffd24c',2);
   const stripeTex = stripeTexture('#ffcb3d','#1a1033');
@@ -2926,6 +2928,8 @@ const QUALITY = {
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     _v21Tex[k] = t; return t;
   }
 
@@ -3068,11 +3072,16 @@ const QUALITY = {
       const padEnd = startSec.len;
       const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
       const segs = Math.max(3, Math.round(padEnd/150));
+      // One texture for the whole apron, not one per plate: every segment is
+      // the same size and so wants the same repeat, and a clone is a separate
+      // upload to the card for an identical image.
+      const padTex = chk.clone(); padTex.needsUpdate = true;
+      padTex.repeat.set(4, (padEnd/segs)/90);
+      const padMat = new THREE.MeshFloorMaterial({map:padTex});
       for(let i=0;i<segs;i++){
         const sy = padEnd*(i+0.5)/segs;
-        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
-          new THREE.MeshFloorMaterial({map:tex}));
+          padMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
       }
@@ -4398,20 +4407,23 @@ const QUALITY = {
         const segLen = (o.yEnd-o.yStart)/segs;
         const chev = chevronTexture(look.accents[0]);
         const net  = netTexture(look.accents[1]);
+        // the chevrons and the netting are the same on every segment, so the
+        // slope is two textures and two materials rather than two per segment
+        const chevTex = chev.clone(); chevTex.needsUpdate = true;
+        chevTex.repeat.set(1, segLen/150);
+        const chevMat = new THREE.MeshFloorMaterial({map:chevTex});
+        const netTex = net.clone(); netTex.needsUpdate = true;
+        netTex.repeat.set(segLen/110, 0.8);
+        const netMat = new THREE.MeshLambertMaterial({map:netTex, transparent:true, side:THREE.DoubleSide});
         for(let i=0;i<segs;i++){
           const sy = o.yStart + segLen*(i+0.5);
-          const tex = chev.clone(); tex.needsUpdate = true;
-          tex.repeat.set(1, segLen/150);
           const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
-            new THREE.MeshFloorMaterial({map:tex}));
+            chevMat);
           plate.receiveShadow = true;
           placeAt(plate, TRACK_W/2, sy, 1.8);
           courseGroup.add(plate);
           if(o.nets) for(const sx of [8, TRACK_W-8]){
-            const ntex = net.clone(); ntex.needsUpdate = true;
-            ntex.repeat.set(segLen/110, 0.8);
-            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88),
-              new THREE.MeshLambertMaterial({map:ntex, transparent:true, side:THREE.DoubleSide}));
+            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88), netMat);
             const w = toWorld(sx, sy, 44);
             wall.position.set(w.x, w.y, w.z);
             wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
@@ -4648,11 +4660,14 @@ const QUALITY = {
       const chk = checkerTexture('#ffffff', '#1a1033', 6);
       const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
       const span = runIn + FINISH_ZONE;
+      // one texture and one material for the whole apron
+      const finTex = chk.clone(); finTex.needsUpdate = true;
+      finTex.repeat.set(4, (span/segs)/90);
+      const finMat = new THREE.MeshFloorMaterial({map:finTex});
       for(let i=0;i<segs;i++){
         const sy = z - runIn + span*(i+0.5)/segs;
-        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
-          new THREE.MeshFloorMaterial({map:tex}));
+          finMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
       }
@@ -5348,6 +5363,9 @@ const QUALITY = {
     }
     _cloudTex = new THREE.CanvasTexture(cv);
     _cloudTex.colorSpace = THREE.SRGBColorSpace;
+    _cloudTex.generateMipmaps = true;
+    _cloudTex.minFilter = THREE.LinearMipmapLinearFilter;
+    _cloudTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return _cloudTex;
   }
 
