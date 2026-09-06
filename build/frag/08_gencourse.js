@@ -390,7 +390,11 @@
                        w: slabW, d: rowD-18, touched:false, fuse:-1, gone:false, drop:0, back:0 });
         }
         obs.push({type:'crumble', y:(yStart2+yEnd2)/2, yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
-                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.8:1.4});
+                  // Sixteen racers strip a twelve-slab bridge in one pass, and
+                  // the field behind them arrives to nothing. A quicker rebuild
+                  // is what keeps the back of the pack from queueing at the
+                  // edge and then falling in when the wait times out.
+                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.3:1.0});
         cursor = yEnd2+150;
       //<<shelved:gencourse-log-roller>>
       } else if(type==='shortcut'){

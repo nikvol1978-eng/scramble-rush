@@ -2504,7 +2504,11 @@
                        w: slabW, d: rowD-18, touched:false, fuse:-1, gone:false, drop:0, back:0 });
         }
         obs.push({type:'crumble', y:(yStart2+yEnd2)/2, yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
-                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.8:1.4});
+                  // Sixteen racers strip a twelve-slab bridge in one pass, and
+                  // the field behind them arrives to nothing. A quicker rebuild
+                  // is what keeps the back of the pack from queueing at the
+                  // edge and then falling in when the wait times out.
+                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.3:1.0});
         cursor = yEnd2+150;
       } else if(type==='shortcut'){
         // A narrow raised lane hugging one wall. Ramp on, and it runs you past
@@ -3835,7 +3839,7 @@
   }
   function fallDown(r){
     if(!r.isPlayer){
-      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap')
+      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap'||x.type==='discField'||x.type==='plank')
                                   && x.yStart !== undefined && r.y >= x.yStart-60 && r.y <= x.yEnd+60);
       if(hz){ r.holeFalls = r.holeFalls || {}; const k = obsKey(hz);
               r.holeFalls[k] = (r.holeFalls[k]||0) + 1; }
@@ -5286,7 +5290,7 @@
   function botAntiStall(r, dt){
     const rest = ()=>{ r.deadT = 0; r.markY = r.y; r.markT = 0; };
     if(r.escapeT > 0){ r.escapeT -= dt; return; }
-    if(r.pitWait){ rest(); return; }              // standing at a pit edge on purpose
+    if(r.pitWait || r.crumbleWait){ rest(); return; }   // waiting at an edge on purpose
     if(r.falling || r.lavaOut || r.finished
        || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ rest(); return; }
     // Two ways of being stuck. The first is standing still.
@@ -5296,9 +5300,16 @@
     // test reset itself every frame and the escape never fired. With courses
     // authored, that corner is in the same place every run -- one Super Slide
     // bot stood in it for 24 seconds. So also watch net progress over a window.
-    if(r.markY === undefined){ r.markY = r.y; r.markT = 0; }
-    r.markT += dt;
-    if(r.y - r.markY > 60){ r.markY = r.y; r.markT = 0; }
+    // ...but only on a course you run down. On a knockout arena a bot roaming
+    // its floor makes no headway up the map on purpose, and treating that as
+    // stuck had them escaping every few seconds on Tile Tumble -- which made
+    // them survive it, and dropped the round's eliminations below its floor.
+    if(currentMap.knockout || arenaMode()){ r.markY = r.y; r.markT = 0; }
+    else {
+      if(r.markY === undefined){ r.markY = r.y; r.markT = 0; }
+      r.markT += dt;
+      if(r.y - r.markY > 60){ r.markY = r.y; r.markT = 0; }
+    }
     if(r.deadT < 2 && r.markT < 3.5) return;
     r.markY = r.y; r.markT = 0;
     // Two seconds without going anywhere: jump, pick a fresh line, and throw
@@ -5331,8 +5342,16 @@
     // off o.y, which pit, narrow, gap and crumble do not have -- they are
     // yStart/yEnd spans -- so it compared against undefined and never fired for
     // the four types that need it. One Sunny pit collected ninety falls.
-    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble' || o.type==='gap');
+    // The crawl below is right for a hazard that stays put -- a narrow channel,
+    // a moving platform, a hole -- where a slow precise line gets you through.
+    // It is exactly wrong for a bridge whose slabs fall a beat after you stand
+    // on them: crawling guarantees the slab goes while you are on it, and a
+    // bot that fell three times then fell nine more. A crumble's own plan,
+    // which crosses at full speed on slabs that are not already counting down,
+    // handles repeat failure better than the crawl does.
+    const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='gap');
     if(o.type !== 'pit' && r.pitWait) r.pitWait = null;          // past it, or somewhere else entirely
+    if(o.type !== 'crumble' && r.crumbleWait) r.crumbleWait = false;
     if(HOLE){
       const hereFalls = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
 
@@ -5453,16 +5472,48 @@
 
       case 'crumble': {
         // Head for a slab nobody has stood on, and never stop on the bridge.
+        // A slab whose fuse is already lit is worse than one merely touched:
+        // it is going, and going soon.
+        // Three falls at this bridge and the bot stops taking anything that
+        // merely happens to be standing: it will only step on a slab nobody
+        // has touched, which is the one kind that cannot go out from under it
+        // mid-crossing.
+        const burned = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
         let best = null, bestD = 1e9;
         for(const sl of o.slabs){
           if(sl.gone) continue;
+          if(burned >= 3 && (sl.touched || sl.fuse >= 0)) continue;
           const ahead = sl.y - r.y;
           if(ahead < -40 || ahead > 520) continue;
-          const d = Math.abs(sl.x - r.x) + (sl.touched ? 220 : 0) + ahead*0.25;
+          const lit = sl.fuse >= 0 ? 460 : (sl.touched ? 120 : 0);
+          const d = Math.abs(sl.x - r.x) + lit + ahead*0.25;
           if(d < bestD){ bestD = d; best = sl; }
         }
-        if(best) return set(best.x, 1);
-        return set(o.slabs.length ? o.slabs[0].x : TRACK_W/2, 1);
+        // Off the far end, hop: the last row falls like the rest, and walking
+        // off it is how a bot ends up under the bridge instead of past it.
+        if(r.h <= 0 && r.stumbleT <= 0 && o.yEnd - r.y < 70 && r.y > o.yStart) doJump(r);
+        if(best){ r.crumbleWait = false; r.crumbleWaitT = 0; return set(best.x, 1); }
+        // Nothing standing ahead. Sixteen racers crossing a twelve-slab bridge
+        // drop most of it, and it takes a second and a half to come back --
+        // walking in anyway is a fall, a respawn, and the same walk again. A
+        // bot short of the bridge waits at the edge for the slabs to return;
+        // one already on it makes for whatever is still standing.
+        let any = null, ad = 1e9;
+        for(const sl of o.slabs){
+          if(sl.gone) continue;
+          const d = Math.hypot(sl.x - r.x, sl.y - r.y);
+          if(d < ad){ ad = d; any = sl; }
+        }
+        // The wait is bounded. Sixteen racers can keep a bridge stripped for
+        // longer than a bot should stand there, and a bot that waits forever
+        // is a bot that idles -- which is its own failure, and one the
+        // acceptance measures at four seconds.
+        if(r.y < o.yStart - 10){
+          r.crumbleWaitT = (r.crumbleWaitT || 0) + dt;
+          if(r.crumbleWaitT < 2.2){ r.crumbleWait = true; return set(any ? any.x : r.x, 0); }
+        }
+        r.crumbleWait = false;
+        return set(any ? any.x : r.x, 1);
       }
 
       case 'cannon': {

@@ -417,7 +417,7 @@ sub("    } else if(o.type==='pillars'){",
 sub("  function fallDown(r){",
     "  function fallDown(r){" + chr(10) +
     "    if(!r.isPlayer){" + chr(10) +
-    "      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap')" + chr(10) +
+    "      const hz = obstacles.find(x=>(x.type==='pit'||x.type==='narrow'||x.type==='crumble'||x.type==='gap'||x.type==='discField'||x.type==='plank')" + chr(10) +
     "                                  && x.yStart !== undefined && r.y >= x.yStart-60 && r.y <= x.yEnd+60);" + chr(10) +
     "      if(hz){ r.holeFalls = r.holeFalls || {}; const k = obsKey(hz);" + chr(10) +
     "              r.holeFalls[k] = (r.holeFalls[k]||0) + 1; }" + chr(10) +
