@@ -69,6 +69,7 @@
 
   function botAntiStall(r, dt){
     if(r.escapeT > 0){ r.escapeT -= dt; return; }
+    if(r.pitWait){ r.deadT = 0; return; }        // standing at a pit edge on purpose
     if(Math.abs(r.vy) >= 0.3 || r.falling || r.lavaOut || r.finished
        || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ r.deadT = 0; return; }
     r.deadT = (r.deadT||0) + dt;
@@ -104,8 +105,67 @@
     // yStart/yEnd spans -- so it compared against undefined and never fired for
     // the four types that need it. One Sunny pit collected ninety falls.
     const HOLE = (o.type==='narrow' || o.type==='pit' || o.type==='crumble' || o.type==='gap');
+    if(o.type !== 'pit' && r.pitWait) r.pitWait = null;          // past it, or somewhere else entirely
     if(HOLE){
       const hereFalls = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
+
+      // ---- the pit has its own rule ----
+      // A moving platform punishes the generic breaker: crawling at 0.6 gives
+      // the platform longer to move out from under you, and nothing carries a
+      // rider. After two falls here the bot walks to the edge, stops dead,
+      // waits at the end of a platform's swing (the one spot it pauses over),
+      // commits at full throttle only when that platform is under its line
+      // now, halfway across and at the far side -- the swing is a sine, so all
+      // three are known -- and then holds that line until it is past.
+      if(o.type === 'pit' && hereFalls >= 2 && o.platforms && o.platforms.length && r.y < o.y1 + 120){
+        // Which end of a platform's swing to wait at: whichever is actually on
+        // the track (an end clamped to the wall is a spot the platform never
+        // reaches) and nearer to us.
+        const waitSpot = (pl)=>{
+          const lo = RADIUS+10, hi = TRACK_W-RADIUS-10;
+          const ends = [pl.baseX + pl.amp, pl.baseX - pl.amp].filter(x=>x >= lo && x <= hi);
+          return ends.length ? ends.reduce((a,b)=>Math.abs(a-r.x) <= Math.abs(b-r.x) ? a : b) : clamp(pl.baseX, lo, hi);
+        };
+        // a fresh wait after every fall: a commit that failed is not carried over
+        if(!r.pitWait || r.pitWait.o !== o || r.pitWait.falls !== hereFalls){
+          let nearest = 0, bestD = 1e9;
+          o.platforms.forEach((pl, i)=>{ const d = Math.abs(pl.baseX - r.x); if(d < bestD){ bestD = d; nearest = i; } });
+          // the third fall and after move along a platform, so the waiters spread out
+          const idx = (nearest + Math.max(0, hereFalls - 2)) % o.platforms.length;
+          r.pitWait = { o, idx, plat: o.platforms[idx], xWait: waitSpot(o.platforms[idx]), committed:false, xCommit:0, falls: hereFalls, waited: 0 };
+        }
+        const pw = r.pitWait;
+        const edge = o.yStart - RADIUS - 6;
+        if(pw.committed){
+          if(r.y > o.y1){ r.pitWait = null; return false; }    // across: back to the ordinary plans
+          return set(pw.xCommit, 1);                           // hold the line: no steering, no drifting either
+        }
+        // Only a bot still short of the edge waits. One already over the pit
+        // (or past it -- the pit stays "next" for 20 units beyond its end) is
+        // never dragged back to the edge: that teleport was the loop itself.
+        else if(r.y > edge + 4){ r.pitWait = null; return false; }
+        else {
+          if(r.y < edge - 90) return set(pw.xWait, 1);           // still walking up to the edge
+          pw.waited += dt;
+          // six seconds without a clean window here: try the next platform along
+          if(pw.waited > 6){ pw.idx = (pw.idx + 1) % o.platforms.length; pw.plat = o.platforms[pw.idx]; pw.xWait = waitSpot(pw.plat); pw.waited = 0; }
+          {
+            r.vy *= 0.6; if(r.y > edge){ r.y = edge; r.vy = Math.min(r.vy, 0); }
+            if(Math.abs(r.x - pw.xWait) > 10) return set(pw.xWait, 0);   // sidle to the wait spot first
+            const crossFrames = (o.yEnd - o.yStart + 2*RADIUS + 12 + 16) / V_MAX;   // +16: starting from rest
+            const tEnd = t + crossFrames/60;
+            for(const pl of o.platforms){
+              const half = pl.width/2 - 6;
+              if(Math.abs(platX(pl, t) - r.x) <= half && Math.abs(platX(pl, tEnd) - r.x) <= half
+                 && Math.abs(platX(pl, (t+tEnd)/2) - r.x) <= half){
+                pw.plat = pl; pw.committed = true; pw.xCommit = r.x; r.vx = 0;
+                return set(pw.xCommit, 1);
+              }
+            }
+            return set(pw.xWait, 0);
+          }
+        }
+      }
       if(hereFalls >= 3 && r.y < o.y1 + 120){
         const lane = safeLaneFor(o, r);
         // five is the ceiling: past that it barely moves until it is through

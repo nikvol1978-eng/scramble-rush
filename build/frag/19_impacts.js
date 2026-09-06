@@ -2,7 +2,10 @@
   // RACER vs RACER COLLISION
   // ============================================================
   function racerCollisions(){
-    const active=racers.filter(r=>!r.finished&&!r.falling&&!r.knockedOut);
+    // A bot waiting at a pit edge for its platform is not a body in the way:
+    // sixteen beans through one gap with three of them standing still was a
+    // wall, and the pack behind it stalled, escaped, and fell in.
+    const active=racers.filter(r=>!r.finished&&!r.falling&&!r.knockedOut&&!(r.pitWait&&!r.pitWait.committed));
     for(let i=0;i<active.length;i++){
       for(let j=i+1;j<active.length;j++){
         const a=active[i], b=active[j];

@@ -397,6 +397,13 @@ sub("  function racerCollisions(){",
 sub("  function updateBotAI(r,dt,t,f){",
     "  function updateBotAI(r,dt,t,f){" + chr(10) + "    botAntiStall(r,dt);",
     "anti-stall hook")
+# The obstacles run on obsTime(t): a frenzy event advances it and the offset
+# stays for the rest of the round. The bots predicted hammers and platforms on
+# the raw clock, so after any frenzy every prediction was off by the same
+# amount -- which is how a bot could commit to a platform that was not there.
+sub("  function updateBotAI(r,dt,t,f){",
+    "  function updateBotAI(r,dt,t,f){" + chr(10) + "    t = obsTime(t);",
+    "bot ai on the obstacle clock")
 
 # ------------------------------------------------------------- bot plans
 sub("  function racerCollisions(){",
