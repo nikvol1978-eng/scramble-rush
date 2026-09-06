@@ -281,39 +281,65 @@
       }
 
       case 'discField': {
-        // Hop disc to disc up one column. The gaps are a fall, so the order is
-        // always: get on a disc, line up with the next one, hop the gap.
+        // Hop disc to disc. The whole difficulty for a bot is that the ground
+        // it is aiming at is not the ground it is standing on, so it commits
+        // to one disc and holds that line until it is on it -- an earlier
+        // version re-chose every frame, and a bot halfway across a gap picked
+        // the disc BEHIND it as nearest, turned back, and oscillated until the
+        // clock ran out with none of sixteen home.
+        if(r.aiObsFor !== o){ r.aiObsFor = o; r.aiDiscGoal = null; }
         const cur = discCellAt(o, r.x, r.y);
-        if(!cur){
-          // over a gap -- mid-hop, or about to be short of one. Head for the
-          // nearest deck rather than pressing on into nothing.
-          let n = null, nd = 1e9;
-          for(const c of o.cells){ const d = Math.hypot(c.x-r.x, c.y-r.y); if(d < nd){ nd = d; n = c; } }
-          return n ? set(n.x, 1) : set(r.x, 1);
+        if(cur){
+          let g = null, gd = 1e9;
+          for(const c of o.cells){
+            if(c.row !== cur.row + 1) continue;
+            const d = Math.abs(c.x - r.x);
+            if(d < gd){ gd = d; g = c; }
+          }
+          r.aiDiscGoal = g;
+          // the arm sweeping onto us is jumped, the same read the player makes
+          if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
+          if(!g){
+            // last row: hop off its trailing edge rather than stepping over it
+            const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+            if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
+            return set(r.x, 1);
+          }
+          // Line up on the deck when the next disc is within this deck's
+          // reach -- true on a grid, false on a zigzag, where walking all the
+          // way toward the next disc walks off the edge of this one.
+          if(Math.abs(g.x - cur.x) < cur.r*0.80){
+            if(Math.abs(g.x - r.x) > 26) return set(g.x, 0.15);
+          } else {
+            // Zigzag: cross to the rim of THIS disc on the side the next one
+            // is, so the hop starts as near to it as the deck allows and with
+            // sideways speed already built. Aiming straight at the far disc
+            // from wherever you stand asks the hop to cover ground a bean
+            // cannot cover in the air.
+            const launch = cur.x + Math.sign(g.x - cur.x)*cur.r*0.62;
+            if(r.h <= 0 && Math.abs(r.x - launch) > 16) return set(launch, 0.55);
+          }
+          // Hop when the rim is close along the line we are actually
+          // travelling, rather than straight up the course.
+          const gx = g.x - r.x, gy = g.y - r.y, gdist = Math.hypot(gx,gy) || 1;
+          const ux = gx/gdist, uy = gy/gdist;
+          const px = r.x - cur.x, py = r.y - cur.y;
+          const bq = px*ux + py*uy, cq = px*px + py*py - cur.r*cur.r;
+          const toEdge = -bq + Math.sqrt(Math.max(0, bq*bq - cq));
+          if(r.h <= 0 && toEdge < 30) doJump(r);
+          return set(g.x, 1);
         }
-        // the arm sweeping onto us is jumped, same read the player makes
-        if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
-        let goal = null, gd = 1e9;
+        // In the air over a gap: hold the line to the disc we committed to.
+        if(r.aiDiscGoal) return set(r.aiDiscGoal.x, 1);
+        // No commitment at all -- came in off the side. Take the nearest disc
+        // that is still ahead; never one behind, or we walk back into the gap.
+        let n = null, nd = 1e9;
         for(const c of o.cells){
-          if(c.row !== cur.row + 1) continue;
-          const d = Math.abs(c.x - r.x);
-          if(d < gd){ gd = d; goal = c; }
+          if(c.y < r.y - 20) continue;
+          const d = Math.hypot(c.x-r.x, c.y-r.y);
+          if(d < nd){ nd = d; n = c; }
         }
-        if(!goal){
-          // last row: still hop, so a racer carried off-centre by the disc
-          // clears its trailing edge rather than stepping over it
-          const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
-          if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
-          return set(r.x, 1);
-        }
-        // Line up first, creeping: stepping off on a diagonal is what drops a
-        // bot down the gap between two columns.
-        if(Math.abs(r.x - goal.x) > 26) return set(goal.x, 0.15);
-        // ...then hop, from the edge of the deck we are on, measured along our
-        // own line rather than through the centre.
-        const half = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
-        if(r.h <= 0 && (cur.y + half) - r.y < 30) doJump(r);
-        return set(goal.x, 1);
+        return n ? set(n.x, 1) : set(r.x, 1);
       }
 
       case 'gap':

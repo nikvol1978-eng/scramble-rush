@@ -164,7 +164,8 @@
         // skip anywhere the course is meant to drop you
         const hazard = obstacles.some(o=>
           (o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'||
-           o.type==='mover'||o.type==='crumble'||o.type==='gap') &&
+           o.type==='mover'||o.type==='crumble'||o.type==='gap'||
+           o.type==='discField'||o.type==='plank') &&
           sy > o.yStart-120 && sy < o.yEnd+120);
         if(hazard) continue;
         p.y=sy; p.x=TRACK_W/2; p.h=0; p.vx=0; p.vy=0; p.falling=false; p.floorH=0;
@@ -1402,25 +1403,26 @@
       if(!fell) bad.push('standing in the gap between two discs is not a fall');
     }
 
-    // (d) the arm sweeps the deck. Standing at a fixed bearing and waiting for
-    // the arm to come round is a coin flip on its phase, so stand a little
-    // AHEAD of the arm -- outside the hit tolerance -- and let it close: that
-    // tests the arm travels onto a racer rather than that it happens to start
-    // on one.
-    let hit = false, gapRad = 0;
-    for(let attempt=0; attempt<4 && !hit; attempt++){
-      const a = discArmAng(cell, window.__T || 0);
-      gapRad = 0.30 * Math.sign(cell.armSpeed || 1);
-      const b = a + gapRad;
-      place(cell.x + Math.cos(b)*cell.r*0.62, cell.y + Math.sin(b)*cell.r*0.62);
+    // (d) the arm sweeps the deck. Stand square across the disc -- bearing 0,
+    // so the racer stays level with the cell's own centre and inside the
+    // field's span whatever the arm is doing -- and hold that spot until the
+    // arm comes round. Placing the racer at a bearing taken from the arm
+    // looked neater but put it behind the field's leading edge whenever the
+    // arm pointed backwards, where there is no disc field to be hit by; and a
+    // short wait is not enough, because a full revolution takes 450-700
+    // frames at these speeds.
+    let hit = false, waited = 0;
+    for(; waited<820 && !hit; waited++){
+      place(cell.x + cell.r*0.62, cell.y);
       p.invuln = 0; p.__tumbles = 0;
-      for(let i=0;i<20 && !hit;i++){ window.__dbg.tick(1); hit = (p.tumbleT||0) > 0; }
+      window.__dbg.tick(1);
+      hit = (p.tumbleT||0) > 0;
     }
-    if(!hit) bad.push('the arm never closed on a racer standing 0.30 rad ahead of it');
+    if(!hit) bad.push('the arm never reached a racer holding the deck for a full revolution');
 
     return { name:'d the disc field turns, carries, drops and sweeps', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
-               : f.cells.length+' discs ('+f.rows+'x'+f.cols+'), carried '+swept.toFixed(2)+' rad, gap drops, arm connects' };
+               : f.cells.length+' discs ('+f.rows+'x'+f.cols+'), carried '+swept.toFixed(2)+' rad, gap drops, arm connects after '+waited+' frames' };
   }
 
   // ---------- p: the plank bridge is narrow, and the hammer sweeps it ----------
@@ -1518,6 +1520,51 @@
              detail: bad.length ? bad.join('; ')
                : 'rises '+Math.round(h1-h0)+', '+onSlope.toFixed(2)+' up the slope against '+(onFlat===null?'?':onFlat.toFixed(2))
                  +' on the flat, '+gates.length+' turnstiles' };
+  }
+
+  // ---------- s: the small discs are a zigzag of real jumps ----------
+  // The point of this section is that you cannot walk it. If the discs ever
+  // overlap, or the zigzag stops zigzagging, it quietly becomes a corridor
+  // and nothing else in the suite would notice.
+  function checkSmallDiscs(){
+    const bad = [];
+    begin('sunny');
+    const f = obstacles.find(o=>o.type==='discField' && o.small);
+    if(!f) return { name:'s the small discs are a zigzag of real jumps', pass:false,
+                    detail:'no small-disc section generated on sunny' };
+    if(f.cells.length < 5 || f.cells.length > 8) bad.push(f.cells.length+' discs, want 5-8');
+
+    // (a) consecutive discs do not touch: there is a gap to clear
+    let minGap = 1e9, maxGap = -1e9;
+    for(let i=1;i<f.cells.length;i++){
+      const a = f.cells[i-1], b = f.cells[i];
+      const gap = Math.hypot(b.x-a.x, b.y-a.y) - a.r - b.r;
+      minGap = Math.min(minGap, gap); maxGap = Math.max(maxGap, gap);
+    }
+    if(minGap <= 4) bad.push('two discs touch (gap '+minGap.toFixed(0)+'), so the section can be walked');
+    // ...and the gap stays inside what a jump can actually carry you
+    if(maxGap > 130) bad.push('a gap of '+maxGap.toFixed(0)+' is further than a jump carries');
+
+    // (b) it really zigzags: consecutive discs alternate sides of the centre
+    let alt = 0;
+    for(let i=1;i<f.cells.length;i++)
+      if(Math.sign(f.cells[i].x - TRACK_W/2) !== Math.sign(f.cells[i-1].x - TRACK_W/2)) alt++;
+    if(alt < f.cells.length-2) bad.push('the discs do not alternate sides ('+alt+' of '+(f.cells.length-1)+')');
+
+    // (c) walking off one, with feet down, drops you
+    const p = player();
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+    const a = f.cells[0], b = f.cells[1];
+    p.x = (a.x+b.x)/2; p.y = (a.y+b.y)/2; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
+    p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.invuln = 0;
+    resetLook();
+    let fell = false;
+    for(let i=0;i<10 && !fell;i++){ window.__dbg.tick(1); fell = !!p.falling; }
+    if(!fell) bad.push('standing between two of the discs is not a fall');
+
+    return { name:'s the small discs are a zigzag of real jumps', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : f.cells.length+' discs, gaps '+minGap.toFixed(0)+'-'+maxGap.toFixed(0)+', alternating '+alt+' times, the space between drops you' };
   }
 
   // ---------- 5: the bean rig ----------
@@ -1928,7 +1975,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

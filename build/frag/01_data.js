@@ -398,7 +398,7 @@
       { type:'pad',     len:300 },
       { type:'fork',    len:1180 },
       { type:'ramp',    len:820, turn:+24 },
-      { type:'spinbar', len:740 },
+      { type:'smallDiscs', len:1300, count:5 },
       { type:'crumble', len:760, turn:-20 },
       { type:'finish',  len:580 }
     ],

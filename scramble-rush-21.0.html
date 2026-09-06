@@ -1185,7 +1185,7 @@
       { type:'pad',     len:300 },
       { type:'fork',    len:1180 },
       { type:'ramp',    len:820, turn:+24 },
-      { type:'spinbar', len:740 },
+      { type:'smallDiscs', len:1300, count:5 },
       { type:'crumble', len:760, turn:-20 },
       { type:'finish',  len:580 }
     ],
@@ -2271,6 +2271,42 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='smallDiscs'){
+        // Five to eight small discs in a zigzag with nothing between them: a
+        // rhythm-jump section. It is a disc field underneath -- same cells,
+        // same collision, same respawn -- with no arms and real gaps, so the
+        // only thing being asked of you is the timing of the hops.
+        const n = clamp(sec.count || 6, 5, 8);
+        // Sixteen racers land on the same disc at the same moment, so a disc
+        // that only fits three abreast turns the section into a shoving match
+        // and most of the field goes over the side. Wide enough for the pack,
+        // still small against the 520-wide track.
+        const dr = 86;
+        const step = dr*2 + 40;                      // a gap you must jump, not walk
+        // The sideways step between discs has to be crossable in one hop. At
+        // 0.10 of the track that was 104 units between consecutive discs, far
+        // more sideways speed than a bean builds in the ~34 frames it is
+        // airborne, so racers landed short every time and none of sixteen
+        // finished. The grid disc field, which hops straight ahead, was fine
+        // throughout -- so the zigzag is a lean, not a slalom.
+        const zig = TRACK_W*0.045;
+        const yStart2 = cursor + gap + 90;
+        const cells = [];
+        for(let i=0;i<n;i++){
+          cells.push({ row:i, col:0, x: cx + ((i%2)?1:-1)*zig, y: yStart2 + dr + i*step, r: dr,
+                       noArm:true, phase: rand(0,6.28), speed: ((i%2)?-1:1)*rand(0.35,0.60)*spd,
+                       armPhase:0, armSpeed:0 });
+        }
+        // The drop starts at the FIRST disc's centre and ends at the last
+        // one's, not at their outer edges. At the leading edge a disc is a
+        // single point, so a racer arriving anywhere but exactly on its centre
+        // line stepped into nothing the instant it entered -- and, respawning
+        // to the same line, did it again every time. One bot in Sunny lost
+        // twenty-five lives that way without ever leaving the ground.
+        const yA = cells[0].y, yB = cells[cells.length-1].y;
+        obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
+                  cols:1, rows:n, r:dr, cells, small:true});
+        cursor = yB + dr + 70;
     } else if(type==='chevron'){
         // A slope painted with chevrons, net walls down both sides, and a few
         // turnstiles across it. The climb itself comes from the section's own
@@ -2326,13 +2362,14 @@
                        phase: rand(0,6.28),    speed: flip*rand(0.30,0.50)*spd,
                        armPhase: rand(0,6.28), armSpeed: -flip*rand(0.55,0.85)*spd });
         }
-        // ...ending at the trailing edge of the last row, not a whole rowD
-        // past it: the gaps BETWEEN rows are the section, and a further gap on
-        // the way out is just an unsignalled pit that everyone walks into.
-        const yEnd2 = yStart2 + (rows-1)*rowD + 2*dr;
-        obs.push({type:'discField', yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
+        // The drop runs between the first and last rows' CENTRES. Measured to
+        // their outer edges instead, the entry and the exit are each a point
+        // where the disc has no width, so anyone not exactly on a column's
+        // centre line walked straight into the gap.
+        const yA = cells[0].y, yB = cells[cells.length-1].y;
+        obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
                   cols, rows, r:dr, cells});
-        cursor = yEnd2 + 60;
+        cursor = yB + dr + 60;
     } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
@@ -4201,8 +4238,10 @@
           rim.rotation.x = Math.PI/2; rim.position.y = 1.5; spin.add(rim);
           // the arm turns on its own, at its own rate and the other way
           const armPivot = new THREE.Group(); g.add(armPivot);
-          const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
-          arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          if(!c.noArm){
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
+            arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          }
           const hub = new THREE.Mesh(new THREE.CylinderGeometry(12, 15, 30, 14), look.hazardMat(2));
           hub.position.y = 15; g.add(hub);
           placeAt(g, c.x, c.y, 0);
@@ -4791,7 +4830,7 @@
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
-      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
+      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
         // Only a fall with your feet down. You cross this section by hopping
@@ -5390,39 +5429,65 @@
       }
 
       case 'discField': {
-        // Hop disc to disc up one column. The gaps are a fall, so the order is
-        // always: get on a disc, line up with the next one, hop the gap.
+        // Hop disc to disc. The whole difficulty for a bot is that the ground
+        // it is aiming at is not the ground it is standing on, so it commits
+        // to one disc and holds that line until it is on it -- an earlier
+        // version re-chose every frame, and a bot halfway across a gap picked
+        // the disc BEHIND it as nearest, turned back, and oscillated until the
+        // clock ran out with none of sixteen home.
+        if(r.aiObsFor !== o){ r.aiObsFor = o; r.aiDiscGoal = null; }
         const cur = discCellAt(o, r.x, r.y);
-        if(!cur){
-          // over a gap -- mid-hop, or about to be short of one. Head for the
-          // nearest deck rather than pressing on into nothing.
-          let n = null, nd = 1e9;
-          for(const c of o.cells){ const d = Math.hypot(c.x-r.x, c.y-r.y); if(d < nd){ nd = d; n = c; } }
-          return n ? set(n.x, 1) : set(r.x, 1);
+        if(cur){
+          let g = null, gd = 1e9;
+          for(const c of o.cells){
+            if(c.row !== cur.row + 1) continue;
+            const d = Math.abs(c.x - r.x);
+            if(d < gd){ gd = d; g = c; }
+          }
+          r.aiDiscGoal = g;
+          // the arm sweeping onto us is jumped, the same read the player makes
+          if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
+          if(!g){
+            // last row: hop off its trailing edge rather than stepping over it
+            const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+            if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
+            return set(r.x, 1);
+          }
+          // Line up on the deck when the next disc is within this deck's
+          // reach -- true on a grid, false on a zigzag, where walking all the
+          // way toward the next disc walks off the edge of this one.
+          if(Math.abs(g.x - cur.x) < cur.r*0.80){
+            if(Math.abs(g.x - r.x) > 26) return set(g.x, 0.15);
+          } else {
+            // Zigzag: cross to the rim of THIS disc on the side the next one
+            // is, so the hop starts as near to it as the deck allows and with
+            // sideways speed already built. Aiming straight at the far disc
+            // from wherever you stand asks the hop to cover ground a bean
+            // cannot cover in the air.
+            const launch = cur.x + Math.sign(g.x - cur.x)*cur.r*0.62;
+            if(r.h <= 0 && Math.abs(r.x - launch) > 16) return set(launch, 0.55);
+          }
+          // Hop when the rim is close along the line we are actually
+          // travelling, rather than straight up the course.
+          const gx = g.x - r.x, gy = g.y - r.y, gdist = Math.hypot(gx,gy) || 1;
+          const ux = gx/gdist, uy = gy/gdist;
+          const px = r.x - cur.x, py = r.y - cur.y;
+          const bq = px*ux + py*uy, cq = px*px + py*py - cur.r*cur.r;
+          const toEdge = -bq + Math.sqrt(Math.max(0, bq*bq - cq));
+          if(r.h <= 0 && toEdge < 30) doJump(r);
+          return set(g.x, 1);
         }
-        // the arm sweeping onto us is jumped, same read the player makes
-        if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
-        let goal = null, gd = 1e9;
+        // In the air over a gap: hold the line to the disc we committed to.
+        if(r.aiDiscGoal) return set(r.aiDiscGoal.x, 1);
+        // No commitment at all -- came in off the side. Take the nearest disc
+        // that is still ahead; never one behind, or we walk back into the gap.
+        let n = null, nd = 1e9;
         for(const c of o.cells){
-          if(c.row !== cur.row + 1) continue;
-          const d = Math.abs(c.x - r.x);
-          if(d < gd){ gd = d; goal = c; }
+          if(c.y < r.y - 20) continue;
+          const d = Math.hypot(c.x-r.x, c.y-r.y);
+          if(d < nd){ nd = d; n = c; }
         }
-        if(!goal){
-          // last row: still hop, so a racer carried off-centre by the disc
-          // clears its trailing edge rather than stepping over it
-          const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
-          if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
-          return set(r.x, 1);
-        }
-        // Line up first, creeping: stepping off on a diagonal is what drops a
-        // bot down the gap between two columns.
-        if(Math.abs(r.x - goal.x) > 26) return set(goal.x, 0.15);
-        // ...then hop, from the edge of the deck we are on, measured along our
-        // own line rather than through the centre.
-        const half = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
-        if(r.h <= 0 && (cur.y + half) - r.y < 30) doJump(r);
-        return set(goal.x, 1);
+        return n ? set(n.x, 1) : set(r.x, 1);
       }
 
       case 'gap':

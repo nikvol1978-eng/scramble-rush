@@ -326,8 +326,10 @@
           rim.rotation.x = Math.PI/2; rim.position.y = 1.5; spin.add(rim);
           // the arm turns on its own, at its own rate and the other way
           const armPivot = new THREE.Group(); g.add(armPivot);
-          const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
-          arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          if(!c.noArm){
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
+            arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          }
           const hub = new THREE.Mesh(new THREE.CylinderGeometry(12, 15, 30, 14), look.hazardMat(2));
           hub.position.y = 15; g.add(hub);
           placeAt(g, c.x, c.y, 0);
@@ -919,7 +921,7 @@
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
-      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
+      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
         // Only a fall with your feet down. You cross this section by hopping

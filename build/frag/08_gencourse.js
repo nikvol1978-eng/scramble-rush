@@ -156,6 +156,42 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='smallDiscs'){
+        // Five to eight small discs in a zigzag with nothing between them: a
+        // rhythm-jump section. It is a disc field underneath -- same cells,
+        // same collision, same respawn -- with no arms and real gaps, so the
+        // only thing being asked of you is the timing of the hops.
+        const n = clamp(sec.count || 6, 5, 8);
+        // Sixteen racers land on the same disc at the same moment, so a disc
+        // that only fits three abreast turns the section into a shoving match
+        // and most of the field goes over the side. Wide enough for the pack,
+        // still small against the 520-wide track.
+        const dr = 86;
+        const step = dr*2 + 40;                      // a gap you must jump, not walk
+        // The sideways step between discs has to be crossable in one hop. At
+        // 0.10 of the track that was 104 units between consecutive discs, far
+        // more sideways speed than a bean builds in the ~34 frames it is
+        // airborne, so racers landed short every time and none of sixteen
+        // finished. The grid disc field, which hops straight ahead, was fine
+        // throughout -- so the zigzag is a lean, not a slalom.
+        const zig = TRACK_W*0.045;
+        const yStart2 = cursor + gap + 90;
+        const cells = [];
+        for(let i=0;i<n;i++){
+          cells.push({ row:i, col:0, x: cx + ((i%2)?1:-1)*zig, y: yStart2 + dr + i*step, r: dr,
+                       noArm:true, phase: rand(0,6.28), speed: ((i%2)?-1:1)*rand(0.35,0.60)*spd,
+                       armPhase:0, armSpeed:0 });
+        }
+        // The drop starts at the FIRST disc's centre and ends at the last
+        // one's, not at their outer edges. At the leading edge a disc is a
+        // single point, so a racer arriving anywhere but exactly on its centre
+        // line stepped into nothing the instant it entered -- and, respawning
+        // to the same line, did it again every time. One bot in Sunny lost
+        // twenty-five lives that way without ever leaving the ground.
+        const yA = cells[0].y, yB = cells[cells.length-1].y;
+        obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
+                  cols:1, rows:n, r:dr, cells, small:true});
+        cursor = yB + dr + 70;
     } else if(type==='chevron'){
         // A slope painted with chevrons, net walls down both sides, and a few
         // turnstiles across it. The climb itself comes from the section's own
@@ -211,13 +247,14 @@
                        phase: rand(0,6.28),    speed: flip*rand(0.30,0.50)*spd,
                        armPhase: rand(0,6.28), armSpeed: -flip*rand(0.55,0.85)*spd });
         }
-        // ...ending at the trailing edge of the last row, not a whole rowD
-        // past it: the gaps BETWEEN rows are the section, and a further gap on
-        // the way out is just an unsignalled pit that everyone walks into.
-        const yEnd2 = yStart2 + (rows-1)*rowD + 2*dr;
-        obs.push({type:'discField', yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
+        // The drop runs between the first and last rows' CENTRES. Measured to
+        // their outer edges instead, the entry and the exit are each a point
+        // where the disc has no width, so anyone not exactly on a column's
+        // centre line walked straight into the gap.
+        const yA = cells[0].y, yB = cells[cells.length-1].y;
+        obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
                   cols, rows, r:dr, cells});
-        cursor = yEnd2 + 60;
+        cursor = yB + dr + 60;
     } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
