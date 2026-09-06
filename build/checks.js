@@ -1191,8 +1191,20 @@
     // only thing that differs is the gradient -- Super Slide is slippery, and
     // comparing it against a flat map measures the ice, not the hill.
     function extremes(){
+      // Both readings have to be taken on bare ground. The layout is random,
+      // so the shallowest point of the path was sometimes a pusher or a
+      // bumper, and a reading taken while something shoved the racer made the
+      // flat reference as slow as the climb -- which reads as "the hill is
+      // free" and failed the check about one run in four.
+      const clear = y => !obstacles.some(o => {
+        const a = (o.y0 !== undefined) ? o.y0 : (o.yStart !== undefined ? o.yStart : o.y);
+        const b = (o.y1 !== undefined) ? o.y1 : (o.yEnd   !== undefined ? o.yEnd   : o.y);
+        if(a === undefined || b === undefined) return false;
+        return y > a - 130 && y < b + 130;
+      });
       let lo = 1e9, hi = -1e9, loY = 800, hiY = 800;
       for(let y=500; y<trackLength-700; y+=110){
+        if(!clear(y)) continue;
         const s = pathSlope(y);
         if(s < lo){ lo = s; loY = y; }
         if(s > hi){ hi = s; hiY = y; }

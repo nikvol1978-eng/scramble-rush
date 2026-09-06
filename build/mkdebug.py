@@ -56,6 +56,7 @@ hook = """
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
+    gfx:()=>({renderer, scene, camera, skyDome, cloudGroup, dirLight, hemi, THREE}),
     warp:(y,x)=>{ const p=racers.find(r=>r.isPlayer); p.y=y; if(x!==undefined) p.x=x; syncCamera(true); return p.y; },
     doors:()=>obstacles.filter(o=>o.type==='doors').map(o=>({y:Math.round(o.y),
       items:o.items.map(i=>({x:Math.round(i.x), fake:i.fake, broken:i.broken}))})),

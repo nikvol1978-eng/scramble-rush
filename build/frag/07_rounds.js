@@ -48,8 +48,8 @@
       camera.aspect = W_/H_; camera.updateProjectionMatrix();
       camera.position.set(cw.x, cw.y, cw.z); camera.lookAt(tw.x, tw.y, tw.z);
       sky.position.set(camera.position.x, 0, camera.position.z);
-      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, sky.visible];
-      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; sky.visible = true;
+      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, !!(skyDome && skyDome.visible)];
+      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; showSky(true);
       renderer.setRenderTarget(_thumbRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
       const px = new Uint8Array(W_*H_*4);
       renderer.readRenderTargetPixels(_thumbRT, 0, 0, W_, H_, px);
@@ -58,7 +58,7 @@
       for(let y=0;y<H_;y++){ const src=(H_-1-y)*W_*4, dst=y*W_*4; img.data.set(px.subarray(src, src+W_*4), dst); }
       g.putImageData(img, 0, 0);
       courseThumbs[currentMap.key] = cv.toDataURL('image/jpeg', 0.82);
-      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; sky.visible = vis[3];
+      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; showSky(vis[3]);
       camera.aspect = savedAspect; camera.updateProjectionMatrix(); camera.position.copy(savedPos);
       if(p) syncCamera(true);
     }catch(e){ /* no thumbnail is not a failure */ }

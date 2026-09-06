@@ -276,7 +276,7 @@
           const tex = chev.clone(); tex.needsUpdate = true;
           tex.repeat.set(1, segLen/150);
           const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
-            new THREE.MeshLambertMaterial({map:tex}));
+            new THREE.MeshFloorMaterial({map:tex}));
           plate.receiveShadow = true;
           placeAt(plate, TRACK_W/2, sy, 1.8);
           courseGroup.add(plate);
@@ -528,7 +528,7 @@
         const sy = z - runIn + span*(i+0.5)/segs;
         const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
-          new THREE.MeshLambertMaterial({map:tex}));
+          new THREE.MeshFloorMaterial({map:tex}));
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
       }

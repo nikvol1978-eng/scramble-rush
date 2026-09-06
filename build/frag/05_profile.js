@@ -248,7 +248,7 @@
     dirLight.intensity = profOpen ? 0.30 : KEY_LIGHT;
     hemi.intensity     = profOpen ? 0.20 : FILL_LIGHT;
     dirLight.position.set(120,300,-150); dirLight.target.position.set(0,0,0);
-    sky.visible = false;                                    // the ring backdrop is the sky here
+    showSky(false);                                         // the ring backdrop is the sky here
     sky.position.set(camera.position.x,0,camera.position.z);
   }
 

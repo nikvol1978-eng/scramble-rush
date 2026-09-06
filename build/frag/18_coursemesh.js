@@ -90,7 +90,7 @@
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
     const wallMat = new THREE.MeshLambertMaterial({color:paleWall});
     const wallTopMat = new THREE.MeshLambertMaterial({color:accents[0]});       // the accent rail
-    const skirtMat = new THREE.MeshLambertMaterial({color:mixHex(paleWall, floorHex, 0.5)});
+    const skirtMat = new THREE.MeshFloorMaterial({color:mixHex(paleWall, floorHex, 0.5)});
     const mapGroundTex = checkerTexture(floorHex, floorAltHex, 1);
     const mapStripeTex = stripeTexture('#ffffff', accents[0]);
     // Materials for the things that hit you. Tagged with their accent so the
@@ -103,7 +103,7 @@
       const w=x1-x0, d=z1-z0; if(w<=0||d<=0) return;
       let mat;
       if(sunken){ mat=voidMat; }
-      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new THREE.MeshLambertMaterial({map:tex}); }
+      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new THREE.MeshFloorMaterial({map:tex}); }
       if(!coursePath){
         const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,sunken?4:12,d), mat);
         mesh.position.set(toSceneX((x0+x1)/2), sunken?-62:-6, (z0+z1)/2);
@@ -208,7 +208,7 @@
         const sy = padEnd*(i+0.5)/segs;
         const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
-          new THREE.MeshLambertMaterial({map:tex}));
+          new THREE.MeshFloorMaterial({map:tex}));
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
       }
@@ -313,9 +313,14 @@
         });
       }
     }
-    // Big flat low-poly clouds, drifting slowly, well above the course.
+    // Big flat low-poly clouds, drifting slowly, well above the course. Unlit
+    // and outside the exposure: the key comes from over the top of them, so
+    // shaded they read from below as dark slabs hanging in a bright sky --
+    // which is exactly the angle a course in the air is seen from.
     for(let i=0;i<12;i++){
-      const g=new THREE.Group(); const cm=new THREE.MeshLambertMaterial({color:0xffffff});
+      const g=new THREE.Group();
+      const cm=new THREE.MeshBasicMaterial({color:0xf6fbff, toneMapped:false,
+                                            transparent:true, opacity:0.92});
       for(let j=0;j<3;j++){ const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(38,66),0), cm); c.scale.set(1.6, 0.42, 1.0); c.position.set(j*64-64, rand(-6,6), rand(-14,14)); g.add(c); }
       const w=toWorld(TRACK_W/2, rand(-200,endZ), 0);
       g.position.set(w.x+rand(-1100,1100), w.y+rand(260,420), w.z); g.userData.cloud=rand(3,8); courseGroup.add(g);

@@ -781,7 +781,53 @@
 <div id="gameover" class="screen shade hidden"></div>
 
 <script type="module">
-import * as THREE from 'three';
+// ---------------------------------------------------------------- v21 §4
+// three r160 arrives as ES modules. A module namespace object is sealed, so
+// the game gets a plain copy of it -- and that copy is where the materials
+// below are hung, so every `new THREE.MeshLambertMaterial(...)` in the twenty
+// places that build geometry becomes a physical material without any of those
+// places being touched.
+import * as R160 from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+
+const THREE = Object.assign({}, R160);
+THREE.RoomEnvironment = RoomEnvironment;
+THREE.Sky = Sky;
+
+// §4.2 -- everything you can touch is glossy plastic. Parameters the old
+// materials carried and this one has no use for are dropped rather than
+// forwarded, because setValues warns about every unknown key it is handed.
+const _dropParam = { shininess:1, specular:1, reflectivity:1, gradientMap:1,
+                     refractionRatio:1, combine:1 };
+function _apply(mat, params){
+  if(!params) return mat;
+  const ok = {};
+  for(const k in params) if(!_dropParam[k] && (k in mat)) ok[k] = params[k];
+  mat.setValues(ok);
+  return mat;
+}
+class PlasticMaterial extends R160.MeshPhysicalMaterial {
+  constructor(params){
+    super({ roughness:0.45, metalness:0.0, clearcoat:0.6, clearcoatRoughness:0.25,
+            envMapIntensity:0.75 });
+    _apply(this, params);
+  }
+}
+// Floors are the one thing that is not plastic. A clearcoat on a floor this
+// wide throws the key straight back up the camera and washes the course out,
+// and the floor is the surface the hazards have to read against.
+class FloorMaterial extends R160.MeshStandardMaterial {
+  constructor(params){
+    super({ roughness:0.8, metalness:0.0, envMapIntensity:0.55 });
+    _apply(this, params);
+  }
+}
+THREE.MeshLambertMaterial = PlasticMaterial;
+THREE.MeshPhongMaterial   = PlasticMaterial;
+THREE.MeshToonMaterial    = PlasticMaterial;
+THREE.MeshFloorMaterial   = FloorMaterial;
+
 (function(){
   const $ = id => document.getElementById(id);
   const canvas = $('game');
@@ -1296,10 +1342,26 @@ import * as THREE from 'three';
   // and the round ends when few enough racers are left standing.
   let arenaEnd = 0;
   function applyMapSky(){
-    sky.material.uniforms.top.value.set(currentMap.skyTop);
-    sky.material.uniforms.mid.value.set(currentMap.skyMid);
-    sky.material.uniforms.bot.value.set(currentMap.skyBot);
+    // v21: a real sky with a sun in it. The old gradient dome is left in the
+    // scene but switched off -- other code still holds a handle to it.
+    showSky(true);
+    const s = SKY_SUN[currentMap.key] || SKY_SUN._default;
+    const dome = skyMeshFor(), u = dome.material.uniforms;
+    u.turbidity.value = s.turbidity;
+    u.rayleigh.value = s.rayleigh;
+    u.mieCoefficient.value = 0.006;
+    u.mieDirectionalG.value = 0.8;
+    const sun = sunVector(s.elev, s.azim);
+    u.sunPosition.value.copy(sun);
+    renderer.toneMappingExposure = s.exposure;
+    // The shadow camera is a fixed box around the player, so a sun sitting on
+    // the horizon would throw its shadows straight out of it. The sky keeps
+    // the low sun; the key light is lifted to where it can still cast.
+    const lift = sunVector(Math.max(28, s.elev), s.azim);
+    sunOff.set(lift.x*520, Math.max(240, lift.y*520), lift.z*520);
+    dirLight.color.set(s.elev < 12 ? 0xffb98a : 0xfff4e0);
     if(scene.fog) scene.fog.color.set(currentMap.skyMid);
+    buildClouds();
   }
 
   function rankCompare(a,b){
@@ -1520,16 +1582,19 @@ import * as THREE from 'three';
   // ============================================================
   // THREE.JS SETUP
   // ============================================================
-  THREE.ColorManagement.enabled = false;
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.VSMShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.useLegacyLights = true;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 
   const scene = new THREE.Scene();
+  {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+  }
   scene.fog = new THREE.Fog(0x2a1a5e, 400, 1500);
   const camera = new THREE.PerspectiveCamera(64, W/H, 0.1, 4000);
 
@@ -1552,15 +1617,16 @@ import * as THREE from 'three';
     scene.add(new THREE.Points(g,m));
   })();
 
-  const hemi = new THREE.HemisphereLight(0xfff3d6, 0x3a2270, 0.9); scene.add(hemi);
-  const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.0);
+  const hemi = new THREE.HemisphereLight(0xfff3d6, 0x3a2270, 0.55); scene.add(hemi);
+  const dirLight = new THREE.DirectionalLight(0xfff4e0, 2.1);
   dirLight.position.set(220,420,-160);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048,2048);
   const sc = dirLight.shadow.camera; sc.left=-600; sc.right=600; sc.top=700; sc.bottom=-500; sc.near=50; sc.far=1400;
-  dirLight.shadow.bias = -0.00025; dirLight.shadow.normalBias = 1.6;
+  dirLight.shadow.bias = -0.0004; dirLight.shadow.normalBias = 1.2;
+  dirLight.shadow.radius = 4; dirLight.shadow.blurSamples = 12;
   scene.add(dirLight); scene.add(dirLight.target);
-  const fillLight = new THREE.DirectionalLight(0xffb0e0, 0.25); fillLight.position.set(-150,150,-100); scene.add(fillLight);
+  const fillLight = new THREE.DirectionalLight(0xffb0e0, 0.35); fillLight.position.set(-150,150,-100); scene.add(fillLight);
 
   const courseGroup = new THREE.Group(); scene.add(courseGroup);
   const racerGroup = new THREE.Group(); scene.add(racerGroup);
@@ -2858,7 +2924,7 @@ import * as THREE from 'three';
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
     const wallMat = new THREE.MeshLambertMaterial({color:paleWall});
     const wallTopMat = new THREE.MeshLambertMaterial({color:accents[0]});       // the accent rail
-    const skirtMat = new THREE.MeshLambertMaterial({color:mixHex(paleWall, floorHex, 0.5)});
+    const skirtMat = new THREE.MeshFloorMaterial({color:mixHex(paleWall, floorHex, 0.5)});
     const mapGroundTex = checkerTexture(floorHex, floorAltHex, 1);
     const mapStripeTex = stripeTexture('#ffffff', accents[0]);
     // Materials for the things that hit you. Tagged with their accent so the
@@ -2871,7 +2937,7 @@ import * as THREE from 'three';
       const w=x1-x0, d=z1-z0; if(w<=0||d<=0) return;
       let mat;
       if(sunken){ mat=voidMat; }
-      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new THREE.MeshLambertMaterial({map:tex}); }
+      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new THREE.MeshFloorMaterial({map:tex}); }
       if(!coursePath){
         const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,sunken?4:12,d), mat);
         mesh.position.set(toSceneX((x0+x1)/2), sunken?-62:-6, (z0+z1)/2);
@@ -2976,7 +3042,7 @@ import * as THREE from 'three';
         const sy = padEnd*(i+0.5)/segs;
         const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
-          new THREE.MeshLambertMaterial({map:tex}));
+          new THREE.MeshFloorMaterial({map:tex}));
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
       }
@@ -3081,9 +3147,14 @@ import * as THREE from 'three';
         });
       }
     }
-    // Big flat low-poly clouds, drifting slowly, well above the course.
+    // Big flat low-poly clouds, drifting slowly, well above the course. Unlit
+    // and outside the exposure: the key comes from over the top of them, so
+    // shaded they read from below as dark slabs hanging in a bright sky --
+    // which is exactly the angle a course in the air is seen from.
     for(let i=0;i<12;i++){
-      const g=new THREE.Group(); const cm=new THREE.MeshLambertMaterial({color:0xffffff});
+      const g=new THREE.Group();
+      const cm=new THREE.MeshBasicMaterial({color:0xf6fbff, toneMapped:false,
+                                            transparent:true, opacity:0.92});
       for(let j=0;j<3;j++){ const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(38,66),0), cm); c.scale.set(1.6, 0.42, 1.0); c.position.set(j*64-64, rand(-6,6), rand(-14,14)); g.add(c); }
       const w=toWorld(TRACK_W/2, rand(-200,endZ), 0);
       g.position.set(w.x+rand(-1100,1100), w.y+rand(260,420), w.z); g.userData.cloud=rand(3,8); courseGroup.add(g);
@@ -3357,7 +3428,9 @@ import * as THREE from 'three';
   // One warm key and a cool hemisphere fill. With ACES tone mapping on, the
   // v19 levels (1.0 / 0.9) blew the floor out to white; these keep the floor a
   // mid tone so the saturated hazards have something to be louder than.
-  const KEY_LIGHT = 0.95, FILL_LIGHT = 0.5;
+  // v21: physical lights, so these are not the r128 numbers. The key does
+  // the shaping and the environment map carries what the fill used to fake.
+  const KEY_LIGHT = 1.7, FILL_LIGHT = 0.40;
   const CAM_RECENTRE_DELAY = 0.6;   // hands off this long and the view comes home
   let camZoom = 1, camReach = 0;
   const _camRay = new THREE.Raycaster();
@@ -3470,10 +3543,10 @@ import * as THREE from 'three';
   function syncCamera(snap, dt){
     // whoever the camera is on: the player, or a survivor while spectating
     const p=camSubject(); if(!p) return;
-    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true; flyCamera(); return; }
+    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return; }
     dt = dt||0.016;
     // the profile stage dims these; put them back for play
-    dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true;
+    dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
 
     // Hands off for a moment and the view eases back behind the way the racer
     // is actually running -- not instantly, and not so slowly you give up and
@@ -3611,8 +3684,8 @@ import * as THREE from 'three';
       camera.aspect = W_/H_; camera.updateProjectionMatrix();
       camera.position.set(cw.x, cw.y, cw.z); camera.lookAt(tw.x, tw.y, tw.z);
       sky.position.set(camera.position.x, 0, camera.position.z);
-      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, sky.visible];
-      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; sky.visible = true;
+      const vis = [courseGroup.visible, racerGroup.visible, previewGroup.visible, !!(skyDome && skyDome.visible)];
+      courseGroup.visible = true; racerGroup.visible = true; previewGroup.visible = false; showSky(true);
       renderer.setRenderTarget(_thumbRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
       const px = new Uint8Array(W_*H_*4);
       renderer.readRenderTargetPixels(_thumbRT, 0, 0, W_, H_, px);
@@ -3621,7 +3694,7 @@ import * as THREE from 'three';
       for(let y=0;y<H_;y++){ const src=(H_-1-y)*W_*4, dst=y*W_*4; img.data.set(px.subarray(src, src+W_*4), dst); }
       g.putImageData(img, 0, 0);
       courseThumbs[currentMap.key] = cv.toDataURL('image/jpeg', 0.82);
-      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; sky.visible = vis[3];
+      courseGroup.visible = vis[0]; racerGroup.visible = vis[1]; previewGroup.visible = vis[2]; showSky(vis[3]);
       camera.aspect = savedAspect; camera.updateProjectionMatrix(); camera.position.copy(savedPos);
       if(p) syncCamera(true);
     }catch(e){ /* no thumbnail is not a failure */ }
@@ -4254,7 +4327,7 @@ import * as THREE from 'three';
           const tex = chev.clone(); tex.needsUpdate = true;
           tex.repeat.set(1, segLen/150);
           const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
-            new THREE.MeshLambertMaterial({map:tex}));
+            new THREE.MeshFloorMaterial({map:tex}));
           plate.receiveShadow = true;
           placeAt(plate, TRACK_W/2, sy, 1.8);
           courseGroup.add(plate);
@@ -4503,7 +4576,7 @@ import * as THREE from 'three';
         const sy = z - runIn + span*(i+0.5)/segs;
         const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
-          new THREE.MeshLambertMaterial({map:tex}));
+          new THREE.MeshFloorMaterial({map:tex}));
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
       }
@@ -5130,6 +5203,124 @@ import * as THREE from 'three';
   // ============================================================
   // RACER vs RACER COLLISION
   // ============================================================
+  // ---------------------------------------------------------------- v21 §4.4
+  // Every course in v21 hangs in the air, so the sky has to be a real one and
+  // there has to be something underneath to fall past. The gradient dome from
+  // v5 stays in the scene but hidden -- the Sky shader wants a sun, not three
+  // colours, and the dome is what the code elsewhere still holds a handle to.
+  const SKY_SUN = {
+    sunny:   { elev:42,  azim:158, turbidity:3,  rayleigh:2.2, exposure:0.60 },
+    cannonc: { elev:74,  azim:190, turbidity:2,  rayleigh:1.4, exposure:0.60 },  // noon
+    slide:   { elev:19,  azim:128, turbidity:2,  rayleigh:3.0, exposure:0.58 },  // cold bright morning
+    neon:    { elev:2.4, azim:250, turbidity:8,  rayleigh:3.4, exposure:0.52 },  // dusk
+    lava:    { elev:6,   azim:205, turbidity:12, rayleigh:4.2, exposure:0.55 },
+    doors:   { elev:30,  azim:180, turbidity:5,  rayleigh:2.2, exposure:0.60 },
+    _default:{ elev:35,  azim:170, turbidity:4,  rayleigh:2.2, exposure:0.60 }
+  };
+  let skyDome = null, cloudGroup = null, _cloudTex = null;
+  const sunOff = new THREE.Vector3(220, 420, -160);
+
+  // Built on first use and then kept: the Sky shader is one big fragment
+  // program and there is no reason to compile it twice. It rides with the
+  // camera, because a course is ten thousand units long and a dome parked at
+  // the origin would be behind you by the halfway mark.
+  function skyMeshFor(){
+    if(!skyDome){
+      skyDome = new THREE.Sky();
+      skyDome.scale.setScalar(3000);
+      skyDome.frustumCulled = false;
+      // The dome has to be inside the far plane to be drawn at all, and a
+      // course is ten thousand units long, so it rides with the camera. Doing
+      // it here rather than in the frame loop covers every path that renders
+      // -- the loop, the debug tick and the composer -- and onBeforeRender
+      // runs before the model-view matrix is taken, so the move lands.
+      skyDome.onBeforeRender = (r, sc, cam)=>{
+        skyDome.position.copy(cam.position);
+        skyDome.updateMatrixWorld(true);
+      };
+      scene.add(skyDome);
+    }
+    return skyDome;
+  }
+
+  // The v5 gradient dome is retired: it is still in the scene because other
+  // code holds a handle to it, but nothing turns it back on. One switch, so
+  // the menu and the course reel do not each get their own idea of a sky.
+  function showSky(on){
+    sky.visible = false;
+    if(on) skyMeshFor();
+    if(skyDome) skyDome.visible = !!on;
+  }
+
+  function sunVector(elevDeg, azimDeg){
+    return new THREE.Vector3().setFromSphericalCoords(
+      1, THREE.MathUtils.degToRad(90 - elevDeg), THREE.MathUtils.degToRad(azimDeg));
+  }
+
+  // One soft blob, drawn once. Sprites are cheap and a cloud is a blob.
+  function cloudTexture(){
+    if(_cloudTex) return _cloudTex;
+    const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d');
+    // three overlapping falloffs, so the edge is lumpy rather than a circle
+    for(const [cx,cy,r,a] of [[0.42,0.56,0.34,0.85],[0.62,0.48,0.28,0.75],[0.52,0.62,0.24,0.7]]){
+      const grd = g.createRadialGradient(cx*N, cy*N, 0, cx*N, cy*N, r*N);
+      grd.addColorStop(0,   'rgba(255,255,255,'+a+')');
+      grd.addColorStop(0.55,'rgba(255,255,255,'+(a*0.45)+')');
+      grd.addColorStop(1,   'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0,0,N,N);
+    }
+    _cloudTex = new THREE.CanvasTexture(cv);
+    _cloudTex.colorSpace = THREE.SRGBColorSpace;
+    return _cloudTex;
+  }
+
+  // Fifty of them on a plane two hundred units under the ribbon, following the
+  // course rather than sitting in a rectangle -- a bent course would otherwise
+  // run off the side of its own weather.
+  // Cosmetics draw from their own source. rand() is the seeded course random,
+  // and applyMapSky runs before makeRacers -- so fifty clouds taking numbers
+  // out of it shifted every bot's speed and slot, and check L noticed.
+  function crand(a, b){ return a + Math.random()*(b-a); }
+
+  function buildClouds(){
+    if(!cloudGroup){ cloudGroup = new THREE.Group(); scene.add(cloudGroup); }
+    clearGroup(cloudGroup);
+    // Nearly white, with a breath of the map's sky in it. Tinting them the
+    // full sky colour made a dusk map's clouds read as grey pills.
+    const tint = new THREE.Color(currentMap.skyTop).lerp(new THREE.Color(0xffffff), 0.86);
+    const span = Math.max(2000, trackLength + 900);
+    const n = 52;
+    for(let i=0;i<n;i++){
+      const y = -500 + span*(i + crand(0,0.9))/n;
+      const x = crand(-560, TRACK_W + 560);
+      const w = toWorld(x, y, -430 + crand(-120, 120));
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: cloudTexture(), color: tint, transparent:true, depthWrite:false,
+        // Not tone mapped. The sky is far brighter than white, so a white
+        // sprite put through the same exposure comes out grey, and a grey
+        // cloud on a pale sky reads as a hole rather than as weather.
+        toneMapped:false, fog:false, opacity: crand(0.4, 0.75) }));
+      const s = crand(700, 1500);
+      m.scale.set(s, s*0.62, 1);
+      m.position.copy(w);
+      m.userData.drift = crand(4, 13) * (i%2 ? 1 : -1);
+      m.userData.x0 = w.x;
+      cloudGroup.add(m);
+    }
+  }
+
+  // They drift, slowly, and wrap rather than wandering off.
+  function syncSky(dt){
+    if(!cloudGroup) return;
+    for(const c of cloudGroup.children){
+      c.position.x += c.userData.drift * dt;
+      const d = c.position.x - c.userData.x0;
+      if(d >  1600) c.position.x -= 3200;
+      if(d < -1600) c.position.x += 3200;
+    }
+  }
+
   // ============================================================
   // MUSIC — one bed per map, built from the map's own name
   // ============================================================
@@ -6821,7 +7012,7 @@ import * as THREE from 'three';
     dirLight.intensity = profOpen ? 0.30 : KEY_LIGHT;
     hemi.intensity     = profOpen ? 0.20 : FILL_LIGHT;
     dirLight.position.set(120,300,-150); dirLight.target.position.set(0,0,0);
-    sky.visible = false;                                    // the ring backdrop is the sky here
+    showSky(false);                                         // the ring backdrop is the sky here
     sky.position.set(camera.position.x,0,camera.position.z);
   }
 
@@ -7361,6 +7552,7 @@ import * as THREE from 'three';
     if(state==='menu'){ syncPreview(t,dt); }
     else { syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
     updateSkinMaterials(t);
+    syncSky(dt);
     renderCoinPops(dt);
     renderer.render(scene,camera);
     if(bannerTimer>0) bannerTimer-=dt*1000;

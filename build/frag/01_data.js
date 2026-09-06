@@ -503,8 +503,24 @@
   // and the round ends when few enough racers are left standing.
   let arenaEnd = 0;
   function applyMapSky(){
-    sky.material.uniforms.top.value.set(currentMap.skyTop);
-    sky.material.uniforms.mid.value.set(currentMap.skyMid);
-    sky.material.uniforms.bot.value.set(currentMap.skyBot);
+    // v21: a real sky with a sun in it. The old gradient dome is left in the
+    // scene but switched off -- other code still holds a handle to it.
+    showSky(true);
+    const s = SKY_SUN[currentMap.key] || SKY_SUN._default;
+    const dome = skyMeshFor(), u = dome.material.uniforms;
+    u.turbidity.value = s.turbidity;
+    u.rayleigh.value = s.rayleigh;
+    u.mieCoefficient.value = 0.006;
+    u.mieDirectionalG.value = 0.8;
+    const sun = sunVector(s.elev, s.azim);
+    u.sunPosition.value.copy(sun);
+    renderer.toneMappingExposure = s.exposure;
+    // The shadow camera is a fixed box around the player, so a sun sitting on
+    // the horizon would throw its shadows straight out of it. The sky keeps
+    // the low sun; the key light is lifted to where it can still cast.
+    const lift = sunVector(Math.max(28, s.elev), s.azim);
+    sunOff.set(lift.x*520, Math.max(240, lift.y*520), lift.z*520);
+    dirLight.color.set(s.elev < 12 ? 0xffb98a : 0xfff4e0);
     if(scene.fog) scene.fog.color.set(currentMap.skyMid);
+    buildClouds();
   }

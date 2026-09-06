@@ -119,18 +119,8 @@ sub('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min
     + '</script>',
     "three r160 import map")
 sub("<script>" + chr(10) + "(function(){",
-    '<script type="module">' + chr(10)
-    + "import * as THREE from 'three';" + chr(10)
-    + "(function(){",
+    '<script type="module">' + chr(10) + frag("26_preamble.js") + "(function(){",
     "game script becomes a module")
-
-# r152 turned colour management on and r155 turned legacy lights off. Both
-# change how every existing colour and light reads, and this commit is meant to
-# be the API move and nothing else -- the look is retuned two commits from now.
-sub("  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});",
-    "  THREE.ColorManagement.enabled = false;" + chr(10)
-    + "  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});",
-    "colour management off for now")
 
 # ---------------------------------------------------------------- title
 # a zero-height window makes aspect NaN, and every projected position with it
@@ -141,11 +131,50 @@ sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.se
 # v20 look: filmic tone mapping, and a shadow bias that keeps the beans on the floor
 sub("  renderer.outputEncoding = THREE.sRGBEncoding;",
     "  renderer.outputColorSpace = THREE.SRGBColorSpace;"
-    + chr(10) + "  renderer.useLegacyLights = true;"
-    + chr(10) + "  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;",
+    + chr(10) + "  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;",
     "tone mapping")
+
+# Soft shadows a clearcoat does not turn into a stencil. VSM blurs the shadow
+# map itself, so the radius is a real blur rather than PCF's jitter.
+sub("  renderer.shadowMap.type = THREE.PCFSoftShadowMap;",
+    "  renderer.shadowMap.type = THREE.VSMShadowMap;", "vsm shadows")
+
+# The plastic has to have something to reflect or the clearcoat is invisible.
+# RoomEnvironment is a handful of boxes and area lights rendered once into a
+# cube map: one frame at startup, nothing after.
+sub("  const scene = new THREE.Scene();",
+    "  const scene = new THREE.Scene();"
+    + chr(10) + "  {"
+    + chr(10) + "    const pmrem = new THREE.PMREMGenerator(renderer);"
+    + chr(10) + "    scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;"
+    + chr(10) + "    pmrem.dispose();"
+    + chr(10) + "  }",
+    "image-based ambient")
+
+# Physical lights, so these are not the r128 numbers any more. The key does the
+# shaping, the hemisphere tints from the map's sky, and the environment above
+# carries the ambient the fill used to fake.
+sub("  const hemi = new THREE.HemisphereLight(0xfff3d6, 0x3a2270, 0.9); scene.add(hemi);",
+    "  const hemi = new THREE.HemisphereLight(0xfff3d6, 0x3a2270, 0.55); scene.add(hemi);",
+    "hemisphere intensity")
+sub("  const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.0);",
+    "  const dirLight = new THREE.DirectionalLight(0xfff4e0, 2.1);", "key intensity")
+sub("  const fillLight = new THREE.DirectionalLight(0xffb0e0, 0.25); fillLight.position.set(-150,150,-100); scene.add(fillLight);",
+    "  const fillLight = new THREE.DirectionalLight(0xffb0e0, 0.35); fillLight.position.set(-150,150,-100); scene.add(fillLight);",
+    "fill intensity")
+
+# The key light now comes from wherever the map's sun is.
+sub("    dirLight.position.set(toSceneX(p.x)+220, 420, p.y-160); dirLight.target.position.set(toSceneX(p.x), 0, p.y+150);",
+    "    dirLight.position.set(toSceneX(p.x)+sunOff.x, sunOff.y, p.y+sunOff.z); dirLight.target.position.set(toSceneX(p.x), 0, p.y+150);",
+    "the key follows the map sun")
+
+# ------------------------------------------------------------- sky + clouds
+sub("  function racerCollisions(){",
+    frag("27_sky.js") + chr(10) + "  function racerCollisions(){",
+    "sky and clouds")
 sub("  dirLight.shadow.bias = -0.0008;",
-    "  dirLight.shadow.bias = -0.00025; dirLight.shadow.normalBias = 1.6;",
+    "  dirLight.shadow.bias = -0.0004; dirLight.shadow.normalBias = 1.2;"
+    + chr(10) + "  dirLight.shadow.radius = 4; dirLight.shadow.blurSamples = 12;",
     "shadow bias")
 
 # a wider lens: obstacles need to be on screen sooner than 1.5s before impact
@@ -597,6 +626,7 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     """    if(state==='menu'){ syncPreview(t,dt); }
     else { syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
     updateSkinMaterials(t);
+    syncSky(dt);
     renderCoinPops(dt);
     renderer.render(scene,camera);""",
     "loop hooks")

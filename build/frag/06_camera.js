@@ -8,7 +8,9 @@
   // One warm key and a cool hemisphere fill. With ACES tone mapping on, the
   // v19 levels (1.0 / 0.9) blew the floor out to white; these keep the floor a
   // mid tone so the saturated hazards have something to be louder than.
-  const KEY_LIGHT = 0.95, FILL_LIGHT = 0.5;
+  // v21: physical lights, so these are not the r128 numbers. The key does
+  // the shaping and the environment map carries what the fill used to fake.
+  const KEY_LIGHT = 1.7, FILL_LIGHT = 0.40;
   const CAM_RECENTRE_DELAY = 0.6;   // hands off this long and the view comes home
   let camZoom = 1, camReach = 0;
   const _camRay = new THREE.Raycaster();
@@ -121,10 +123,10 @@
   function syncCamera(snap, dt){
     // whoever the camera is on: the player, or a survivor while spectating
     const p=camSubject(); if(!p) return;
-    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true; flyCamera(); return; }
+    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return; }
     dt = dt||0.016;
     // the profile stage dims these; put them back for play
-    dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; sky.visible=true;
+    dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
 
     // Hands off for a moment and the view eases back behind the way the racer
     // is actually running -- not instantly, and not so slowly you give up and
