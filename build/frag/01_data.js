@@ -4,7 +4,10 @@
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
     // Free-orbit mouse look is opt-in: the camera should follow you, not be
     // something you have to steer as well.
-    mouseLook:false, autoCentre:true
+    mouseLook:false, autoCentre:true,
+    // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
+    // skips the composer altogether. It steps itself down if it has to.
+    quality:'high'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };

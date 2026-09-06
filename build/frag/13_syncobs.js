@@ -55,6 +55,19 @@
     for(const c of courseGroup.children){
       if(c.userData.deco){ c.position.y=c.userData.deco.y+Math.sin(t*1.2+c.userData.deco.ph)*6; c.rotation.y+=0.004; }
       if(c.userData.cloud){ c.position.x+=c.userData.cloud*0.03; if(c.position.x>1000) c.position.x=-1000; }
-      if(c.userData.crowd){ const cr=c.userData.crowd; c.position.y = cr.y + Math.abs(Math.sin(t*cr.rate + cr.ph))*3.2; }
+      if(c.userData.crowdSeats){
+        // one instanced draw, so the bob is a matrix rewrite rather than a
+        // position on each of two hundred objects
+        const seats = c.userData.crowdSeats, probe = c.userData.crowdProbe;
+        for(let i=0;i<seats.length;i++){
+          const q = seats[i];
+          c.getMatrixAt(i, probe.matrix);
+          probe.matrix.decompose(probe.position, probe.quaternion, probe.scale);
+          probe.position.y = q.y + Math.abs(Math.sin(t*q.rate + q.ph))*3.2;
+          probe.updateMatrix();
+          c.setMatrixAt(i, probe.matrix);
+        }
+        c.instanceMatrix.needsUpdate = true;
+      }
     }
   }

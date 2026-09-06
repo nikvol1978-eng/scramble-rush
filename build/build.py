@@ -125,7 +125,7 @@ sub("<script>" + chr(10) + "(function(){",
 # ---------------------------------------------------------------- title
 # a zero-height window makes aspect NaN, and every projected position with it
 sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
-    "  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
+    "  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); resizeComposer(W,H); }",
     "resize guard")
 
 # v20 look: filmic tone mapping, and a shadow bias that keeps the beans on the floor
@@ -172,6 +172,22 @@ sub("    dirLight.position.set(toSceneX(p.x)+220, 420, p.y-160); dirLight.target
 sub("  function racerCollisions(){",
     frag("27_sky.js") + chr(10) + "  function racerCollisions(){",
     "sky and clouds")
+
+# --------------------------------------------------------------- the composer
+sub("  function racerCollisions(){",
+    frag("28_post.js") + chr(10) + "  function racerCollisions(){",
+    "the composer")
+
+# The quality switch sits with the other display settings.
+sub("    toggle('shadows','Shadows');",
+    "    const qseg=document.createElement('div'); qseg.className='seg';"
+    + chr(10) + "    [['low','Low'],['medium','Medium'],['high','High']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='chip'+(settings.quality===k?' sel':''); b.textContent=l; b.onclick=()=>{ settings.quality=k; SFX.click(); applyQuality(k); buildSettings(); }; qseg.appendChild(b); });"
+    + chr(10) + "    row('Graphics', qseg);"
+    + chr(10) + "    toggle('shadows','Shadows');",
+    "quality switch")
+sub("  function applySettings(){ renderer.shadowMap.enabled=settings.shadows;",
+    "  function applySettings(){ renderer.shadowMap.enabled=settings.shadows; applyQuality(settings.quality||'high');",
+    "quality applied with the rest")
 sub("  dirLight.shadow.bias = -0.0008;",
     "  dirLight.shadow.bias = -0.0004; dirLight.shadow.normalBias = 1.2;"
     + chr(10) + "  dirLight.shadow.radius = 4; dirLight.shadow.blurSamples = 12;",
@@ -628,7 +644,10 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     updateSkinMaterials(t);
     syncSky(dt);
     renderCoinPops(dt);
-    renderer.render(scene,camera);""",
+    renderFrame();
+    // dt is the whole frame -- simulation, sync and the composer -- which is
+    // what a player would feel, not the slice the renderer alone owns.
+    qualityWatch(dt, dt*1000);""",
     "loop hooks")
 
 # HUD progress dots should show the player's colourway

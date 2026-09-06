@@ -83,7 +83,12 @@
     clearGroup(cloudGroup);
     // Nearly white, with a breath of the map's sky in it. Tinting them the
     // full sky colour made a dusk map's clouds read as grey pills.
-    const tint = new THREE.Color(currentMap.skyTop).lerp(new THREE.Color(0xffffff), 0.86);
+    // Over one, on purpose. The sky is far brighter than white, so a cloud at
+    // a flat white reads as a grey hole in it once the frame is tone mapped --
+    // and with a composer the tone mapping happens to the whole buffer at the
+    // end, where a material saying toneMapped:false cannot opt out of it.
+    const tint = new THREE.Color(currentMap.skyTop).lerp(new THREE.Color(0xffffff), 0.86)
+                     .multiplyScalar(2.6);
     const span = Math.max(2000, trackLength + 900);
     const n = 52;
     for(let i=0;i<n;i++){
@@ -95,7 +100,7 @@
         // Not tone mapped. The sky is far brighter than white, so a white
         // sprite put through the same exposure comes out grey, and a grey
         // cloud on a pale sky reads as a hole rather than as weather.
-        toneMapped:false, fog:false, opacity: crand(0.4, 0.75) }));
+        fog:false, opacity: crand(0.4, 0.75) }));
       const s = crand(700, 1500);
       m.scale.set(s, s*0.62, 1);
       m.position.copy(w);

@@ -293,24 +293,57 @@
       const standMat = new THREE.MeshLambertMaterial({color:paleWall});
       const standRail = new THREE.MeshLambertMaterial({color:accents[0]});
       const crowdSkins = SKINS.filter(s=>s.rarity==='common' || s.rarity==='rare');
+      // A long course carries twenty-odd stands and a couple of hundred tiny
+      // beans in them. As separate meshes that was the single largest thing on
+      // the draw-call bill -- more than the sixteen racers put together, for
+      // scenery you never touch. They are all one geometry and differ only in
+      // colour and where they stand, so the whole crowd is one instanced draw,
+      // and the stands and their rails one each.
+      const seats = [];
       for(let z=450; z<trackLength-200; z+=900){
         [-1,1].forEach(s=>{
           const x = s<0 ? -78 : TRACK_W+78;
-          const stand = new THREE.Mesh(new THREE.BoxGeometry(100, 24, 230), standMat);
-          placeAt(stand, x, z, 12); courseGroup.add(stand);
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 230), standRail);
-          placeAt(rail, s<0 ? x+50 : x-50, z, 28); courseGroup.add(rail);
           const n = 8 + Math.floor(rand(0,5));
           for(let i=0;i<n;i++){
-            const sk = pick(crowdSkins);
-            const bean = new THREE.Mesh(beanGeometry(), new THREE.MeshToonMaterial({color:skinBaseColor(sk), gradientMap:toonRamp()}));
-            bean.scale.setScalar(0.55);
-            placeAt(bean, x + rand(-28, 28), z + (i/(n-1) - 0.5)*200, 24 + 9);
-            bean.rotation.y = (s<0 ? -1 : 1) * Math.PI/2 + rand(-0.4, 0.4);
-            bean.userData.crowd = { y: bean.position.y, ph: rand(0,6.28), rate: rand(2.5,4.5) };
-            courseGroup.add(bean);
+            seats.push({ x: x + rand(-28, 28), z: z + (i/(n-1) - 0.5)*200,
+                         yaw: (s<0 ? -1 : 1) * Math.PI/2 + rand(-0.4, 0.4),
+                         col: skinBaseColor(pick(crowdSkins)),
+                         ph: rand(0,6.28), rate: rand(2.5,4.5) });
           }
         });
+      }
+      const standAt = [];
+      for(let z=450; z<trackLength-200; z+=900) [-1,1].forEach(s=>standAt.push({x: s<0 ? -78 : TRACK_W+78, z, s}));
+      if(standAt.length){
+        const stands = new THREE.InstancedMesh(new THREE.BoxGeometry(100, 24, 230), standMat, standAt.length);
+        const rails  = new THREE.InstancedMesh(new THREE.BoxGeometry(6, 8, 230), standRail, standAt.length);
+        const probe = new THREE.Object3D();
+        standAt.forEach((q, i)=>{
+          placeAt(probe, q.x, q.z, 12); probe.updateMatrix(); stands.setMatrixAt(i, probe.matrix);
+          placeAt(probe, q.s<0 ? q.x+50 : q.x-50, q.z, 28); probe.updateMatrix(); rails.setMatrixAt(i, probe.matrix);
+        });
+        stands.instanceMatrix.needsUpdate = rails.instanceMatrix.needsUpdate = true;
+        stands.receiveShadow = true;
+        courseGroup.add(stands); courseGroup.add(rails);
+      }
+      if(seats.length){
+        const crowd = new THREE.InstancedMesh(beanGeometry(),
+          new THREE.MeshToonMaterial({ gradientMap:toonRamp() }), seats.length);
+        const probe = new THREE.Object3D();
+        seats.forEach((q, i)=>{
+          placeAt(probe, q.x, q.z, 24 + 9);
+          probe.rotation.y = q.yaw; probe.scale.setScalar(0.55);
+          probe.updateMatrix();
+          crowd.setMatrixAt(i, probe.matrix);
+          crowd.setColorAt(i, new THREE.Color(q.col));
+          q.y = probe.position.y;
+        });
+        crowd.instanceMatrix.needsUpdate = true;
+        if(crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+        // syncObstacles bobs them; the seat table is what it bobs against
+        crowd.userData.crowdSeats = seats;
+        crowd.userData.crowdProbe = new THREE.Object3D();
+        courseGroup.add(crowd);
       }
     }
     // Big flat low-poly clouds, drifting slowly, well above the course. Unlit
@@ -319,7 +352,7 @@
     // which is exactly the angle a course in the air is seen from.
     for(let i=0;i<12;i++){
       const g=new THREE.Group();
-      const cm=new THREE.MeshBasicMaterial({color:0xf6fbff, toneMapped:false,
+      const cm=new THREE.MeshBasicMaterial({color:new THREE.Color(0xf6fbff).multiplyScalar(2.6),
                                             transparent:true, opacity:0.92});
       for(let j=0;j<3;j++){ const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(38,66),0), cm); c.scale.set(1.6, 0.42, 1.0); c.position.set(j*64-64, rand(-6,6), rand(-14,14)); g.add(c); }
       const w=toWorld(TRACK_W/2, rand(-200,endZ), 0);

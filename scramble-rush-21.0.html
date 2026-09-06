@@ -790,10 +790,22 @@
 import * as R160 from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
 const THREE = Object.assign({}, R160);
 THREE.RoomEnvironment = RoomEnvironment;
 THREE.Sky = Sky;
+THREE.EffectComposer = EffectComposer;
+THREE.RenderPass = RenderPass;
+THREE.GTAOPass = GTAOPass;
+THREE.UnrealBloomPass = UnrealBloomPass;
+THREE.OutputPass = OutputPass;
+THREE.SMAAPass = SMAAPass;
 
 // §4.2 -- everything you can touch is glossy plastic. Parameters the old
 // materials carried and this one has no use for are dropped rather than
@@ -828,6 +840,21 @@ THREE.MeshPhongMaterial   = PlasticMaterial;
 THREE.MeshToonMaterial    = PlasticMaterial;
 THREE.MeshFloorMaterial   = FloorMaterial;
 
+// §4.5 -- the composer's state lives out here, at module scope, rather than
+// with the functions that use it. applySettings() runs earlier in the module
+// body than the composer fragment is spliced into it, so a `let` down there is
+// still in its dead zone when the first applyQuality() call arrives.
+let composer = null, renderPass = null, gtaoPass = null, bloomPass = null,
+    outputPass = null, smaaPass = null, qualityNow = null;
+let _slowFor = 0, _autoDropped = false;
+
+const QUALITY = {
+  low:    { composer:false, shadow:1024, type:'pcf', gtao:false, bloom:false, smaa:false },
+  medium: { composer:true,  shadow:2048, type:'vsm', gtao:false, bloom:false, smaa:true  },
+  high:   { composer:true,  shadow:2048, type:'vsm', gtao:true,  bloom:true,  smaa:true  }
+};
+
+
 (function(){
   const $ = id => document.getElementById(id);
   const canvas = $('game');
@@ -843,7 +870,10 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
     // Free-orbit mouse look is opt-in: the camera should follow you, not be
     // something you have to steer as well.
-    mouseLook:false, autoCentre:true
+    mouseLook:false, autoCentre:true,
+    // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
+    // skips the composer altogether. It steps itself down if it has to.
+    quality:'high'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
@@ -1633,7 +1663,7 @@ THREE.MeshFloorMaterial   = FloorMaterial;
   const particleGroup = new THREE.Group(); scene.add(particleGroup);
   const previewGroup = new THREE.Group(); scene.add(previewGroup);
 
-  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }
+  function resize(){ W=Math.max(1,window.innerWidth); H=Math.max(1,window.innerHeight); renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); resizeComposer(W,H); }
   window.addEventListener('resize', resize); resize();
 
   function clearGroup(g){ while(g.children.length) g.remove(g.children[0]); }
@@ -3127,24 +3157,57 @@ THREE.MeshFloorMaterial   = FloorMaterial;
       const standMat = new THREE.MeshLambertMaterial({color:paleWall});
       const standRail = new THREE.MeshLambertMaterial({color:accents[0]});
       const crowdSkins = SKINS.filter(s=>s.rarity==='common' || s.rarity==='rare');
+      // A long course carries twenty-odd stands and a couple of hundred tiny
+      // beans in them. As separate meshes that was the single largest thing on
+      // the draw-call bill -- more than the sixteen racers put together, for
+      // scenery you never touch. They are all one geometry and differ only in
+      // colour and where they stand, so the whole crowd is one instanced draw,
+      // and the stands and their rails one each.
+      const seats = [];
       for(let z=450; z<trackLength-200; z+=900){
         [-1,1].forEach(s=>{
           const x = s<0 ? -78 : TRACK_W+78;
-          const stand = new THREE.Mesh(new THREE.BoxGeometry(100, 24, 230), standMat);
-          placeAt(stand, x, z, 12); courseGroup.add(stand);
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 230), standRail);
-          placeAt(rail, s<0 ? x+50 : x-50, z, 28); courseGroup.add(rail);
           const n = 8 + Math.floor(rand(0,5));
           for(let i=0;i<n;i++){
-            const sk = pick(crowdSkins);
-            const bean = new THREE.Mesh(beanGeometry(), new THREE.MeshToonMaterial({color:skinBaseColor(sk), gradientMap:toonRamp()}));
-            bean.scale.setScalar(0.55);
-            placeAt(bean, x + rand(-28, 28), z + (i/(n-1) - 0.5)*200, 24 + 9);
-            bean.rotation.y = (s<0 ? -1 : 1) * Math.PI/2 + rand(-0.4, 0.4);
-            bean.userData.crowd = { y: bean.position.y, ph: rand(0,6.28), rate: rand(2.5,4.5) };
-            courseGroup.add(bean);
+            seats.push({ x: x + rand(-28, 28), z: z + (i/(n-1) - 0.5)*200,
+                         yaw: (s<0 ? -1 : 1) * Math.PI/2 + rand(-0.4, 0.4),
+                         col: skinBaseColor(pick(crowdSkins)),
+                         ph: rand(0,6.28), rate: rand(2.5,4.5) });
           }
         });
+      }
+      const standAt = [];
+      for(let z=450; z<trackLength-200; z+=900) [-1,1].forEach(s=>standAt.push({x: s<0 ? -78 : TRACK_W+78, z, s}));
+      if(standAt.length){
+        const stands = new THREE.InstancedMesh(new THREE.BoxGeometry(100, 24, 230), standMat, standAt.length);
+        const rails  = new THREE.InstancedMesh(new THREE.BoxGeometry(6, 8, 230), standRail, standAt.length);
+        const probe = new THREE.Object3D();
+        standAt.forEach((q, i)=>{
+          placeAt(probe, q.x, q.z, 12); probe.updateMatrix(); stands.setMatrixAt(i, probe.matrix);
+          placeAt(probe, q.s<0 ? q.x+50 : q.x-50, q.z, 28); probe.updateMatrix(); rails.setMatrixAt(i, probe.matrix);
+        });
+        stands.instanceMatrix.needsUpdate = rails.instanceMatrix.needsUpdate = true;
+        stands.receiveShadow = true;
+        courseGroup.add(stands); courseGroup.add(rails);
+      }
+      if(seats.length){
+        const crowd = new THREE.InstancedMesh(beanGeometry(),
+          new THREE.MeshToonMaterial({ gradientMap:toonRamp() }), seats.length);
+        const probe = new THREE.Object3D();
+        seats.forEach((q, i)=>{
+          placeAt(probe, q.x, q.z, 24 + 9);
+          probe.rotation.y = q.yaw; probe.scale.setScalar(0.55);
+          probe.updateMatrix();
+          crowd.setMatrixAt(i, probe.matrix);
+          crowd.setColorAt(i, new THREE.Color(q.col));
+          q.y = probe.position.y;
+        });
+        crowd.instanceMatrix.needsUpdate = true;
+        if(crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+        // syncObstacles bobs them; the seat table is what it bobs against
+        crowd.userData.crowdSeats = seats;
+        crowd.userData.crowdProbe = new THREE.Object3D();
+        courseGroup.add(crowd);
       }
     }
     // Big flat low-poly clouds, drifting slowly, well above the course. Unlit
@@ -3153,7 +3216,7 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     // which is exactly the angle a course in the air is seen from.
     for(let i=0;i<12;i++){
       const g=new THREE.Group();
-      const cm=new THREE.MeshBasicMaterial({color:0xf6fbff, toneMapped:false,
+      const cm=new THREE.MeshBasicMaterial({color:new THREE.Color(0xf6fbff).multiplyScalar(2.6),
                                             transparent:true, opacity:0.92});
       for(let j=0;j<3;j++){ const c=new THREE.Mesh(new THREE.IcosahedronGeometry(rand(38,66),0), cm); c.scale.set(1.6, 0.42, 1.0); c.position.set(j*64-64, rand(-6,6), rand(-14,14)); g.add(c); }
       const w=toWorld(TRACK_W/2, rand(-200,endZ), 0);
@@ -3222,7 +3285,20 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     for(const c of courseGroup.children){
       if(c.userData.deco){ c.position.y=c.userData.deco.y+Math.sin(t*1.2+c.userData.deco.ph)*6; c.rotation.y+=0.004; }
       if(c.userData.cloud){ c.position.x+=c.userData.cloud*0.03; if(c.position.x>1000) c.position.x=-1000; }
-      if(c.userData.crowd){ const cr=c.userData.crowd; c.position.y = cr.y + Math.abs(Math.sin(t*cr.rate + cr.ph))*3.2; }
+      if(c.userData.crowdSeats){
+        // one instanced draw, so the bob is a matrix rewrite rather than a
+        // position on each of two hundred objects
+        const seats = c.userData.crowdSeats, probe = c.userData.crowdProbe;
+        for(let i=0;i<seats.length;i++){
+          const q = seats[i];
+          c.getMatrixAt(i, probe.matrix);
+          probe.matrix.decompose(probe.position, probe.quaternion, probe.scale);
+          probe.position.y = q.y + Math.abs(Math.sin(t*q.rate + q.ph))*3.2;
+          probe.updateMatrix();
+          c.setMatrixAt(i, probe.matrix);
+        }
+        c.instanceMatrix.needsUpdate = true;
+      }
     }
   }
 
@@ -5288,7 +5364,12 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     clearGroup(cloudGroup);
     // Nearly white, with a breath of the map's sky in it. Tinting them the
     // full sky colour made a dusk map's clouds read as grey pills.
-    const tint = new THREE.Color(currentMap.skyTop).lerp(new THREE.Color(0xffffff), 0.86);
+    // Over one, on purpose. The sky is far brighter than white, so a cloud at
+    // a flat white reads as a grey hole in it once the frame is tone mapped --
+    // and with a composer the tone mapping happens to the whole buffer at the
+    // end, where a material saying toneMapped:false cannot opt out of it.
+    const tint = new THREE.Color(currentMap.skyTop).lerp(new THREE.Color(0xffffff), 0.86)
+                     .multiplyScalar(2.6);
     const span = Math.max(2000, trackLength + 900);
     const n = 52;
     for(let i=0;i<n;i++){
@@ -5300,7 +5381,7 @@ THREE.MeshFloorMaterial   = FloorMaterial;
         // Not tone mapped. The sky is far brighter than white, so a white
         // sprite put through the same exposure comes out grey, and a grey
         // cloud on a pale sky reads as a hole rather than as weather.
-        toneMapped:false, fog:false, opacity: crand(0.4, 0.75) }));
+        fog:false, opacity: crand(0.4, 0.75) }));
       const s = crand(700, 1500);
       m.scale.set(s, s*0.62, 1);
       m.position.copy(w);
@@ -5318,6 +5399,115 @@ THREE.MeshFloorMaterial   = FloorMaterial;
       const d = c.position.x - c.userData.x0;
       if(d >  1600) c.position.x -= 3200;
       if(d < -1600) c.position.x += 3200;
+    }
+  }
+
+  // ---------------------------------------------------------------- v21 §4.5
+  // The composer. Ambient occlusion is what makes the plastic sit on the floor
+  // rather than hover over it; the bloom is deliberately almost off, so only
+  // the confetti and the neon accents reach it.
+  //
+  // OutputPass is not in the brief but is not optional: once a composer is in
+  // the way, the renderer stops applying tone mapping and the output colour
+  // space itself, and without that pass the whole game comes out flat and
+  // pale. It is the last colour step, so SMAA runs after it.
+  function buildComposer(){
+    if(composer) return composer;
+    composer = new THREE.EffectComposer(renderer);
+    renderPass = new THREE.RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    gtaoPass = new THREE.GTAOPass(scene, camera, W, H);
+    gtaoPass.output = THREE.GTAOPass.OUTPUT.Default;
+    // The occlusion pass renders the scene again for depth and normals, with
+    // an override material -- which means depthWrite:false does not save the
+    // sky or the clouds from it. The sky is a box 1500 units around the
+    // camera, so the depth buffer ends up with a solid shell behind
+    // everything, and the pass duly occludes the gap between the course and
+    // that shell: a black halo around every silhouette, in the sky, whatever
+    // the radius is set to. Neither of them can cast occlusion on anything, so
+    // both step out while the pass measures. The beauty frame is already in
+    // the read buffer by then, so nothing is lost from the picture.
+    const _aoRender = gtaoPass.render.bind(gtaoPass);
+    gtaoPass.render = function(r, write, read, dt, mask){
+      const wasSky = skyDome ? skyDome.visible : false;
+      const wasCloud = cloudGroup ? cloudGroup.visible : false;
+      if(skyDome) skyDome.visible = false;
+      if(cloudGroup) cloudGroup.visible = false;
+      try { _aoRender(r, write, read, dt, mask); }
+      finally {
+        if(skyDome) skyDome.visible = wasSky;
+        if(cloudGroup) cloudGroup.visible = wasCloud;
+      }
+    };
+    composer.addPass(gtaoPass);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.15, 0.4, 0.9);
+    composer.addPass(bloomPass);
+    outputPass = new THREE.OutputPass();
+    composer.addPass(outputPass);
+    smaaPass = new THREE.SMAAPass(W, H);
+    composer.addPass(smaaPass);
+
+    // One throwaway frame, then tune. A course is hundreds of units across, so
+    // the default occlusion radius -- meant for a scene a metre wide -- finds
+    // nothing to occlude. But the parameters only take once the pass has
+    // rendered: set any earlier they leave the material half built, and every
+    // frame after comes out with the sky in black patches around each
+    // silhouette. This runs while the menu is still being set up, so the
+    // wasted frame is never seen. The sample count is left alone on purpose --
+    // setting it rewrites a #define and the program fails to validate.
+    composer.setSize(W, H);
+    composer.render();
+    gtaoPass.updateGtaoMaterial({ radius: 14, distanceExponent: 1.0,
+                                  thickness: 12, scale: 1.0 });
+    return composer;
+  }
+
+  function applyQuality(q){
+    const k = QUALITY[q] ? q : 'high';
+    qualityNow = k;
+    const s = QUALITY[k];
+    renderer.shadowMap.type = s.type === 'vsm' ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
+    if(dirLight.shadow.mapSize.x !== s.shadow){
+      dirLight.shadow.mapSize.set(s.shadow, s.shadow);
+      if(dirLight.shadow.map){ dirLight.shadow.map.dispose(); dirLight.shadow.map = null; }
+    }
+    scene.traverse(o=>{ if(o.material) o.material.needsUpdate = true; });
+    if(s.composer){
+      buildComposer();
+      gtaoPass.enabled  = s.gtao;
+      bloomPass.enabled = s.bloom;
+      smaaPass.enabled  = s.smaa;
+    }
+    return k;
+  }
+
+  // One place the whole game renders through, so the debug build and the
+  // release take exactly the same path.
+  function renderFrame(){
+    if(qualityNow === null) applyQuality(settings.quality || 'high');
+    if(composer && QUALITY[qualityNow].composer) composer.render();
+    else renderer.render(scene, camera);
+  }
+
+  function resizeComposer(w, h){
+    if(!composer) return;
+    composer.setSize(w, h);
+    if(gtaoPass)  gtaoPass.setSize(w, h);
+    if(bloomPass) bloomPass.setSize(w, h);
+    if(smaaPass)  smaaPass.setSize(w, h);
+  }
+
+  // Two seconds over 14 ms and High steps down to Medium. Once only: a machine
+  // that cannot hold High will not suddenly be able to, and a switch that
+  // flickers between two looks is worse than either of them.
+  function qualityWatch(dt, ms){
+    if(_autoDropped || qualityNow !== 'high' || state === 'menu') return;
+    _slowFor = ms > 14 ? _slowFor + dt : 0;
+    if(_slowFor > 2){
+      _autoDropped = true;
+      settings.quality = 'medium';
+      applyQuality('medium');
+      if(typeof showBanner === 'function') showBanner('GRAPHICS: MEDIUM', 1400);
     }
   }
 
@@ -7527,11 +7717,14 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     toggle('camRelative','Move relative to camera');
     toggle('autoCentre','Camera drifts back behind you');
     toggle('shake','Camera shake');
+    const qseg=document.createElement('div'); qseg.className='seg';
+    [['low','Low'],['medium','Medium'],['high','High']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='chip'+(settings.quality===k?' sel':''); b.textContent=l; b.onclick=()=>{ settings.quality=k; SFX.click(); applyQuality(k); buildSettings(); }; qseg.appendChild(b); });
+    row('Graphics', qseg);
     toggle('shadows','Shadows');
     toggle('hints','Show control hints');
     toggle('sound','Sound effects');
   }
-  function applySettings(){ renderer.shadowMap.enabled=settings.shadows; scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; }); updateHint(); $('touchControls').classList.toggle('hidden', !(settings.touch && (state==='racing'||state==='countdown'||state==='paused'))); }
+  function applySettings(){ renderer.shadowMap.enabled=settings.shadows; applyQuality(settings.quality||'high'); scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; }); updateHint(); $('touchControls').classList.toggle('hidden', !(settings.touch && (state==='racing'||state==='countdown'||state==='paused'))); }
   $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };
   $('pauseSettingsBtn').onclick=()=>{ SFX.click(); buildSettings(); $('settings').classList.remove('hidden'); };
   $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };
@@ -7554,7 +7747,10 @@ THREE.MeshFloorMaterial   = FloorMaterial;
     updateSkinMaterials(t);
     syncSky(dt);
     renderCoinPops(dt);
-    renderer.render(scene,camera);
+    renderFrame();
+    // dt is the whole frame -- simulation, sync and the composer -- which is
+    // what a player would feel, not the slice the renderer alone owns.
+    qualityWatch(dt, dt*1000);
     if(bannerTimer>0) bannerTimer-=dt*1000;
     $('banner').style.opacity=bannerTimer>0?1:0;
     requestAnimationFrame(loop);

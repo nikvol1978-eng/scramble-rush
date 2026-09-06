@@ -1,0 +1,108 @@
+  // ---------------------------------------------------------------- v21 §4.5
+  // The composer. Ambient occlusion is what makes the plastic sit on the floor
+  // rather than hover over it; the bloom is deliberately almost off, so only
+  // the confetti and the neon accents reach it.
+  //
+  // OutputPass is not in the brief but is not optional: once a composer is in
+  // the way, the renderer stops applying tone mapping and the output colour
+  // space itself, and without that pass the whole game comes out flat and
+  // pale. It is the last colour step, so SMAA runs after it.
+  function buildComposer(){
+    if(composer) return composer;
+    composer = new THREE.EffectComposer(renderer);
+    renderPass = new THREE.RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    gtaoPass = new THREE.GTAOPass(scene, camera, W, H);
+    gtaoPass.output = THREE.GTAOPass.OUTPUT.Default;
+    // The occlusion pass renders the scene again for depth and normals, with
+    // an override material -- which means depthWrite:false does not save the
+    // sky or the clouds from it. The sky is a box 1500 units around the
+    // camera, so the depth buffer ends up with a solid shell behind
+    // everything, and the pass duly occludes the gap between the course and
+    // that shell: a black halo around every silhouette, in the sky, whatever
+    // the radius is set to. Neither of them can cast occlusion on anything, so
+    // both step out while the pass measures. The beauty frame is already in
+    // the read buffer by then, so nothing is lost from the picture.
+    const _aoRender = gtaoPass.render.bind(gtaoPass);
+    gtaoPass.render = function(r, write, read, dt, mask){
+      const wasSky = skyDome ? skyDome.visible : false;
+      const wasCloud = cloudGroup ? cloudGroup.visible : false;
+      if(skyDome) skyDome.visible = false;
+      if(cloudGroup) cloudGroup.visible = false;
+      try { _aoRender(r, write, read, dt, mask); }
+      finally {
+        if(skyDome) skyDome.visible = wasSky;
+        if(cloudGroup) cloudGroup.visible = wasCloud;
+      }
+    };
+    composer.addPass(gtaoPass);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.15, 0.4, 0.9);
+    composer.addPass(bloomPass);
+    outputPass = new THREE.OutputPass();
+    composer.addPass(outputPass);
+    smaaPass = new THREE.SMAAPass(W, H);
+    composer.addPass(smaaPass);
+
+    // One throwaway frame, then tune. A course is hundreds of units across, so
+    // the default occlusion radius -- meant for a scene a metre wide -- finds
+    // nothing to occlude. But the parameters only take once the pass has
+    // rendered: set any earlier they leave the material half built, and every
+    // frame after comes out with the sky in black patches around each
+    // silhouette. This runs while the menu is still being set up, so the
+    // wasted frame is never seen. The sample count is left alone on purpose --
+    // setting it rewrites a #define and the program fails to validate.
+    composer.setSize(W, H);
+    composer.render();
+    gtaoPass.updateGtaoMaterial({ radius: 14, distanceExponent: 1.0,
+                                  thickness: 12, scale: 1.0 });
+    return composer;
+  }
+
+  function applyQuality(q){
+    const k = QUALITY[q] ? q : 'high';
+    qualityNow = k;
+    const s = QUALITY[k];
+    renderer.shadowMap.type = s.type === 'vsm' ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
+    if(dirLight.shadow.mapSize.x !== s.shadow){
+      dirLight.shadow.mapSize.set(s.shadow, s.shadow);
+      if(dirLight.shadow.map){ dirLight.shadow.map.dispose(); dirLight.shadow.map = null; }
+    }
+    scene.traverse(o=>{ if(o.material) o.material.needsUpdate = true; });
+    if(s.composer){
+      buildComposer();
+      gtaoPass.enabled  = s.gtao;
+      bloomPass.enabled = s.bloom;
+      smaaPass.enabled  = s.smaa;
+    }
+    return k;
+  }
+
+  // One place the whole game renders through, so the debug build and the
+  // release take exactly the same path.
+  function renderFrame(){
+    if(qualityNow === null) applyQuality(settings.quality || 'high');
+    if(composer && QUALITY[qualityNow].composer) composer.render();
+    else renderer.render(scene, camera);
+  }
+
+  function resizeComposer(w, h){
+    if(!composer) return;
+    composer.setSize(w, h);
+    if(gtaoPass)  gtaoPass.setSize(w, h);
+    if(bloomPass) bloomPass.setSize(w, h);
+    if(smaaPass)  smaaPass.setSize(w, h);
+  }
+
+  // Two seconds over 14 ms and High steps down to Medium. Once only: a machine
+  // that cannot hold High will not suddenly be able to, and a switch that
+  // flickers between two looks is worse than either of them.
+  function qualityWatch(dt, ms){
+    if(_autoDropped || qualityNow !== 'high' || state === 'menu') return;
+    _slowFor = ms > 14 ? _slowFor + dt : 0;
+    if(_slowFor > 2){
+      _autoDropped = true;
+      settings.quality = 'medium';
+      applyQuality('medium');
+      if(typeof showBanner === 'function') showBanner('GRAPHICS: MEDIUM', 1400);
+    }
+  }

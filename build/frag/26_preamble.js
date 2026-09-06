@@ -7,10 +7,22 @@
 import * as R160 from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
 const THREE = Object.assign({}, R160);
 THREE.RoomEnvironment = RoomEnvironment;
 THREE.Sky = Sky;
+THREE.EffectComposer = EffectComposer;
+THREE.RenderPass = RenderPass;
+THREE.GTAOPass = GTAOPass;
+THREE.UnrealBloomPass = UnrealBloomPass;
+THREE.OutputPass = OutputPass;
+THREE.SMAAPass = SMAAPass;
 
 // §4.2 -- everything you can touch is glossy plastic. Parameters the old
 // materials carried and this one has no use for are dropped rather than
@@ -44,4 +56,19 @@ THREE.MeshLambertMaterial = PlasticMaterial;
 THREE.MeshPhongMaterial   = PlasticMaterial;
 THREE.MeshToonMaterial    = PlasticMaterial;
 THREE.MeshFloorMaterial   = FloorMaterial;
+
+// §4.5 -- the composer's state lives out here, at module scope, rather than
+// with the functions that use it. applySettings() runs earlier in the module
+// body than the composer fragment is spliced into it, so a `let` down there is
+// still in its dead zone when the first applyQuality() call arrives.
+let composer = null, renderPass = null, gtaoPass = null, bloomPass = null,
+    outputPass = null, smaaPass = null, qualityNow = null;
+let _slowFor = 0, _autoDropped = false;
+
+const QUALITY = {
+  low:    { composer:false, shadow:1024, type:'pcf', gtao:false, bloom:false, smaa:false },
+  medium: { composer:true,  shadow:2048, type:'vsm', gtao:false, bloom:false, smaa:true  },
+  high:   { composer:true,  shadow:2048, type:'vsm', gtao:true,  bloom:true,  smaa:true  }
+};
+
 

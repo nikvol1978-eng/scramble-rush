@@ -52,11 +52,19 @@ hook = """
         updateSkinMaterials(t);
         window.__T += dt;
       }
+      // The plain renderer, not the composer: a check that steps sixty
+      // seconds of race would otherwise pay for occlusion and bloom on every
+      // one of its ticks, and none of them look at the result. Check 3c uses
+      // renderFull() below, which is the real path.
       renderer.render(scene,camera);
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
-    gfx:()=>({renderer, scene, camera, skyDome, cloudGroup, dirLight, hemi, THREE}),
+    parts:()=>({live:particles.length, group:particleGroup.children.length}),
+    renderFull:()=>{ renderFrame(); },
+    quality:(q)=>applyQuality(q),
+    gfx:()=>({renderer, scene, camera, skyDome, cloudGroup, dirLight, hemi, THREE,
+              composer, gtaoPass, bloomPass, smaaPass, outputPass, qualityNow}),
     warp:(y,x)=>{ const p=racers.find(r=>r.isPlayer); p.y=y; if(x!==undefined) p.x=x; syncCamera(true); return p.y; },
     doors:()=>obstacles.filter(o=>o.type==='doors').map(o=>({y:Math.round(o.y),
       items:o.items.map(i=>({x:Math.round(i.x), fake:i.fake, broken:i.broken}))})),
