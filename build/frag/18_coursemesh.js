@@ -35,7 +35,8 @@
     clearGroup(courseGroup);
     clearFadeables();
     const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'
-                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField')
+                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'
+                                        ||o.type==='plank')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
@@ -151,7 +152,7 @@
             placeAt(post, x, z, 8); courseGroup.add(post);
           }
         });
-      } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'){
+      } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'||o.type==='plank'){
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
       }

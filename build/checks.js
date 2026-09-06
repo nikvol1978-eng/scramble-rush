@@ -111,6 +111,7 @@
         case 'pendulum':{ const pp=pendPos(o,t); push(pp.x, o.y, o.mesh, 'pendulum'); break; }
         case 'boost':   push(o.cx, o.y, o.mesh, 'boost'); break;
         case 'discField':(o.cells||[]).forEach(c=>push(c.x, c.y, c.mesh, 'disc')); break;
+        case 'plank':   (o.planks||[]).forEach(pl=>push(pl.x, (o.yStart+o.yEnd)/2, pl.mesh, 'plank')); break;
         case 'spinlaser':push(o.cx, o.y, o.mesh, 'spinlaser'); break;
         case 'ramp':    push(o.cx, (o.yStart+o.yEnd)/2, o.mesh, 'ramp'); break;
         case 'spinbar': push(o.cx, o.y, o.mesh, 'spinbar'); break;
@@ -1422,6 +1423,50 @@
                : f.cells.length+' discs ('+f.rows+'x'+f.cols+'), carried '+swept.toFixed(2)+' rad, gap drops, arm connects' };
   }
 
+  // ---------- p: the plank bridge is narrow, and the hammer sweeps it ----------
+  // A bridge you cannot fall off is a corridor with a gap painted on it, and a
+  // hammer that never crosses the planks is scenery, so both are asserted.
+  function checkPlank(){
+    const bad = [];
+    begin('neon');
+    const b = obstacles.find(o=>o.type==='plank');
+    if(!b) return { name:'p the plank bridge is narrow, and the hammer sweeps it', pass:false,
+                    detail:'no plank bridge generated on neon' };
+    const p = player();
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+    const midY = (b.yStart + b.yEnd)/2;
+    function stand(x){
+      p.x = x; p.y = midY; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
+      p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.invuln = 9999;
+      resetLook();
+      let fell = false;
+      for(let i=0;i<8 && !fell;i++){ window.__dbg.tick(1); fell = !!p.falling; }
+      return fell;
+    }
+    // (a) each plank holds you up
+    for(const pl of b.planks) if(stand(pl.x)) bad.push('a plank at x='+Math.round(pl.x)+' does not hold you up');
+    // (b) the space between two planks does not
+    if(b.planks.length > 1){
+      const gapX = (b.planks[0].x + b.planks[1].x)/2;
+      if(!stand(gapX)) bad.push('the space between two planks is not a fall');
+    }
+    // (c) the planks really are about 2.2 bean-widths
+    const widths = b.planks.map(pl=>+(pl.w/(RADIUS*2)).toFixed(2));
+    if(widths.some(w=>w < 1.9 || w > 2.6)) bad.push('planks are '+widths.join('/')+' bean-widths, want about 2.2');
+    // (d) the hammer on the rope actually crosses the planks it hangs over
+    const pend = obstacles.find(q=>q.type==='pendulum' && q.y > b.yStart && q.y < b.yEnd);
+    if(!pend) bad.push('no hammer hangs over the bridge');
+    else {
+      let lo = 1e9, hi = -1e9;
+      for(let i=0;i<=120;i++){ const x = pendPos(pend, i*0.05).x; lo = Math.min(lo,x); hi = Math.max(hi,x); }
+      const spanned = b.planks.filter(pl=>pl.x >= lo-40 && pl.x <= hi+40).length;
+      if(spanned < 2) bad.push('the hammer only reaches '+spanned+' of '+b.planks.length+' planks ('+Math.round(lo)+'..'+Math.round(hi)+')');
+    }
+    return { name:'p the plank bridge is narrow, and the hammer sweeps it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : b.planks.length+' planks of '+widths[0]+' bean-widths, the gap between them drops you, hammer crosses them' };
+  }
+
   // ---------- 5: the bean rig ----------
   // Proportions and the small animations that make a bean read as a bean: it
   // stands about twice as tall as it is wide, its arms reach below the waist,
@@ -1830,7 +1875,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

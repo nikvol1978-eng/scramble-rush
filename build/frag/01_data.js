@@ -449,7 +449,7 @@
       { type:'pendulum', len:760, turn:+22 },
       { type:'gate',     len:640 },
       { type:'narrow',   len:780, turn:-26 },
-      { type:'beam',     len:760 },
+      { type:'plank',    len:900, planks:3 },
       { type:'fork',     len:1180 },
       { type:'spinbar',  len:820, turn:+28 },
       { type:'pendulum', len:760 },

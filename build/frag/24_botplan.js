@@ -261,6 +261,25 @@
         return best === null ? false : set(best, 0.5);
       }
 
+      case 'plank': {
+        // Pick a plank and stay on it; time the hammer the way the hammer plan
+        // does. The pendulum sits inside the bridge's own span, so it is never
+        // the "next obstacle" while a bot is on the planks -- if this did not
+        // read it, nothing would.
+        if(r.aiPlank === undefined || r.aiObsFor !== o){
+          r.aiObsFor = o;
+          r.aiPlank = o.planks[Math.floor(Math.random()*o.planks.length)].x;
+        }
+        const px = r.aiPlank;
+        const pend = obstacles.find(q=>q.type==='pendulum' && q.y > o.yStart && q.y < o.yEnd);
+        if(pend){
+          const pp = pendPos(pend, t), gapY = pend.y - r.y;
+          // hold short while the ball is over our line, then go
+          if(gapY > 30 && gapY < 170 && Math.abs(pp.x - px) < 110) return set(px, 0);
+        }
+        return set(px, Math.abs(r.x - px) > 40 ? 0.5 : 1);
+      }
+
       case 'discField': {
         // Hop disc to disc up one column. The gaps are a fall, so the order is
         // always: get on a disc, line up with the next one, hop the gap.

@@ -1236,7 +1236,7 @@
       { type:'pendulum', len:760, turn:+22 },
       { type:'gate',     len:640 },
       { type:'narrow',   len:780, turn:-26 },
-      { type:'beam',     len:760 },
+      { type:'plank',    len:900, planks:3 },
       { type:'fork',     len:1180 },
       { type:'spinbar',  len:820, turn:+28 },
       { type:'pendulum', len:760 },
@@ -2271,6 +2271,26 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='plank'){
+        // Two or three narrow planks side by side over a drop, with a hammer
+        // on a rope swinging across the middle of them. Pick a plank, time the
+        // hammer, and do not wander off the side.
+        const n = sec.planks || 3;
+        const plen = clamp(len-240, 380, 680);
+        const yStart2 = cursor + gap + 120, yEnd2 = yStart2 + plen;
+        const pw = RADIUS*2*2.2;                       // 2.2 bean-widths, per the brief
+        const spread = TRACK_W*0.60;
+        const planks = [];
+        for(let i=0;i<n;i++) planks.push({ x: cx + (n===1?0:(i-(n-1)/2)*(spread/(n-1))), w:pw });
+        obs.push({type:'plank', yStart:yStart2, yEnd:yEnd2, y0:yStart2-20, y1:yEnd2+20, planks, w:pw});
+        // the hanging hammer, reusing the pendulum that already swings and
+        // already has a bot plan and a check of its own
+        const py = (yStart2+yEnd2)/2;
+        const pArm = rand(165,205), pR = rand(30,38);
+        obs.push({type:'pendulum', y:py, cx, armLen:pArm, r:pR, pivotH:pArm+pR+4,
+                  swing: rand(0.85,1.05), speed: rand(0.9,1.3)*spd, phase: rand(0,6.28),
+                  y0:py-120, y1:py+120});
+        cursor = yEnd2 + 60;
     } else if(type==='discField'){
         // A grid of turntables over a drop, each with an arm sweeping across it
         // at knee height. Adjacent discs turn opposite ways, so the floor under
@@ -2689,7 +2709,8 @@
     clearGroup(courseGroup);
     clearFadeables();
     const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'
-                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField')
+                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'
+                                        ||o.type==='plank')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
@@ -2805,7 +2826,7 @@
             placeAt(post, x, z, 8); courseGroup.add(post);
           }
         });
-      } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'){
+      } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'||o.type==='plank'){
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
       }
@@ -3689,7 +3710,7 @@
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
@@ -3698,6 +3719,11 @@
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
         // back onto the lane of discs nearest the one they came off, not the
         // middle of the track: the middle can be a gap
+        else if(o.type==='plank'){
+          let best=null, bd=1e9;
+          for(const pl of o.planks){ const d=Math.abs(pl.x-r.x); if(d<bd){ bd=d; best=pl; } }
+          if(best) rx = best.x;
+        }
         else if(o.type==='discField'){
           let best=null, bd=1e9;
           for(const c of o.cells){ if(c.row!==0) continue; const d=Math.abs(c.x-r.x); if(d<bd){ bd=d; best=c; } }
@@ -4058,6 +4084,23 @@
         placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
+
+      } else if(o.type==='plank'){
+        const deck = look.softMat(0);
+        const edge = look.hazardMat(0);
+        for(const pl of o.planks){
+          const g = new THREE.Group();
+          const top = new THREE.Mesh(new THREE.BoxGeometry(pl.w, 14, o.yEnd-o.yStart), deck);
+          top.position.y = -7; top.receiveShadow = true; top.castShadow = true; g.add(top);
+          // a rail down each side, so the width of the plank reads from above
+          for(const sx of [-1,1]){
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(5, 9, o.yEnd-o.yStart), edge);
+            rail.position.set(sx*(pl.w/2-2), 3, 0); g.add(rail);
+          }
+          placeAt(g, pl.x, (o.yStart+o.yEnd)/2, 0);
+          courseGroup.add(g);
+          pl.mesh = g;
+        }
 
       } else if(o.type==='discField'){
         const deckMat = new THREE.MeshLambertMaterial({color:currentMap.ground});
@@ -4660,6 +4703,12 @@
           if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
         }
       }
+      const pk = obstacles.find(o=>o.type==='plank' && r.y>o.yStart && r.y<o.yEnd);
+      if(pk && r.h <= 0.5){
+        let onPlank = false;
+        for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
+        if(!onPlank){ fallDown(r); return; }
+      }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
       if(df){
         const on = discCellAt(df, r.x, r.y);
@@ -5237,6 +5286,25 @@
           if(d < bestD){ bestD = d; best = px; }
         }
         return best === null ? false : set(best, 0.5);
+      }
+
+      case 'plank': {
+        // Pick a plank and stay on it; time the hammer the way the hammer plan
+        // does. The pendulum sits inside the bridge's own span, so it is never
+        // the "next obstacle" while a bot is on the planks -- if this did not
+        // read it, nothing would.
+        if(r.aiPlank === undefined || r.aiObsFor !== o){
+          r.aiObsFor = o;
+          r.aiPlank = o.planks[Math.floor(Math.random()*o.planks.length)].x;
+        }
+        const px = r.aiPlank;
+        const pend = obstacles.find(q=>q.type==='pendulum' && q.y > o.yStart && q.y < o.yEnd);
+        if(pend){
+          const pp = pendPos(pend, t), gapY = pend.y - r.y;
+          // hold short while the ball is over our line, then go
+          if(gapY > 30 && gapY < 170 && Math.abs(pp.x - px) < 110) return set(px, 0);
+        }
+        return set(px, Math.abs(r.x - px) > 40 ? 0.5 : 1);
       }
 
       case 'discField': {

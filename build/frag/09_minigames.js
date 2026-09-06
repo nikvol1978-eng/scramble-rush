@@ -264,6 +264,23 @@
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
 
+      } else if(o.type==='plank'){
+        const deck = look.softMat(0);
+        const edge = look.hazardMat(0);
+        for(const pl of o.planks){
+          const g = new THREE.Group();
+          const top = new THREE.Mesh(new THREE.BoxGeometry(pl.w, 14, o.yEnd-o.yStart), deck);
+          top.position.y = -7; top.receiveShadow = true; top.castShadow = true; g.add(top);
+          // a rail down each side, so the width of the plank reads from above
+          for(const sx of [-1,1]){
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(5, 9, o.yEnd-o.yStart), edge);
+            rail.position.set(sx*(pl.w/2-2), 3, 0); g.add(rail);
+          }
+          placeAt(g, pl.x, (o.yStart+o.yEnd)/2, 0);
+          courseGroup.add(g);
+          pl.mesh = g;
+        }
+
       } else if(o.type==='discField'){
         const deckMat = new THREE.MeshLambertMaterial({color:currentMap.ground});
         const spokeMat = new THREE.MeshLambertMaterial({color:currentMap.groundAlt});
@@ -867,6 +884,12 @@
           r.floorH = floor.hy;
           if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
         }
+      }
+      const pk = obstacles.find(o=>o.type==='plank' && r.y>o.yStart && r.y<o.yEnd);
+      if(pk && r.h <= 0.5){
+        let onPlank = false;
+        for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
+        if(!onPlank){ fallDown(r); return; }
       }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
       if(df){

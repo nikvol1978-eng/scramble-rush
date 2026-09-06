@@ -156,6 +156,26 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='plank'){
+        // Two or three narrow planks side by side over a drop, with a hammer
+        // on a rope swinging across the middle of them. Pick a plank, time the
+        // hammer, and do not wander off the side.
+        const n = sec.planks || 3;
+        const plen = clamp(len-240, 380, 680);
+        const yStart2 = cursor + gap + 120, yEnd2 = yStart2 + plen;
+        const pw = RADIUS*2*2.2;                       // 2.2 bean-widths, per the brief
+        const spread = TRACK_W*0.60;
+        const planks = [];
+        for(let i=0;i<n;i++) planks.push({ x: cx + (n===1?0:(i-(n-1)/2)*(spread/(n-1))), w:pw });
+        obs.push({type:'plank', yStart:yStart2, yEnd:yEnd2, y0:yStart2-20, y1:yEnd2+20, planks, w:pw});
+        // the hanging hammer, reusing the pendulum that already swings and
+        // already has a bot plan and a check of its own
+        const py = (yStart2+yEnd2)/2;
+        const pArm = rand(165,205), pR = rand(30,38);
+        obs.push({type:'pendulum', y:py, cx, armLen:pArm, r:pR, pivotH:pArm+pR+4,
+                  swing: rand(0.85,1.05), speed: rand(0.9,1.3)*spd, phase: rand(0,6.28),
+                  y0:py-120, y1:py+120});
+        cursor = yEnd2 + 60;
     } else if(type==='discField'){
         // A grid of turntables over a drop, each with an arm sweeping across it
         // at knee height. Adjacent discs turn opposite ways, so the floor under
