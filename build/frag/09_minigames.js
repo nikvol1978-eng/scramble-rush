@@ -516,6 +516,23 @@
   // The line itself plus the pen you can wander in once you are over it.
   function buildFinishArea(){
     const z = trackLength;
+    // ---- a wide chequered apron running up to the arch, and on past it, so
+    // the whole finish reads as one pad rather than a line drawn on the course
+    {
+      const fin = (courseScript||[]).find(s=>s.type==='finish');
+      const runIn = fin ? Math.min(fin.len, 520) : 400;
+      const chk = checkerTexture('#ffffff', '#1a1033', 6);
+      const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
+      const span = runIn + FINISH_ZONE;
+      for(let i=0;i<segs;i++){
+        const sy = z - runIn + span*(i+0.5)/segs;
+        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
+          new THREE.MeshLambertMaterial({map:tex}));
+        plate.receiveShadow = true;
+        placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
+      }
+    }
     const line=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2.4,14),
       new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
     placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);

@@ -2374,7 +2374,29 @@
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
         const y = cursor+gap+80;
-        obs.push({type, y, y0:y-70, y1:y+70, items:lanes.map(l=>({x:cx+l+rand(-18,18), r:rand(32,42)}))});
+        // A row of pillars has to be passable. Two things could make it not:
+        // a pillar close enough to a side wall to seal the corner, and two
+        // pillars on adjacent lanes whose jitter brought them within less than
+        // a bean of each other. A racer that walks into either is held there by
+        // both sides at once -- steering out pushes it back in -- and with
+        // courses authored it is the same corner every single run. One Super
+        // Slide bot stood in one for half a minute.
+        const CLEAR = RADIUS*2 + 8;                  // a bean, and room to move
+        const raw = lanes.map(l=>({ x: cx+l+rand(-18,18), r: rand(32,42) }))
+                         .sort((a,b)=>a.x-b.x);
+        const items = [];
+        for(const q of raw){
+          const lo = q.r + RADIUS + 38, hi = TRACK_W - q.r - RADIUS - 38;
+          q.x = clamp(q.x, lo, hi);
+          const prev = items[items.length-1];
+          if(prev){
+            const need = prev.x + prev.r + CLEAR + q.r;
+            if(q.x < need) q.x = need;
+            if(q.x > hi) continue;                   // no room left: leave it out
+          }
+          items.push(q);
+        }
+        obs.push({type, y, y0:y-70, y1:y+70, items});
         cursor = y+70;
       } else if(type==='hammer'){
         const count = hard? (Math.random()<0.5?4:3) : 3;
@@ -2455,8 +2477,9 @@
                   h:46, rampLen:170, boost: rand(6.4,7.4)});
         for(let i=0;i<3;i++){
           const py = yStart2 + flen*(0.30+i*0.22);
+          const pr = rand(32,42);
           obs.push({type:'pillars', y:py, y0:py-70, y1:py+70,
-                    items:[{x: cx - risk*(TRACK_W/4) + rand(-80,80), r:rand(32,42)}]});
+                    items:[{x: clamp(cx - risk*(TRACK_W/4) + rand(-80,80), pr+RADIUS+38, TRACK_W-pr-RADIUS-38), r:pr}]});
         }
         cursor = yEnd2+160;
       } else if(type==='gate'){
@@ -2925,6 +2948,34 @@
     }
     if(cursor<endZ){ addGround(0,TRACK_W,cursor,endZ,false); addWall(0,cursor,endZ); addWall(TRACK_W,cursor,endZ); }
 
+    // ---- the start pad: a wide chequered apron with the sixteen slots on it
+    // The slots are the same arithmetic makeRacers uses to place the field, so
+    // what is painted is where the racers actually stand rather than a
+    // decoration that drifts out of step with them.
+    const startSec = (courseScript||[]).find(s=>s.type==='start');
+    if(startSec){
+      const padEnd = startSec.len;
+      const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
+      const segs = Math.max(3, Math.round(padEnd/150));
+      for(let i=0;i<segs;i++){
+        const sy = padEnd*(i+0.5)/segs;
+        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
+          new THREE.MeshLambertMaterial({map:tex}));
+        plate.receiveShadow = true;
+        placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
+      }
+      // one bay per starting slot, in the map's accent
+      const nSlots = 16;
+      const pitch = Math.min(58, (TRACK_W-80)/nSlots);
+      const bayMat = new THREE.MeshLambertMaterial({color:accents[0]});
+      for(let i=0;i<=nSlots;i++){
+        const bx = TRACK_W/2 + (i-nSlots/2)*pitch;
+        if(bx < 20 || bx > TRACK_W-20) continue;
+        const bay = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 54), bayMat);
+        placeAt(bay, bx, -34, 2.2); courseGroup.add(bay);
+      }
+    }
     // start line
     const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
@@ -4425,6 +4476,23 @@
   // The line itself plus the pen you can wander in once you are over it.
   function buildFinishArea(){
     const z = trackLength;
+    // ---- a wide chequered apron running up to the arch, and on past it, so
+    // the whole finish reads as one pad rather than a line drawn on the course
+    {
+      const fin = (courseScript||[]).find(s=>s.type==='finish');
+      const runIn = fin ? Math.min(fin.len, 520) : 400;
+      const chk = checkerTexture('#ffffff', '#1a1033', 6);
+      const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
+      const span = runIn + FINISH_ZONE;
+      for(let i=0;i<segs;i++){
+        const sy = z - runIn + span*(i+0.5)/segs;
+        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (span/segs)/90);
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (span/segs)*0.99),
+          new THREE.MeshLambertMaterial({map:tex}));
+        plate.receiveShadow = true;
+        placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
+      }
+    }
     const line=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2.4,14),
       new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
     placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);
@@ -5216,12 +5284,23 @@
   }
 
   function botAntiStall(r, dt){
+    const rest = ()=>{ r.deadT = 0; r.markY = r.y; r.markT = 0; };
     if(r.escapeT > 0){ r.escapeT -= dt; return; }
-    if(r.pitWait){ r.deadT = 0; return; }        // standing at a pit edge on purpose
-    if(Math.abs(r.vy) >= 0.3 || r.falling || r.lavaOut || r.finished
-       || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ r.deadT = 0; return; }
-    r.deadT = (r.deadT||0) + dt;
-    if(r.deadT < 2) return;
+    if(r.pitWait){ rest(); return; }              // standing at a pit edge on purpose
+    if(r.falling || r.lavaOut || r.finished
+       || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ rest(); return; }
+    // Two ways of being stuck. The first is standing still.
+    if(Math.abs(r.vy) >= 0.3) r.deadT = 0; else r.deadT = (r.deadT||0) + dt;
+    // The second is moving and getting nowhere: a bot wedged between a pillar
+    // and the side wall keeps twitching at more than 0.3 a frame, so the speed
+    // test reset itself every frame and the escape never fired. With courses
+    // authored, that corner is in the same place every run -- one Super Slide
+    // bot stood in it for 24 seconds. So also watch net progress over a window.
+    if(r.markY === undefined){ r.markY = r.y; r.markT = 0; }
+    r.markT += dt;
+    if(r.y - r.markY > 60){ r.markY = r.y; r.markT = 0; }
+    if(r.deadT < 2 && r.markT < 3.5) return;
+    r.markY = r.y; r.markT = 0;
     // Two seconds without going anywhere: jump, pick a fresh line, and throw
     // away whatever plan put us here.
     r.deadT = 0;

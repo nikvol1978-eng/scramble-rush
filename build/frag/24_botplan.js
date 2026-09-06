@@ -68,12 +68,23 @@
   }
 
   function botAntiStall(r, dt){
+    const rest = ()=>{ r.deadT = 0; r.markY = r.y; r.markT = 0; };
     if(r.escapeT > 0){ r.escapeT -= dt; return; }
-    if(r.pitWait){ r.deadT = 0; return; }        // standing at a pit edge on purpose
-    if(Math.abs(r.vy) >= 0.3 || r.falling || r.lavaOut || r.finished
-       || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ r.deadT = 0; return; }
-    r.deadT = (r.deadT||0) + dt;
-    if(r.deadT < 2) return;
+    if(r.pitWait){ rest(); return; }              // standing at a pit edge on purpose
+    if(r.falling || r.lavaOut || r.finished
+       || r.stumbleT > 0 || r.tumbleT > 0 || r.getUpT > 0){ rest(); return; }
+    // Two ways of being stuck. The first is standing still.
+    if(Math.abs(r.vy) >= 0.3) r.deadT = 0; else r.deadT = (r.deadT||0) + dt;
+    // The second is moving and getting nowhere: a bot wedged between a pillar
+    // and the side wall keeps twitching at more than 0.3 a frame, so the speed
+    // test reset itself every frame and the escape never fired. With courses
+    // authored, that corner is in the same place every run -- one Super Slide
+    // bot stood in it for 24 seconds. So also watch net progress over a window.
+    if(r.markY === undefined){ r.markY = r.y; r.markT = 0; }
+    r.markT += dt;
+    if(r.y - r.markY > 60){ r.markY = r.y; r.markT = 0; }
+    if(r.deadT < 2 && r.markT < 3.5) return;
+    r.markY = r.y; r.markT = 0;
     // Two seconds without going anywhere: jump, pick a fresh line, and throw
     // away whatever plan put us here.
     r.deadT = 0;

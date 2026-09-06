@@ -259,7 +259,29 @@
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
         const y = cursor+gap+80;
-        obs.push({type, y, y0:y-70, y1:y+70, items:lanes.map(l=>({x:cx+l+rand(-18,18), r:rand(32,42)}))});
+        // A row of pillars has to be passable. Two things could make it not:
+        // a pillar close enough to a side wall to seal the corner, and two
+        // pillars on adjacent lanes whose jitter brought them within less than
+        // a bean of each other. A racer that walks into either is held there by
+        // both sides at once -- steering out pushes it back in -- and with
+        // courses authored it is the same corner every single run. One Super
+        // Slide bot stood in one for half a minute.
+        const CLEAR = RADIUS*2 + 8;                  // a bean, and room to move
+        const raw = lanes.map(l=>({ x: cx+l+rand(-18,18), r: rand(32,42) }))
+                         .sort((a,b)=>a.x-b.x);
+        const items = [];
+        for(const q of raw){
+          const lo = q.r + RADIUS + 38, hi = TRACK_W - q.r - RADIUS - 38;
+          q.x = clamp(q.x, lo, hi);
+          const prev = items[items.length-1];
+          if(prev){
+            const need = prev.x + prev.r + CLEAR + q.r;
+            if(q.x < need) q.x = need;
+            if(q.x > hi) continue;                   // no room left: leave it out
+          }
+          items.push(q);
+        }
+        obs.push({type, y, y0:y-70, y1:y+70, items});
         cursor = y+70;
       } else if(type==='hammer'){
         const count = hard? (Math.random()<0.5?4:3) : 3;
@@ -340,8 +362,9 @@
                   h:46, rampLen:170, boost: rand(6.4,7.4)});
         for(let i=0;i<3;i++){
           const py = yStart2 + flen*(0.30+i*0.22);
+          const pr = rand(32,42);
           obs.push({type:'pillars', y:py, y0:py-70, y1:py+70,
-                    items:[{x: cx - risk*(TRACK_W/4) + rand(-80,80), r:rand(32,42)}]});
+                    items:[{x: clamp(cx - risk*(TRACK_W/4) + rand(-80,80), pr+RADIUS+38, TRACK_W-pr-RADIUS-38), r:pr}]});
         }
         cursor = yEnd2+160;
       } else if(type==='gate'){

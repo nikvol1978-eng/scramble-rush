@@ -195,6 +195,34 @@
     }
     if(cursor<endZ){ addGround(0,TRACK_W,cursor,endZ,false); addWall(0,cursor,endZ); addWall(TRACK_W,cursor,endZ); }
 
+    // ---- the start pad: a wide chequered apron with the sixteen slots on it
+    // The slots are the same arithmetic makeRacers uses to place the field, so
+    // what is painted is where the racers actually stand rather than a
+    // decoration that drifts out of step with them.
+    const startSec = (courseScript||[]).find(s=>s.type==='start');
+    if(startSec){
+      const padEnd = startSec.len;
+      const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
+      const segs = Math.max(3, Math.round(padEnd/150));
+      for(let i=0;i<segs;i++){
+        const sy = padEnd*(i+0.5)/segs;
+        const tex = chk.clone(); tex.needsUpdate = true; tex.repeat.set(4, (padEnd/segs)/90);
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
+          new THREE.MeshLambertMaterial({map:tex}));
+        plate.receiveShadow = true;
+        placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
+      }
+      // one bay per starting slot, in the map's accent
+      const nSlots = 16;
+      const pitch = Math.min(58, (TRACK_W-80)/nSlots);
+      const bayMat = new THREE.MeshLambertMaterial({color:accents[0]});
+      for(let i=0;i<=nSlots;i++){
+        const bx = TRACK_W/2 + (i-nSlots/2)*pitch;
+        if(bx < 20 || bx > TRACK_W-20) continue;
+        const bay = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 54), bayMat);
+        placeAt(bay, bx, -34, 2.2); courseGroup.add(bay);
+      }
+    }
     // start line
     const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
