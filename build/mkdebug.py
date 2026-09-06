@@ -28,6 +28,16 @@ new = ("      if(window.__forceMap){ currentMap = [...MAPS,...MINIGAMES].find(x=
 assert s.count(old) == 1, "map-pick anchor: %d" % s.count(old)
 s = s.replace(old, new)
 
+# The rAF loop re-renders from the chase camera the instant anything else has
+# finished drawing, which makes a posed shot -- the overhead flyover, a camera
+# parked on one obstacle -- impossible to capture. window.__freeze holds it.
+old = "  function loop(now){" + chr(10) + "    const dt="
+new = ("  function loop(now){" + chr(10)
+       + "    if(window.__freeze){ requestAnimationFrame(loop); return; }" + chr(10)
+       + "    const dt=")
+assert s.count(old) == 1, "loop anchor: %d" % s.count(old)
+s = s.replace(old, new)
+
 CHECKS = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "checks.js"),
                  encoding="utf-8").read()
 
