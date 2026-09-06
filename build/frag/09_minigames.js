@@ -67,6 +67,31 @@
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // Disc-field angles are derived from the clock, never accumulated, so the
+  // same instant always gives the same disc -- which is what lets a check
+  // assert where an arm is, and what keeps a multiplayer client in step.
+  function discAng(c, t){ return c.phase + t*c.speed; }
+  function discArmAng(c, t){ return c.armPhase + t*c.armSpeed; }
+  // The cell a racer is standing on, or null if they are over a gap.
+  function discCellAt(o, x, y){
+    let on = null, best = 1e9;
+    for(const c of o.cells){
+      const d = Math.hypot(x-c.x, y-c.y);
+      if(d < c.r && d < best){ best = d; on = c; }
+    }
+    return on;
+  }
+  // Is the arm about to sweep through this racer? Used by the bots to time a
+  // hop, and by the check to prove the arm can actually reach someone.
+  function discArmNear(c, x, y, t, tol){
+    const dx = x-c.x, dy = y-c.y;
+    if(Math.hypot(dx,dy) < 16) return false;              // standing on the hub
+    const a = discArmAng(c, t);
+    let d = Math.atan2(dy,dx) - a;
+    while(d > Math.PI) d -= Math.PI*2;
+    while(d < -Math.PI) d += Math.PI*2;
+    return Math.abs(d) < (tol===undefined?0.70:tol) && d*c.armSpeed > 0;
+  }
   function moverX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function logAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
   function logPos(o,t){ const a=logAngle(o,t);
@@ -238,6 +263,32 @@
         placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
+
+      } else if(o.type==='discField'){
+        const deckMat = new THREE.MeshLambertMaterial({color:currentMap.ground});
+        const spokeMat = new THREE.MeshLambertMaterial({color:currentMap.groundAlt});
+        for(const c of o.cells){
+          const g = new THREE.Group();
+          // the turning part: deck, spokes and rim all share the disc's spin
+          const spin = new THREE.Group(); g.add(spin);
+          const top = new THREE.Mesh(new THREE.CylinderGeometry(c.r, c.r*0.97, 16, 40), deckMat);
+          top.position.y = -8; top.receiveShadow = true; spin.add(top);
+          for(let i=0;i<6;i++){
+            const spoke = new THREE.Mesh(new THREE.BoxGeometry(c.r*1.90, 3, 16), spokeMat);
+            spoke.position.y = 0.6; spoke.rotation.y = i*Math.PI/6; spin.add(spoke);
+          }
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(c.r, 7, 8, 40), look.hazardMat(0));
+          rim.rotation.x = Math.PI/2; rim.position.y = 1.5; spin.add(rim);
+          // the arm turns on its own, at its own rate and the other way
+          const armPivot = new THREE.Group(); g.add(armPivot);
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
+          arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          const hub = new THREE.Mesh(new THREE.CylinderGeometry(12, 15, 30, 14), look.hazardMat(2));
+          hub.position.y = 15; g.add(hub);
+          placeAt(g, c.x, c.y, 0);
+          courseGroup.add(g);
+          c.mesh = g; c.spin = spin; c.armPivot = armPivot;
+        }
 
       } else if(o.type==='disc'){
         const g=new THREE.Group();
@@ -815,6 +866,27 @@
           r.tileLayer = floor.layer;
           r.floorH = floor.hy;
           if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
+        }
+      }
+      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
+      if(df){
+        const on = discCellAt(df, r.x, r.y);
+        // Only a fall with your feet down. You cross this section by hopping
+        // disc to disc, so a racer in the air over a gap is mid-hop, not
+        // falling -- testing it unconditionally made the row gaps uncrossable
+        // by anyone, player and bot alike.
+        if(!on){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+        // the arm is read before the disc carries the racer, or the hit test
+        // would be against a position the racer was never actually in
+        if(r.h < 26 && r.invuln <= 0 && discArmNear(on, r.x, r.y, t, 0.16)){
+          const bx = r.x-on.x, by = r.y-on.y, bd = Math.hypot(bx,by)||1;
+          sendTumbling(r, 7, bx/bd, by/bd);
+        }
+        // the floor is turning: it takes you round with it
+        const dx = r.x-on.x, dy = r.y-on.y;
+        r.x += -dy*on.speed*(1/60);
+        r.y +=  dx*on.speed*(1/60);
         }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);

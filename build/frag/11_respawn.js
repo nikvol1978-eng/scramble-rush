@@ -10,13 +10,20 @@
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
         if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
+        // back onto the lane of discs nearest the one they came off, not the
+        // middle of the track: the middle can be a gap
+        else if(o.type==='discField'){
+          let best=null, bd=1e9;
+          for(const c of o.cells){ if(c.row!==0) continue; const d=Math.abs(c.x-r.x); if(d<bd){ bd=d; best=c; } }
+          if(best) rx = best.x;
+        }
         else if(o.type==='pit' && o.platforms && o.platforms.length){
           let best = null, bestD = 1e9;
           for(const pl of o.platforms){

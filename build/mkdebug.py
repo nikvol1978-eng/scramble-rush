@@ -99,6 +99,21 @@ hook = """
     alive:()=>racers.filter(r=>!r.lavaOut).length,
     finishes:()=>racers.map(r=>({p:!!r.isPlayer, fin:!!r.finished, t:r.finished?+r.finishTime.toFixed(1):null})),
     len:()=>Math.round(trackLength),
+    centreline:(n)=>{ n=n||14; const out=[];
+      for(let i=0;i<=n;i++){ const sy=trackLength*i/n; const w=toWorld(TRACK_W/2, sy, 0);
+        out.push([Math.round(sy), Math.round(w.x), Math.round(w.y), Math.round(w.z)]); }
+      return out; },
+    overhead:()=>{ // look straight down on the whole course, for a shape shot
+      const pts=[]; for(let i=0;i<=40;i++){ const w=toWorld(TRACK_W/2, trackLength*i/40, 0); pts.push(w); }
+      let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9,sumY=0;
+      for(const w of pts){ minX=Math.min(minX,w.x); maxX=Math.max(maxX,w.x); minZ=Math.min(minZ,w.z); maxZ=Math.max(maxZ,w.z); sumY+=w.y; }
+      const cx=(minX+maxX)/2, cz=(minZ+maxZ)/2, span=Math.max(maxX-minX, maxZ-minZ)+900;
+      camera.position.set(cx, sumY/pts.length + span*0.95, cz+1);
+      camera.lookAt(cx, sumY/pts.length, cz);
+      sky.position.set(camera.position.x, 0, camera.position.z);
+      courseGroup.visible=true; racerGroup.visible=true;
+      renderer.render(scene,camera);
+      return { span:Math.round(span), widthX:Math.round(maxX-minX), depthZ:Math.round(maxZ-minZ) }; },
     rig:()=>{ const p=racers.find(r=>r.isPlayer), m=p.mesh;
       const B=o=>new THREE.Box3().setFromObject(o);
       const body=B(m.body), feet=B(m.feet[0]).union(B(m.feet[1]));

@@ -261,6 +261,42 @@
         return best === null ? false : set(best, 0.5);
       }
 
+      case 'discField': {
+        // Hop disc to disc up one column. The gaps are a fall, so the order is
+        // always: get on a disc, line up with the next one, hop the gap.
+        const cur = discCellAt(o, r.x, r.y);
+        if(!cur){
+          // over a gap -- mid-hop, or about to be short of one. Head for the
+          // nearest deck rather than pressing on into nothing.
+          let n = null, nd = 1e9;
+          for(const c of o.cells){ const d = Math.hypot(c.x-r.x, c.y-r.y); if(d < nd){ nd = d; n = c; } }
+          return n ? set(n.x, 1) : set(r.x, 1);
+        }
+        // the arm sweeping onto us is jumped, same read the player makes
+        if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
+        let goal = null, gd = 1e9;
+        for(const c of o.cells){
+          if(c.row !== cur.row + 1) continue;
+          const d = Math.abs(c.x - r.x);
+          if(d < gd){ gd = d; goal = c; }
+        }
+        if(!goal){
+          // last row: still hop, so a racer carried off-centre by the disc
+          // clears its trailing edge rather than stepping over it
+          const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+          if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
+          return set(r.x, 1);
+        }
+        // Line up first, creeping: stepping off on a diagonal is what drops a
+        // bot down the gap between two columns.
+        if(Math.abs(r.x - goal.x) > 26) return set(goal.x, 0.15);
+        // ...then hop, from the edge of the deck we are on, measured along our
+        // own line rather than through the centre.
+        const half = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+        if(r.h <= 0 && (cur.y + half) - r.y < 30) doJump(r);
+        return set(goal.x, 1);
+      }
+
       case 'gap':
         // Two wide ways round: take whichever side you are already nearer.
         const clear = 55 + (currentMap.slippery ? 50 : 0);

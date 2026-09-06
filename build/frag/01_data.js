@@ -388,6 +388,7 @@
       { type:'start',   len:700 },
       { type:'pillars', len:760, turn:+26 },
       { type:'hammer',  len:820 },
+      { type:'discField', len:1300, rows:2, cols:3 },
       { type:'pad',     len:340, turn:-30 },
       { type:'gate',    len:640 },
       { type:'bumper',  len:700, turn:+18 },
@@ -402,20 +403,23 @@
       { type:'finish',  len:580 }
     ],
     // Cannon Climb: switchbacks, and a cannon on each one. It only ever goes up.
+    // Climbing in stepped pushes -- a steep stretch, then a flat landing --
+    // rather than one even gradient. Spread evenly the whole map sat at 0.14
+    // rad, which costs about 3% of top speed: a hill you cannot feel.
     cannonc: [
       { type:'start',   len:600 },
-      { type:'cannon',  len:820, turn:+28, climb:110 },
-      { type:'narrow',  len:760, climb:100 },
-      { type:'cannon',  len:820, turn:-32, climb:110 },
-      { type:'pusher',  len:660, climb:80 },
-      { type:'narrow',  len:760, turn:+26, climb:100 },
-      { type:'cannon',  len:820, climb:110 },
-      { type:'gate',    len:600, turn:-24, climb:70 },
-      { type:'ramp',    len:760, climb:100 },
-      { type:'cannon',  len:820, turn:+22, climb:110 },
-      { type:'narrow',  len:760, turn:-26, climb:100 },
-      { type:'bumper',  len:640, climb:70 },
-      { type:'finish',  len:560, climb:50 }
+      { type:'cannon',  len:820, turn:+28, climb:200 },
+      { type:'narrow',  len:760, climb:20 },
+      { type:'cannon',  len:820, turn:-32, climb:200 },
+      { type:'pusher',  len:660, climb:20 },
+      { type:'narrow',  len:760, turn:+26, climb:20 },
+      { type:'cannon',  len:820, climb:200 },
+      { type:'gate',    len:600, turn:-24, climb:20 },
+      { type:'ramp',    len:760, climb:30 },
+      { type:'cannon',  len:820, turn:+22, climb:200 },
+      { type:'narrow',  len:760, turn:-26, climb:20 },
+      { type:'bumper',  len:640, climb:20 },
+      { type:'finish',  len:560, climb:30 }
     ],
     // Super Slide: downhill all the way, boost pads chained down it, and one
     // big sweeping turn in the middle. It only ever goes down.

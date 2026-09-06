@@ -1175,6 +1175,7 @@
       { type:'start',   len:700 },
       { type:'pillars', len:760, turn:+26 },
       { type:'hammer',  len:820 },
+      { type:'discField', len:1300, rows:2, cols:3 },
       { type:'pad',     len:340, turn:-30 },
       { type:'gate',    len:640 },
       { type:'bumper',  len:700, turn:+18 },
@@ -1189,20 +1190,23 @@
       { type:'finish',  len:580 }
     ],
     // Cannon Climb: switchbacks, and a cannon on each one. It only ever goes up.
+    // Climbing in stepped pushes -- a steep stretch, then a flat landing --
+    // rather than one even gradient. Spread evenly the whole map sat at 0.14
+    // rad, which costs about 3% of top speed: a hill you cannot feel.
     cannonc: [
       { type:'start',   len:600 },
-      { type:'cannon',  len:820, turn:+28, climb:110 },
-      { type:'narrow',  len:760, climb:100 },
-      { type:'cannon',  len:820, turn:-32, climb:110 },
-      { type:'pusher',  len:660, climb:80 },
-      { type:'narrow',  len:760, turn:+26, climb:100 },
-      { type:'cannon',  len:820, climb:110 },
-      { type:'gate',    len:600, turn:-24, climb:70 },
-      { type:'ramp',    len:760, climb:100 },
-      { type:'cannon',  len:820, turn:+22, climb:110 },
-      { type:'narrow',  len:760, turn:-26, climb:100 },
-      { type:'bumper',  len:640, climb:70 },
-      { type:'finish',  len:560, climb:50 }
+      { type:'cannon',  len:820, turn:+28, climb:200 },
+      { type:'narrow',  len:760, climb:20 },
+      { type:'cannon',  len:820, turn:-32, climb:200 },
+      { type:'pusher',  len:660, climb:20 },
+      { type:'narrow',  len:760, turn:+26, climb:20 },
+      { type:'cannon',  len:820, climb:200 },
+      { type:'gate',    len:600, turn:-24, climb:20 },
+      { type:'ramp',    len:760, climb:30 },
+      { type:'cannon',  len:820, turn:+22, climb:200 },
+      { type:'narrow',  len:760, turn:-26, climb:20 },
+      { type:'bumper',  len:640, climb:20 },
+      { type:'finish',  len:560, climb:30 }
     ],
     // Super Slide: downhill all the way, boost pads chained down it, and one
     // big sweeping turn in the middle. It only ever goes down.
@@ -2267,6 +2271,29 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='discField'){
+        // A grid of turntables over a drop, each with an arm sweeping across it
+        // at knee height. Adjacent discs turn opposite ways, so the floor under
+        // you reverses every time you hop; the gaps between them are a fall.
+        const cols = sec.cols||3, rows = sec.rows||2;
+        const spacing = TRACK_W/cols;
+        const dr = spacing*0.44;
+        const rowD = dr*2.30;
+        const yStart2 = cursor + gap + Math.max(50, (len - rows*rowD)/2);
+        const cells = [];
+        for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
+          const flip = ((ri+ci) % 2) ? -1 : 1;
+          cells.push({ row:ri, col:ci, x: ci*spacing + spacing/2, y: yStart2 + ri*rowD + dr, r: dr,
+                       phase: rand(0,6.28),    speed: flip*rand(0.30,0.50)*spd,
+                       armPhase: rand(0,6.28), armSpeed: -flip*rand(0.55,0.85)*spd });
+        }
+        // ...ending at the trailing edge of the last row, not a whole rowD
+        // past it: the gaps BETWEEN rows are the section, and a further gap on
+        // the way out is just an unsignalled pit that everyone walks into.
+        const yEnd2 = yStart2 + (rows-1)*rowD + 2*dr;
+        obs.push({type:'discField', yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
+                  cols, rows, r:dr, cells});
+        cursor = yEnd2 + 60;
     } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
@@ -2662,7 +2689,7 @@
     clearGroup(courseGroup);
     clearFadeables();
     const specials = obstacles.filter(o=>o.type==='pit'||o.type==='narrow'||o.type==='tilefield'||o.type==='hexfield'
-                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap')
+                                        ||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField')
                               .sort((a,b)=>a.yStart-b.yStart);
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
@@ -2778,7 +2805,7 @@
             placeAt(post, x, z, 8); courseGroup.add(post);
           }
         });
-      } else if(o.type==='tilefield'||o.type==='hexfield'){
+      } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'){
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
       }
@@ -2902,7 +2929,14 @@
           it.mesh.mace.position.set(hx,hy,hz); it.mesh.mace.rotation.y=t*2; it.mesh.maceOut.position.set(hx,hy,hz); it.mesh.maceOut.rotation.y=t*2;
           orientBetween(it.mesh.rod,pv.x,pv.y,pv.z,hx,hy,hz);
         }
-      } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
+      } else if(o.type==='discField'){
+        for(const c of o.cells){
+          if(!c.mesh) continue;
+          c.spin.rotation.y = discAng(c,t);
+          c.armPivot.rotation.y = discArmAng(c,t);
+        }
+      }
+      else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
       else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ placeAt(m, platX(o.platforms[i],t), (o.yStart+o.yEnd)/2, -6); }); }
       else if(o.type==='crumble'){
         if(o.meshes) o.meshes.forEach((m,i)=>{
@@ -3655,13 +3689,20 @@
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
         if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
+        // back onto the lane of discs nearest the one they came off, not the
+        // middle of the track: the middle can be a gap
+        else if(o.type==='discField'){
+          let best=null, bd=1e9;
+          for(const c of o.cells){ if(c.row!==0) continue; const d=Math.abs(c.x-r.x); if(d<bd){ bd=d; best=c; } }
+          if(best) rx = best.x;
+        }
         else if(o.type==='pit' && o.platforms && o.platforms.length){
           let best = null, bestD = 1e9;
           for(const pl of o.platforms){
@@ -3821,6 +3862,31 @@
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // Disc-field angles are derived from the clock, never accumulated, so the
+  // same instant always gives the same disc -- which is what lets a check
+  // assert where an arm is, and what keeps a multiplayer client in step.
+  function discAng(c, t){ return c.phase + t*c.speed; }
+  function discArmAng(c, t){ return c.armPhase + t*c.armSpeed; }
+  // The cell a racer is standing on, or null if they are over a gap.
+  function discCellAt(o, x, y){
+    let on = null, best = 1e9;
+    for(const c of o.cells){
+      const d = Math.hypot(x-c.x, y-c.y);
+      if(d < c.r && d < best){ best = d; on = c; }
+    }
+    return on;
+  }
+  // Is the arm about to sweep through this racer? Used by the bots to time a
+  // hop, and by the check to prove the arm can actually reach someone.
+  function discArmNear(c, x, y, t, tol){
+    const dx = x-c.x, dy = y-c.y;
+    if(Math.hypot(dx,dy) < 16) return false;              // standing on the hub
+    const a = discArmAng(c, t);
+    let d = Math.atan2(dy,dx) - a;
+    while(d > Math.PI) d -= Math.PI*2;
+    while(d < -Math.PI) d += Math.PI*2;
+    return Math.abs(d) < (tol===undefined?0.70:tol) && d*c.armSpeed > 0;
+  }
   function moverX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function logAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
   function logPos(o,t){ const a=logAngle(o,t);
@@ -3992,6 +4058,32 @@
         placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
+
+      } else if(o.type==='discField'){
+        const deckMat = new THREE.MeshLambertMaterial({color:currentMap.ground});
+        const spokeMat = new THREE.MeshLambertMaterial({color:currentMap.groundAlt});
+        for(const c of o.cells){
+          const g = new THREE.Group();
+          // the turning part: deck, spokes and rim all share the disc's spin
+          const spin = new THREE.Group(); g.add(spin);
+          const top = new THREE.Mesh(new THREE.CylinderGeometry(c.r, c.r*0.97, 16, 40), deckMat);
+          top.position.y = -8; top.receiveShadow = true; spin.add(top);
+          for(let i=0;i<6;i++){
+            const spoke = new THREE.Mesh(new THREE.BoxGeometry(c.r*1.90, 3, 16), spokeMat);
+            spoke.position.y = 0.6; spoke.rotation.y = i*Math.PI/6; spin.add(spoke);
+          }
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(c.r, 7, 8, 40), look.hazardMat(0));
+          rim.rotation.x = Math.PI/2; rim.position.y = 1.5; spin.add(rim);
+          // the arm turns on its own, at its own rate and the other way
+          const armPivot = new THREE.Group(); g.add(armPivot);
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(c.r*0.94, 16, 14), look.stripeMat(1));
+          arm.position.set(c.r*0.47, 14, 0); arm.castShadow = true; armPivot.add(arm);
+          const hub = new THREE.Mesh(new THREE.CylinderGeometry(12, 15, 30, 14), look.hazardMat(2));
+          hub.position.y = 15; g.add(hub);
+          placeAt(g, c.x, c.y, 0);
+          courseGroup.add(g);
+          c.mesh = g; c.spin = spin; c.armPivot = armPivot;
+        }
 
       } else if(o.type==='disc'){
         const g=new THREE.Group();
@@ -4568,6 +4660,27 @@
           if(!floor.touched){ floor.touched = true; floor.fuse = field.fuseByLayer[floor.layer]; }
         }
       }
+      const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart && r.y<o.yEnd);
+      if(df){
+        const on = discCellAt(df, r.x, r.y);
+        // Only a fall with your feet down. You cross this section by hopping
+        // disc to disc, so a racer in the air over a gap is mid-hop, not
+        // falling -- testing it unconditionally made the row gaps uncrossable
+        // by anyone, player and bot alike.
+        if(!on){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+        // the arm is read before the disc carries the racer, or the hit test
+        // would be against a position the racer was never actually in
+        if(r.h < 26 && r.invuln <= 0 && discArmNear(on, r.x, r.y, t, 0.16)){
+          const bx = r.x-on.x, by = r.y-on.y, bd = Math.hypot(bx,by)||1;
+          sendTumbling(r, 7, bx/bd, by/bd);
+        }
+        // the floor is turning: it takes you round with it
+        const dx = r.x-on.x, dy = r.y-on.y;
+        r.x += -dy*on.speed*(1/60);
+        r.y +=  dx*on.speed*(1/60);
+        }
+      }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
       if(gp && Math.abs(r.x-gp.cx) < gp.halfWidth - RADIUS*0.35){ fallDown(r); return; }
       const gems = obstacles.find(o=>o.type==='gems');
@@ -5124,6 +5237,42 @@
           if(d < bestD){ bestD = d; best = px; }
         }
         return best === null ? false : set(best, 0.5);
+      }
+
+      case 'discField': {
+        // Hop disc to disc up one column. The gaps are a fall, so the order is
+        // always: get on a disc, line up with the next one, hop the gap.
+        const cur = discCellAt(o, r.x, r.y);
+        if(!cur){
+          // over a gap -- mid-hop, or about to be short of one. Head for the
+          // nearest deck rather than pressing on into nothing.
+          let n = null, nd = 1e9;
+          for(const c of o.cells){ const d = Math.hypot(c.x-r.x, c.y-r.y); if(d < nd){ nd = d; n = c; } }
+          return n ? set(n.x, 1) : set(r.x, 1);
+        }
+        // the arm sweeping onto us is jumped, same read the player makes
+        if(r.h <= 0 && r.stumbleT <= 0 && discArmNear(cur, r.x, r.y, t, 0.34)) doJump(r);
+        let goal = null, gd = 1e9;
+        for(const c of o.cells){
+          if(c.row !== cur.row + 1) continue;
+          const d = Math.abs(c.x - r.x);
+          if(d < gd){ gd = d; goal = c; }
+        }
+        if(!goal){
+          // last row: still hop, so a racer carried off-centre by the disc
+          // clears its trailing edge rather than stepping over it
+          const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+          if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
+          return set(r.x, 1);
+        }
+        // Line up first, creeping: stepping off on a diagonal is what drops a
+        // bot down the gap between two columns.
+        if(Math.abs(r.x - goal.x) > 26) return set(goal.x, 0.15);
+        // ...then hop, from the edge of the deck we are on, measured along our
+        // own line rather than through the centre.
+        const half = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
+        if(r.h <= 0 && (cur.y + half) - r.y < 30) doJump(r);
+        return set(goal.x, 1);
       }
 
       case 'gap':

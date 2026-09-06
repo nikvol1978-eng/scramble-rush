@@ -156,6 +156,29 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='discField'){
+        // A grid of turntables over a drop, each with an arm sweeping across it
+        // at knee height. Adjacent discs turn opposite ways, so the floor under
+        // you reverses every time you hop; the gaps between them are a fall.
+        const cols = sec.cols||3, rows = sec.rows||2;
+        const spacing = TRACK_W/cols;
+        const dr = spacing*0.44;
+        const rowD = dr*2.30;
+        const yStart2 = cursor + gap + Math.max(50, (len - rows*rowD)/2);
+        const cells = [];
+        for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
+          const flip = ((ri+ci) % 2) ? -1 : 1;
+          cells.push({ row:ri, col:ci, x: ci*spacing + spacing/2, y: yStart2 + ri*rowD + dr, r: dr,
+                       phase: rand(0,6.28),    speed: flip*rand(0.30,0.50)*spd,
+                       armPhase: rand(0,6.28), armSpeed: -flip*rand(0.55,0.85)*spd });
+        }
+        // ...ending at the trailing edge of the last row, not a whole rowD
+        // past it: the gaps BETWEEN rows are the section, and a further gap on
+        // the way out is just an unsignalled pit that everyone walks into.
+        const yEnd2 = yStart2 + (rows-1)*rowD + 2*dr;
+        obs.push({type:'discField', yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
+                  cols, rows, r:dr, cells});
+        cursor = yEnd2 + 60;
     } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);

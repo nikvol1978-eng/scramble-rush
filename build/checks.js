@@ -110,6 +110,7 @@
         case 'laserbar':push(TRACK_W/2, laserY(o,t), o.mesh, 'laserbar'); break;
         case 'pendulum':{ const pp=pendPos(o,t); push(pp.x, o.y, o.mesh, 'pendulum'); break; }
         case 'boost':   push(o.cx, o.y, o.mesh, 'boost'); break;
+        case 'discField':(o.cells||[]).forEach(c=>push(c.x, c.y, c.mesh, 'disc')); break;
         case 'spinlaser':push(o.cx, o.y, o.mesh, 'spinlaser'); break;
         case 'ramp':    push(o.cx, (o.yStart+o.yEnd)/2, o.mesh, 'ramp'); break;
         case 'spinbar': push(o.cx, o.y, o.mesh, 'spinbar'); break;
@@ -1347,6 +1348,80 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- d: the disc field turns, carries, drops and sweeps ----------
+  // Four separate things have to be true, because three of them can be broken
+  // without the fourth noticing: the discs turn, a racer standing on one is
+  // carried round by it, the gaps between them are a fall, and the arm can
+  // actually reach someone standing on the deck.
+  function checkDiscField(){
+    const bad = [];
+    begin('sunny');
+    const f = obstacles.find(o=>o.type==='discField');
+    if(!f) return { name:'d the disc field turns, carries, drops and sweeps', pass:false,
+                    detail:'no disc field generated on sunny' };
+    const p = player();
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+
+    // (a) the discs turn, and neighbours turn opposite ways
+    const t0 = window.__T || 0;
+    const a0 = f.cells.map(c=>discAng(c, t0));
+    window.__dbg.tick(30);
+    const t1 = window.__T || 0;
+    const moved = f.cells.filter((c,i)=>Math.abs(discAng(c,t1)-a0[i]) > 0.05).length;
+    if(moved < f.cells.length) bad.push((f.cells.length-moved)+' of '+f.cells.length+' discs never turned');
+    const c00 = f.cells.find(c=>c.row===0 && c.col===0);
+    const c01 = f.cells.find(c=>c.row===0 && c.col===1);
+    if(c00 && c01 && Math.sign(c00.speed) === Math.sign(c01.speed))
+      bad.push('neighbouring discs turn the same way');
+
+    // (b) standing off-centre on a disc, the floor carries you round it
+    const cell = f.cells.find(c=>c.row===0 && c.col===1) || f.cells[0];
+    function place(x, y){
+      p.x = x; p.y = y; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
+      p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.invuln = 9999;
+      resetLook();
+    }
+    place(cell.x + cell.r*0.55, cell.y);
+    const bx0 = Math.atan2(p.y-cell.y, p.x-cell.x);
+    window.__dbg.hold('w', false);
+    for(let i=0;i<24 && !p.falling;i++) window.__dbg.tick(1);
+    const bx1 = Math.atan2(p.y-cell.y, p.x-cell.x);
+    let swept = bx1-bx0; while(swept>Math.PI) swept-=Math.PI*2; while(swept<-Math.PI) swept+=Math.PI*2;
+    if(Math.abs(swept) < 0.06) bad.push('the turning disc did not carry the racer round it ('+swept.toFixed(3)+' rad)');
+    if(Math.sign(swept) !== Math.sign(cell.speed) && Math.abs(swept) > 0.01)
+      bad.push('the disc carried the racer against its own rotation');
+
+    // (c) the gap between two discs is a fall
+    const cA = f.cells.find(c=>c.row===0 && c.col===0), cB = f.cells.find(c=>c.row===0 && c.col===1);
+    let fell = false;
+    if(cA && cB){
+      place((cA.x+cB.x)/2, cA.y);
+      p.invuln = 0;
+      for(let i=0;i<10 && !fell;i++){ window.__dbg.tick(1); fell = !!p.falling; }
+      if(!fell) bad.push('standing in the gap between two discs is not a fall');
+    }
+
+    // (d) the arm sweeps the deck. Standing at a fixed bearing and waiting for
+    // the arm to come round is a coin flip on its phase, so stand a little
+    // AHEAD of the arm -- outside the hit tolerance -- and let it close: that
+    // tests the arm travels onto a racer rather than that it happens to start
+    // on one.
+    let hit = false, gapRad = 0;
+    for(let attempt=0; attempt<4 && !hit; attempt++){
+      const a = discArmAng(cell, window.__T || 0);
+      gapRad = 0.30 * Math.sign(cell.armSpeed || 1);
+      const b = a + gapRad;
+      place(cell.x + Math.cos(b)*cell.r*0.62, cell.y + Math.sin(b)*cell.r*0.62);
+      p.invuln = 0; p.__tumbles = 0;
+      for(let i=0;i<20 && !hit;i++){ window.__dbg.tick(1); hit = (p.tumbleT||0) > 0; }
+    }
+    if(!hit) bad.push('the arm never closed on a racer standing 0.30 rad ahead of it');
+
+    return { name:'d the disc field turns, carries, drops and sweeps', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : f.cells.length+' discs ('+f.rows+'x'+f.cols+'), carried '+swept.toFixed(2)+' rad, gap drops, arm connects' };
+  }
+
   // ---------- 5: the bean rig ----------
   // Proportions and the small animations that make a bean read as a bean: it
   // stands about twice as tall as it is wide, its arms reach below the waist,
@@ -1755,7 +1830,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

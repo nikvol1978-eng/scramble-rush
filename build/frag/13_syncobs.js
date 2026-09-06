@@ -7,7 +7,14 @@
           it.mesh.mace.position.set(hx,hy,hz); it.mesh.mace.rotation.y=t*2; it.mesh.maceOut.position.set(hx,hy,hz); it.mesh.maceOut.rotation.y=t*2;
           orientBetween(it.mesh.rod,pv.x,pv.y,pv.z,hx,hy,hz);
         }
-      } else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
+      } else if(o.type==='discField'){
+        for(const c of o.cells){
+          if(!c.mesh) continue;
+          c.spin.rotation.y = discAng(c,t);
+          c.armPivot.rotation.y = discArmAng(c,t);
+        }
+      }
+      else if(o.type==='spinbar'){ o.mesh.rotation.y=spinAngle(o,t)+pathAngle(o.y); }
       else if(o.type==='pit'){ o.platformMeshes.forEach((m,i)=>{ placeAt(m, platX(o.platforms[i],t), (o.yStart+o.yEnd)/2, -6); }); }
       //<<shelved:sync-mover>>
       else if(o.type==='crumble'){
