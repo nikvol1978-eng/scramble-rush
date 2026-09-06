@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 20
+VERSION = 21
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -99,6 +99,23 @@ hook = """
     alive:()=>racers.filter(r=>!r.lavaOut).length,
     finishes:()=>racers.map(r=>({p:!!r.isPlayer, fin:!!r.finished, t:r.finished?+r.finishTime.toFixed(1):null})),
     len:()=>Math.round(trackLength),
+    rig:()=>{ const p=racers.find(r=>r.isPlayer), m=p.mesh;
+      const B=o=>new THREE.Box3().setFromObject(o);
+      const body=B(m.body), feet=B(m.feet[0]).union(B(m.feet[1]));
+      return { h:+(body.max.y-feet.min.y).toFixed(2), w:+(body.max.x-body.min.x).toFixed(2),
+        wz:+(body.max.z-body.min.z).toFixed(2),
+        ratio:+((body.max.y-feet.min.y)/(body.max.x-body.min.x)).toFixed(3),
+        scale:[+m.group.scale.x.toFixed(3),+m.group.scale.y.toFixed(3),+m.group.scale.z.toFixed(3)],
+        rotY:+m.group.rotation.y.toFixed(3), tiltX:+m.tilt.rotation.x.toFixed(3),
+        landT:Math.round(p.landT||0), stretchT:Math.round(p.stretchT||0), squash:+(p.squash||0).toFixed(2),
+        h_:+p.h.toFixed(2), vh:+p.vh.toFixed(2), floorH:Math.round(p.floorH||0) }; },
+    course:()=>{ let mx=0; for(let i=0;i<=60;i++) mx=Math.max(mx, Math.abs(pathAngle(trackLength*i/60)));
+      const big=(courseScript||[]).filter(s=>Math.abs(s.turn||0)>=25).length;
+      return { map:currentMap.key, len:Math.round(trackLength), sections:(courseScript||[]).length,
+        types:[...new Set((courseScript||[]).map(s=>s.type))], bigTurns:big,
+        maxHeadingDeg:+(mx*180/Math.PI).toFixed(0),
+        h0:Math.round(pathHeight(0)), h1:Math.round(pathHeight(trackLength)),
+        script:(courseScript||[]).map(s=>s.type+':'+s.len+(s.turn?('t'+s.turn):'')+(s.climb?('c'+s.climb):'')+(s.drop?('d'+s.drop):'')) }; },
     platsNow:()=>obstacles.filter(o=>o.type==='pit').map(o=>({y0:Math.round(o.y0), xs:o.platforms.map(p=>Math.round(platX(p,obsTime(window.__T||0)))), raw:o.platforms.map(p=>Math.round(platX(p,window.__T||0)))})),
     renderMs:(n)=>{ n=n||30; renderer.render(scene,camera); const t0=performance.now(); for(let i=0;i<n;i++) renderer.render(scene,camera); renderer.getContext().finish(); return +((performance.now()-t0)/n).toFixed(2); },
     shadows:(on)=>{ settings.shadows=!!on; applySettings(); return settings.shadows; },

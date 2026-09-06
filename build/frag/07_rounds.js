@@ -119,7 +119,10 @@
     }
     obstacles=genCourse(n);
     // genCourse fixes trackLength, and the path table has to span it
-    setCoursePath(currentMap.path ? COURSE_PATHS[currentMap.path] : null, trackLength);
+    // An authored course carries its own bends, section by section; the old
+    // whole-course path shapes stay for the arenas, which have no script.
+    setCoursePath(courseScript ? scriptPathSpec(courseScript)
+                               : (currentMap.path ? COURSE_PATHS[currentMap.path] : null), trackLength);
     boulders=[]; lasers=[]; shots=[];
     lavaZ = currentMap.mode==='lava' ? -320 : 0;
     timeLimit = n===1?60 : n===2?55 : 50;

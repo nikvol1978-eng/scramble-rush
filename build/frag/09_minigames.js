@@ -58,6 +58,15 @@
   // Closing Circle and Carousel are a platform in the void: the track's side
   // walls do not exist there, and clamping to them made the edge unreachable.
   function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'; }
+  // How high a racer's feet are above the COURSE surface, not above whatever
+  // they happen to be standing on. A hazard bolted to the floor -- a pusher, a
+  // spin bar, a bumper, a boost pad -- has to be measured against this: a racer
+  // up on the shortcut catwalk has r.h = 0 with r.floorH = 46, and on the old
+  // r.h test a floor-level pusher swept straight through the catwalk and
+  // knocked the rider off it. Authored courses put the shortcut's companion
+  // pusher in the same place every run, which turned that into check Q failing
+  // half the time instead of once in a while.
+  function surfaceH(r){ return (r.floorH||0) + r.h; }
   function moverX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function logAngle(o,t){ return Math.sin(t*o.speed+o.phase)*o.swing; }
   function logPos(o,t){ const a=logAngle(o,t);
@@ -927,7 +936,7 @@
       } else if(o.type==='bumper'){
         for(const it of o.items){
           const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
-          if(d < it.r+RADIUS-2 && r.h < 46){
+          if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
             const nx=dx/(d||1), ny=dy/(d||1);
             r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
             // pinball: fling outward, harder the faster you hit it
@@ -942,7 +951,7 @@
         }
 
       } else if(o.type==='boost'){
-        if(r.h < 30 && Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-o.cx) < o.w/2 + RADIUS - 8){
+        if(surfaceH(r) < 30 && Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-o.cx) < o.w/2 + RADIUS - 8){
           // a speed floor rather than an impulse, so it does not depend on frame rate
           if(r.vy < o.power) r.vy = o.power;
           if(r.isPlayer && Math.random()<0.30) spawnBurst3D(r.x,r.y,0xffd54f,3);
@@ -977,7 +986,7 @@
       } else if(o.type==='spinbar'){
         // The mesh spins via rotation.y, which sends local +X to world (cos a, 0, -sin a).
         // The collision segment has to use that same -sin, or the hitbox is mirrored in Z.
-        if(r.h<33 && Math.abs(r.y-o.y)<o.length/2+30){
+        if(surfaceH(r)<33 && Math.abs(r.y-o.y)<o.length/2+30){
           const ang=spinAngle(o,t);
           const dx=Math.cos(ang)*o.length/2, dy=-Math.sin(ang)*o.length/2;
           const d=segPointDist(o.cx-dx,o.y-dy,o.cx+dx,o.y+dy,r.x,r.y);
@@ -990,7 +999,7 @@
         }
 
       } else if(o.type==='pusher'){
-        if(r.h<30 && Math.abs(r.y-o.y)<o.d/2+RADIUS){
+        if(surfaceH(r)<30 && Math.abs(r.y-o.y)<o.d/2+RADIUS){
           for(const it of o.items){
             const px=platX(it,t);
             if(Math.abs(r.x-px)<it.width/2+RADIUS-4){

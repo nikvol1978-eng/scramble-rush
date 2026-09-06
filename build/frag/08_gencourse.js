@@ -12,8 +12,7 @@
     // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
     // crumbling bridge at y=560: anyone walking straight was stopped dead and
     // the camera clipped into the void wall behind them.
-    const obs=[]; let cursor=640; let last='';
-    const LANES=[-200,-100,0,100,200];
+    const obs=[];
 
     // ---- TILE TRAP: a crumbling floor that rebuilds behind you ----
     if(mode==='tiles'){
@@ -105,38 +104,67 @@
     }
 
     //<<shelved:gencourse-boulder>>
-    // ---- NORMAL COURSE — each map draws from its own obstacle set ----
-    // One hazard is reserved before anything else is placed: a hole down the
-    // middle with both sides open. Hunting for a slot afterwards either found
-    // none (and a hold-forward player walked the map) or dropped it on top of a
-    // gate (and the field collected fifty falls).
-    // Only where the course does not already punish a straight line by itself.
-    const wantGap = currentMap.forcedGap !== false;
-    const gapY = Math.round(total*0.42), gapLen = 280, gapPad = 170;
-    if(wantGap)
-      obs.push({type:'gap', yStart:gapY, yEnd:gapY+gapLen, y0:gapY, y1:gapY+gapLen, cx,
-                halfWidth: (hard? rand(112,132): rand(104,126)) * (currentMap.slippery ? 0.72 : 1)});
+    // ---- AUTHORED COURSE — the map's own script, section by section ----
+    // v21. Until now a course was a random draw from the map's obstacle list at
+    // a uniform gap, so every run of Sunny Sprint felt like every other run and
+    // like every other map. Now each map has a script: an ordered list of
+    // sections, each with a type, a length, and its own turn and climb. The
+    // order and the shape are the same every time, so a course can be learned.
+    // What stays random lives inside a section -- obstacle phases, which lane a
+    // hole is in, which door is fake, small offsets.
+    const script = scaleScript(COURSE_SCRIPTS[currentMap.key] || COURSE_SCRIPTS._default, total);
+    courseScript = script;
+    const ctx = { cx, hard, spd, obs, biasN:0, biasSign: Math.random()<0.5 ? -1 : 1 };
+    let sy = 0;
+    for(const sec of script){ buildSection(sec, sy, sy + sec.len, ctx); sy += sec.len; }
+    // The line sits at the end of the last section; FINISH_ZONE is the pen past it.
+    trackLength = sy;
+    obs.sort((a,b)=>a.y0-b.y0);
+    return obs;
+  }
 
-    const types = (currentMap.obstacles && currentMap.obstacles.length)
-      ? currentMap.obstacles
-      : ['pillars','hammer','spinbar','pit','narrow','pusher'];
-    while(cursor < total-450){
-      // step over the reserved band rather than building into it
-      if(wantGap && cursor > gapY-gapPad-240 && cursor < gapY+gapLen+gapPad) cursor = gapY+gapLen+gapPad;
-      let type, guard=0;
-      do{ type=pick(types); guard++; }while(guard<20 && (type===last || (type==='narrow'&&last==='pit') || (type==='pit'&&last==='narrow')));
-      last=type;
-      const gap = rand(60,120);
-      const placedFrom = obs.length, cursorWas = cursor;
-      if(type==='pillars'){
+  // Sections are written at the map's natural size. A shorter round scales the
+  // whole script rather than dropping sections, so round 2 is the same course
+  // in the same order, just tighter -- which is the point of authoring it.
+  function scaleScript(sections, total){
+    const natural = sections.reduce((a,s)=>a+s.len, 0) || 1;
+    const k = total/natural;
+    return sections.map(s=>Object.assign({}, s, { len: Math.max(120, Math.round(s.len*k)) }));
+  }
+
+  // ---- section builders ----
+  // Each one fills [yStart, yEnd) with its own furniture. Anything it does not
+  // use is clear ground, which is how the script controls pacing: a section is
+  // as long as the script says, not as long as its obstacle happens to be.
+  function buildSection(sec, yStart, yEnd, ctx){
+    const { cx, hard, spd, obs } = ctx;
+    const type = sec.type;
+    const len  = yEnd - yStart;
+    const LANES = [-200,-100,0,100,200];
+    // The legacy bodies below were written against a running cursor and a gap
+    // between obstacles. The script owns both now, so the cursor starts at the
+    // section and the gap is nothing.
+    let cursor = yStart;
+    const gap = 0;
+
+    if(type==='start' || type==='pad' || type==='finish'){
+      return;                                   // clear ground; the mesh builder dresses it
+    } else if(type==='gap'){
+      // A hole down the middle with both sides open: the one hazard a player
+      // who only holds forward cannot walk through.
+      const hw = (hard? rand(112,132): rand(104,126)) * (currentMap.slippery ? 0.72 : 1);
+      const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
+      obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
+      return;
+    } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
-        const y = cursor+gap+60;
+        const y = cursor+gap+80;
         obs.push({type, y, y0:y-70, y1:y+70, items:lanes.map(l=>({x:cx+l+rand(-18,18), r:rand(32,42)}))});
         cursor = y+70;
       } else if(type==='hammer'){
         const count = hard? (Math.random()<0.5?4:3) : 3;
-        const y = cursor+gap+80, band=130;
+        const y = cursor+gap+120, band=130;
         const items=[]; const span=620;
         for(let i=0;i<count;i++){
           const px = cx + (i-(count-1)/2)*(span/(count-1));
@@ -145,13 +173,13 @@
         obs.push({type,y,band,y0:y-band/2-RADIUS, y1:y+band/2+RADIUS, items});
         cursor = y+band/2+40;
       } else if(type==='spinbar'){
-        const length = rand(450,580);
-        const y = cursor+gap+length/2+20;
+        const length = clamp(len-160, 420, 620);
+        const y = cursor+gap+length/2+40;
         obs.push({type,y,cx,length,speed:rand(1.1,1.7)*spd*(Math.random()<0.5?-1:1), phase:rand(0,6.28), thickness:34, y0:y-length/2-20, y1:y+length/2+20});
         cursor = y+length/2+20;
       } else if(type==='pit'){
-        const len = rand(220,300);
-        const yStart = cursor+gap+80, yEnd=yStart+len;
+        const plen = clamp(len-180, 220, 340);
+        const yStart2 = cursor+gap+90, yEnd2=yStart2+plen;
         const count = hard? 2 : (Math.random()<0.5?2:3);
         const width = (hard? rand(85,105): rand(100,125));
         const platforms=[];
@@ -159,18 +187,32 @@
           const base = cx + (i-(count-1)/2)*(count===2?220:230);
           platforms.push({baseX:base, amp:rand(100,160), speed:rand(0.8,1.3)*spd, phase:rand(0,6.28), width});
         }
-        obs.push({type,yStart,yEnd,y0:yStart,y1:yEnd,platforms});
-        cursor = yEnd+40;
+        obs.push({type,yStart:yStart2,yEnd:yEnd2,y0:yStart2,y1:yEnd2,platforms});
+        cursor = yEnd2+40;
       } else if(type==='narrow'){
-        const len=rand(320,460);
-        const yStart=cursor+gap+60, yEnd=yStart+len;
+        const nlen = clamp(len-140, 300, 520);
+        const yStart2=cursor+gap+70, yEnd2=yStart2+nlen;
         const icy = currentMap.slippery ? 1.4 : 1;
-        obs.push({type,yStart,yEnd,y0:yStart,y1:yEnd,
-                  halfWidth: (hard? rand(52,66): rand(60,78))*icy,
-                  offset: rand(-70,70)*(currentMap.slippery?0.6:1)});
-        cursor=yEnd+30;
+        const halfWidth = (hard? rand(52,66): rand(60,78))*icy;
+        // How far off the centre line the channel sits. Left to the old
+        // +-70 (halved on ice) the channel always still covered the middle of
+        // the track, so a racer holding forward walked every narrow on Super
+        // Slide without steering once. A section can now ask for a real bias;
+        // the side is still a coin flip, so the shape is learnable and the
+        // detail is not memorised.
+        // Biased channels alternate sides down the course. Left to a coin flip
+        // per section, two in a row landed on the same side often enough that a
+        // racer respawning into the first channel was already lined up for the
+        // second and walked it -- so the section that is supposed to make you
+        // steer did nothing. The first side is still random, so which way you
+        // are sent varies; the alternation is what makes it a test every time.
+        const offset = sec.bias
+          ? ctx.biasSign * (ctx.biasN++ % 2 ? -1 : 1) * rand(sec.bias*0.85, sec.bias*1.15)
+          : rand(-70,70)*(currentMap.slippery?0.6:1);
+        obs.push({type,yStart:yStart2,yEnd:yEnd2,y0:yStart2,y1:yEnd2, halfWidth, offset});
+        cursor=yEnd2+30;
       } else if(type==='pusher'){
-        const y=cursor+gap+70, d=44;
+        const y=cursor+gap+90, d=44;
         const count = hard?3:2;
         const items=[];
         for(let i=0;i<count;i++){
@@ -181,32 +223,32 @@
         cursor=y+d/2+40;
       } else if(type==='ramp'){
         // run up, launch off the lip
-        const len=rand(200,300), yStart=cursor+gap+60, yEnd=yStart+len;
-        obs.push({type:'ramp', yStart, yEnd, y0:yStart, y1:yEnd+90,
+        const rlen=clamp(len-260, 200, 320), yStart2=cursor+gap+70, yEnd2=yStart2+rlen;
+        obs.push({type:'ramp', yStart:yStart2, yEnd:yEnd2, y0:yStart2, y1:yEnd2+90,
                   height: rand(30,52), width: rand(240,400), cx: cx+rand(-140,140)});
-        cursor=yEnd+150;
+        cursor=yEnd2+150;
       } else if(type==='fork'){
         // The track splits and a wall makes you commit. One side is a raised
         // catwalk that spits you out at speed; the other is flat and safe, but
         // there is furniture in the way.
-        const len = rand(640, 820);
-        const yStart = cursor+gap+110, yEnd = yStart+len;
+        const flen = clamp(len-200, 620, 860);
+        const yStart2 = cursor+gap+120, yEnd2 = yStart2+flen;
         const risk = Math.random()<0.5 ? -1 : 1;
-        obs.push({type:'fork', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-40, y1:yEnd+40,
-                  cx, risk, wallFrom: yStart+130});
-        obs.push({type:'shortcut', yStart, yEnd:yEnd-40, y0:yStart-40, y1:yEnd+120,
+        obs.push({type:'fork', y:(yStart2+yEnd2)/2, yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+40,
+                  cx, risk, wallFrom: yStart2+130});
+        obs.push({type:'shortcut', yStart:yStart2, yEnd:yEnd2-40, y0:yStart2-40, y1:yEnd2+120,
                   cx: cx + risk*(TRACK_W/4), w: rand(112,132),
                   h:46, rampLen:170, boost: rand(6.4,7.4)});
         for(let i=0;i<3;i++){
-          const py = yStart + len*(0.30+i*0.22);
+          const py = yStart2 + flen*(0.30+i*0.22);
           obs.push({type:'pillars', y:py, y0:py-70, y1:py+70,
                     items:[{x: cx - risk*(TRACK_W/4) + rand(-80,80), r:rand(32,42)}]});
         }
-        cursor = yEnd+160;
+        cursor = yEnd2+160;
       } else if(type==='gate'){
         // A wall with two doors in it. Sixteen racers, two doors: the jam is
         // the obstacle.
-        const y = cursor+gap+100;
+        const y = cursor+gap+140;
         const gapW = hard? 72 : 86;
         const spread = rand(170,220);
         const xs = [cx - spread/2 + rand(-24,24), cx + spread/2 + rand(-24,24)];
@@ -217,37 +259,37 @@
         // A bridge of slabs over a drop. Each one falls a moment after you put
         // your weight on it, then rebuilds -- so the bridge is never gone for good.
         const cols = 4, rows = 3;
-        const len = rand(360,440);
-        const yStart = cursor+gap+100, yEnd = yStart+len;
-        const slabW = 108, rowD = len/rows;
+        const clen = clamp(len-220, 340, 460);
+        const yStart2 = cursor+gap+110, yEnd2 = yStart2+clen;
+        const slabW = 108, rowD = clen/rows;
         const slabs = [];
         for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
-          slabs.push({ x: cx + (ci-1.5)*(slabW+14), y: yStart + ri*rowD + rowD/2,
+          slabs.push({ x: cx + (ci-1.5)*(slabW+14), y: yStart2 + ri*rowD + rowD/2,
                        w: slabW, d: rowD-18, touched:false, fuse:-1, gone:false, drop:0, back:0 });
         }
-        obs.push({type:'crumble', y:(yStart+yEnd)/2, yStart, yEnd, y0:yStart-30, y1:yEnd+30,
+        obs.push({type:'crumble', y:(yStart2+yEnd2)/2, yStart:yStart2, yEnd:yEnd2, y0:yStart2-30, y1:yEnd2+30,
                   slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.8:1.4});
-        cursor = yEnd+150;
+        cursor = yEnd2+150;
       //<<shelved:gencourse-log-roller>>
       } else if(type==='shortcut'){
         // A narrow raised lane hugging one wall. Ramp on, and it runs you past
         // whatever is happening on the floor -- but it is barely wider than you.
         const side = Math.random()<0.5 ? -1 : 1;
-        const len = rand(620, 900);
-        const yStart = cursor+gap+60, yEnd = yStart+len;
-        obs.push({type:'shortcut', yStart, yEnd, y0:yStart-40, y1:yEnd+140,
+        const slen = clamp(len-220, 600, 900);
+        const yStart2 = cursor+gap+70, yEnd2 = yStart2+slen;
+        obs.push({type:'shortcut', yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+140,
                   cx: cx + side*(TRACK_W/2 - 96), w: rand(112,140),
                   h: 46, rampLen: 170, boost: rand(6.2,7.2)});
         // something worth skipping, on the floor beside it
-        const midY = (yStart+yEnd)/2;
+        const midY = (yStart2+yEnd2)/2;
         obs.push({type:'pusher', y:midY, d:44, y0:midY-44/2-RADIUS, y1:midY+44/2+RADIUS,
                   items:[{baseX:cx-side*40, amp:rand(150,230), speed:rand(1.2,1.9)*spd,
                           phase:rand(0,6.28), width:rand(150,200), d:44}]});
-        cursor = yEnd+170;
+        cursor = yEnd2+170;
       } else if(type==='cannon'){
         // cannons in the side walls, firing across the lane on a fixed beat
         const count = hard?2:1;
-        const y = cursor+gap+110;
+        const y = cursor+gap+140;
         const items=[];
         for(let i=0;i<count;i++){
           items.push({ y: y+i*170, side: Math.random()<0.5?-1:1, r: rand(26,34),
@@ -258,7 +300,7 @@
         cursor = y + count*170 + 130;
       } else if(type==='pendulum'){
         // a wrecking ball on a long arm, sweeping the full width and low in the middle
-        const y = cursor+gap+130;
+        const y = cursor+gap+160;
         const pArm = rand(150,205), pR = rand(27,37);
         // The pivot has to clear the arm, or the ball buries itself in the floor at
         // the bottom of the swing. A fixed pivotH of 168 with arms up to 205 sank
@@ -272,19 +314,19 @@
         // pinball posts: they never kill you, they just fling you somewhere else
         const count = hard?3:2;
         const lanes=[...LANES].sort(()=>Math.random()-0.5).slice(0,count);
-        const y = cursor+gap+90;
+        const y = cursor+gap+110;
         obs.push({type:'bumper', y, y0:y-100, y1:y+100,
                   items:lanes.map(l=>({x:cx+l+rand(-24,24), r:rand(30,40), hit:0}))});
         cursor = y+100;
       } else if(type==='boost'){
-        const y = cursor+gap+80;
+        const y = cursor+gap+100;
         obs.push({type:'boost', y, cx: cx+rand(-190,190), w: rand(140,210),
                   len: rand(120,180), power: rand(5.2,7.4),
                   y0:y-110, y1:y+110});
         cursor = y+170;
       //<<shelved:gencourse-spinlaser>>
       } else if(type==='beam'){
-        const y=cursor+gap+70;
+        const y=cursor+gap+110;
         const low=Math.random()<0.6;
         obs.push({type:'laserbar', y, low, h: low?12:32,
                   speed: rand(0.8,1.5)*spd*(Math.random()<0.5?-1:1),
@@ -294,24 +336,4 @@
                   phase: rand(0,6.28), span: rand(180,300), y0:y-360, y1:y+360});
         cursor=y+90;
       }
-      // The reserved band was only checked against the cursor, and a fork or a
-      // shortcut runs 800 units past it. One Sunny layout in four laid a fork
-      // straight across the hole, and the bots taking the fork's lanes walked
-      // into it over and over: 125 falls in one round. Anything that reaches
-      // into the band is taken back and the cursor stepped past it instead.
-      if(wantGap){
-        let reaches = false;
-        for(let i=placedFrom;i<obs.length;i++){
-          const o = obs[i];
-          if(o.y1 > gapY-gapPad && o.y0 < gapY+gapLen+gapPad) reaches = true;
-        }
-        if(reaches){ obs.length = placedFrom; cursor = Math.max(cursorWas, gapY+gapLen+gapPad); last = null; }
-      }
-    }
-    // Every race course needs at least two places you can actually fall off.
-    // Left to the random draw, a course could come out with none, and then
-    // holding forward is a guaranteed finish.
-    trackLength = cursor+300;
-    obs.sort((a,b)=>a.y0-b.y0);
-    return obs;
   }

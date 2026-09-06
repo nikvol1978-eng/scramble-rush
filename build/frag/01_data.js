@@ -372,6 +372,115 @@
   function softAccent(hex){ return withHSL(hex, h=>{ h.s = h.s*0.55; h.l = Math.max(h.l, 0.70); }); }
   function mixHex(a, b, k){ const c = new THREE.Color(a).lerp(new THREE.Color(b), k); return '#' + c.getHexString(); }
 
+  // ============================================================
+  // COURSE SCRIPTS — the order and shape of every race course
+  // ============================================================
+  // One ordered list of sections per map. `len` is the section's length along
+  // the ribbon at the map's natural size (a shorter round scales the whole
+  // script); `turn` bends the ribbon that many degrees across the section;
+  // `climb` and `drop` raise or lower it by that many units. Everything else
+  // about a section -- obstacle phases, which lane a hole is in, small offsets
+  // -- is still random, so a course is learnable without being identical.
+  const COURSE_SCRIPTS = {
+    // Sunny Sprint: the friendly showcase, the widest spread of section types,
+    // and the one course with the forced hole in it.
+    sunny: [
+      { type:'start',   len:700 },
+      { type:'pillars', len:760, turn:+26 },
+      { type:'hammer',  len:820 },
+      { type:'pad',     len:340, turn:-30 },
+      { type:'gate',    len:640 },
+      { type:'bumper',  len:700, turn:+18 },
+      { type:'gap',     len:820 },
+      { type:'narrow',  len:760, turn:-27 },
+      { type:'pit',     len:780 },
+      { type:'pad',     len:300 },
+      { type:'fork',    len:1180 },
+      { type:'ramp',    len:820, turn:+24 },
+      { type:'spinbar', len:740 },
+      { type:'crumble', len:760, turn:-20 },
+      { type:'finish',  len:580 }
+    ],
+    // Cannon Climb: switchbacks, and a cannon on each one. It only ever goes up.
+    cannonc: [
+      { type:'start',   len:600 },
+      { type:'cannon',  len:820, turn:+28, climb:110 },
+      { type:'narrow',  len:760, climb:100 },
+      { type:'cannon',  len:820, turn:-32, climb:110 },
+      { type:'pusher',  len:660, climb:80 },
+      { type:'narrow',  len:760, turn:+26, climb:100 },
+      { type:'cannon',  len:820, climb:110 },
+      { type:'gate',    len:600, turn:-24, climb:70 },
+      { type:'ramp',    len:760, climb:100 },
+      { type:'cannon',  len:820, turn:+22, climb:110 },
+      { type:'narrow',  len:760, turn:-26, climb:100 },
+      { type:'bumper',  len:640, climb:70 },
+      { type:'finish',  len:560, climb:50 }
+    ],
+    // Super Slide: downhill all the way, boost pads chained down it, and one
+    // big sweeping turn in the middle. It only ever goes down.
+    slide: [
+      { type:'start',   len:800,  drop:60 },
+      { type:'boost',   len:1100, drop:160 },
+      { type:'narrow',  len:1000, turn:+22, drop:150, bias:95 },
+      { type:'crumble', len:1000, drop:150 },
+      { type:'boost',   len:1100, turn:-42, drop:170 },
+      { type:'narrow',  len:900,  drop:130, bias:155 },   // the one you must steer for
+      { type:'shortcut',len:1500, drop:200 },
+      { type:'pillars', len:900,  turn:+20, drop:130 },
+      { type:'crumble', len:1000, drop:160 },
+      { type:'ramp',    len:1000, turn:-26, drop:140 },
+      { type:'narrow',  len:1000, drop:150, bias:95 },
+      { type:'crumble', len:1000, drop:150 },
+      { type:'boost',   len:1100, drop:160 },
+      { type:'finish',  len:700,  drop:80 }
+    ],
+    // Neon Nightrun: tight, dark, and it bends four times. Spinners and lasers.
+    neon: [
+      { type:'start',    len:640 },
+      { type:'spinbar',  len:820, turn:+27 },
+      { type:'beam',     len:760 },
+      { type:'pusher',   len:700, turn:-30 },
+      { type:'spinbar',  len:820 },
+      { type:'pendulum', len:760, turn:+22 },
+      { type:'gate',     len:640 },
+      { type:'narrow',   len:780, turn:-26 },
+      { type:'beam',     len:760 },
+      { type:'fork',     len:1180 },
+      { type:'spinbar',  len:820, turn:+28 },
+      { type:'pendulum', len:760 },
+      { type:'beam',     len:760 },
+      { type:'finish',   len:560 }
+    ],
+    // Lava Rise runs the same kind of sections with the lava behind you, so it
+    // is deliberately the most forgiving furniture on the roster.
+    lava: [
+      { type:'start',   len:700 },
+      { type:'pad',     len:500, turn:+24 },
+      { type:'pillars', len:700 },
+      { type:'narrow',  len:760, turn:-28 },
+      { type:'hammer',  len:760 },
+      { type:'pad',     len:420, turn:+26 },
+      { type:'ramp',    len:800 },
+      { type:'pillars', len:700, turn:-22 },
+      { type:'gate',    len:620 },
+      { type:'bumper',  len:700, turn:+25 },
+      { type:'pad',     len:460 },
+      { type:'spinbar', len:760 },
+      { type:'finish',  len:600 }
+    ],
+    _default: [
+      { type:'start',   len:700 },
+      { type:'pillars', len:760, turn:+25 },
+      { type:'hammer',  len:800 },
+      { type:'narrow',  len:760, turn:-25 },
+      { type:'pit',     len:780 },
+      { type:'gate',    len:640 },
+      { type:'spinbar', len:760 },
+      { type:'finish',  len:600 }
+    ]
+  };
+
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
     { key:'lava', name:'Lava Rise', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',

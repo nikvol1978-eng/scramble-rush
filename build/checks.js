@@ -59,24 +59,37 @@
     window.__dbg.tick(TO_RACING);
   }
 
-  // ---------- A: corridor maps render exactly where they always did ----------
+  // ---------- A: a script that does not bend reduces to the straight transform ----------
+  // Every course carries its own bends now, so no shipped map renders on the
+  // legacy transform any more. What still has to be exactly true is the
+  // property underneath it: a script whose sections all have turn:0 and no
+  // climb must put every point exactly where the old straight course did, to
+  // a thousandth. If that drifts, every bend is drifting with it and nothing
+  // downstream would say so.
   function checkA(){
     const bad = [];
-    for(const key of CORRIDOR_MAPS){
-      begin(key);
-      const p = player();
-      for(let i=0;i<20;i++){
-        const sy = trackLength*(i/19), sx = 60 + (TRACK_W-120)*((i*7)%20)/19;
-        p.y=sy; p.x=sx; p.h=0; p.floorH=0; p.vx=0; p.vy=0;
-        syncRacers(0);
-        const got = p.mesh.group.position;
-        const want = { x: sx - TRACK_W/2, y: RADIUS, z: sy };
-        const err = Math.max(Math.abs(got.x-want.x), Math.abs(got.y-want.y), Math.abs(got.z-want.z));
-        if(err > 0.001){ bad.push(`${key} @${Math.round(sy)}: off by ${err.toFixed(3)}`); break; }
-      }
+    begin('sunny');
+    const flat = courseScript.map(s=>({ type:s.type, len:s.len }));   // same lengths, no turn, no climb
+    setCoursePath(scriptPathSpec(flat), trackLength);
+    const p = player();
+    for(let i=0;i<20;i++){
+      const sy = trackLength*(i/19), sx = 60 + (TRACK_W-120)*((i*7)%20)/19;
+      p.y=sy; p.x=sx; p.h=0; p.floorH=0; p.vx=0; p.vy=0;
+      syncRacers(0);
+      const got = p.mesh.group.position;
+      const want = { x: sx - TRACK_W/2, y: RADIUS, z: sy };
+      const err = Math.max(Math.abs(got.x-want.x), Math.abs(got.y-want.y), Math.abs(got.z-want.z));
+      if(err > 0.001){ bad.push('@'+Math.round(sy)+': off by '+err.toFixed(3)); break; }
     }
-    return { name:'A corridor maps use the legacy straight transform',
-             pass: bad.length===0, detail: bad.length? bad.slice(0,4).join('; ') : CORRIDOR_MAPS.length+' maps exact' };
+    // ...and the shipped script does bend, or the flat case proves nothing
+    setCoursePath(scriptPathSpec(courseScript), trackLength);
+    let maxTurn = 0;
+    for(let i=0;i<=40;i++) maxTurn = Math.max(maxTurn, Math.abs(pathAngle(trackLength*(i/40))));
+    if(maxTurn < 0.35) bad.push('sunny barely turns ('+(maxTurn*180/Math.PI).toFixed(0)+' deg), so the flat case proves nothing');
+    return { name:'A a script with no turn and no climb is the straight transform',
+             pass: bad.length===0,
+             detail: bad.length? bad.slice(0,4).join('; ')
+                    : 'flat script exact over 20 points, shipped script turns '+(maxTurn*180/Math.PI).toFixed(0)+' deg' };
   }
 
   // ---------- B: every obstacle mesh sits where collision thinks it does ----------
@@ -1352,18 +1365,26 @@
       p.landT = 0; p.stretchT = 0; p.squash = 0; p.invuln = 9999; p.facing = Math.PI/2;
       resetLook();
     }
-    // (a) proportions, crown to sole against the body's width, standing still
+    // (a) proportions, crown to sole against the body's width, standing still.
+    // Measured with the yaw taken out: Box3.setFromObject is axis-aligned in
+    // WORLD space, so once courses started bending, a bean yawed 21 degrees by
+    // the path reported a 29% wider box and the ratio fell from 1.87 to 1.44
+    // without one vertex of the rig moving. The ratio this check is about is a
+    // property of the model, so measure it in the model's own frame.
     reset();
     window.__dbg.hold('w', false);
     for(let i=0;i<30;i++) window.__dbg.tick(1);
+    const yaw0 = m.group.rotation.y;
+    m.group.rotation.y = 0; m.group.updateMatrixWorld(true);
     const body = box(m.body), feet = box(m.feet[0]).union(box(m.feet[1]));
     const height = body.max.y - feet.min.y, width = body.max.x - body.min.x, ratio = height/width;
+    m.group.rotation.y = yaw0; m.group.updateMatrixWorld(true);
     if(ratio < 1.8 || ratio > 2.0) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.8-2.0');
 
     // (b) arms hang to below the waist at rest
     const waist = (body.max.y + body.min.y)/2;
     for(const h of m.hands){
-      const hy = box(h).getCenter(new THREE.Vector3()).y;
+      const hy = box(h).getCenter(new THREE.Vector3()).y;   // Y is unaffected by yaw
       if(hy > waist) bad.push('an arm ends at '+hy.toFixed(1)+', above the waist at '+waist.toFixed(1));
     }
 

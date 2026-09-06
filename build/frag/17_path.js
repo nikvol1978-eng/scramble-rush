@@ -10,6 +10,9 @@
   // old `(x - TRACK_W/2, h, y)` — so every corridor map is provably unchanged
   // rather than hopefully unchanged (check A asserts this to 0.001).
   let coursePath = null;
+  // The script the current course was built from, so the path and the mesh
+  // builder can both read the section list genCourse walked.
+  let courseScript = null;
   const PATH_STEP = 40;                    // arc-length between samples
 
   // spec: { slope(u), turn(u) } in radians, u = 0..1 along the course.
@@ -67,6 +70,41 @@
     obj.position.set(w.x, w.y, w.z);
     if(coursePath) obj.rotation.y = pathAngle(simY);
     return obj;
+  }
+
+  // ---- a course script bends the ribbon section by section --------------------
+  // Every section carries its own turn (degrees across its own length) and its
+  // own climb or drop (units). This returns the same {slope(u), turn(u)} spec
+  // setCoursePath already takes, so a script whose sections are all turn:0
+  // with no climb yields turn=0 and slope=0 everywhere -- which is the straight
+  // transform, exactly, not approximately. Check A asserts that.
+  function scriptPathSpec(sections){
+    const segs = []; let y = 0, head = 0;
+    for(const sec of sections){
+      const len  = Math.max(1, sec.len);
+      const turn = (sec.turn||0)*Math.PI/180;
+      const rise = (sec.climb||0) - (sec.drop||0);
+      segs.push({ y0:y, len, head, turn, slope: rise ? Math.atan2(rise, len) : 0 });
+      head += turn; y += len;
+    }
+    const total = Math.max(1, y);
+    function at(s){
+      let i = 0;
+      while(i < segs.length-1 && s >= segs[i].y0 + segs[i].len) i++;
+      return segs[i];
+    }
+    return {
+      total,
+      // The heading eases in and out across a section rather than turning at a
+      // constant rate, so curvature does not jump at a section boundary and the
+      // rails read as one continuous bend instead of a series of creases.
+      turn(u){
+        const s = clamp(u,0,1)*total, g = at(s);
+        const k = clamp((s - g.y0)/g.len, 0, 1);
+        return g.head + g.turn * (k*k*(3-2*k));
+      },
+      slope(u){ return at(clamp(u,0,1)*total).slope; }
+    };
   }
 
   // ---- the two shaped courses -------------------------------------------------
