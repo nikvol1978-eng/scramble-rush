@@ -1202,7 +1202,7 @@
       { type:'narrow',  len:760, turn:+26, climb:20 },
       { type:'cannon',  len:820, climb:200 },
       { type:'gate',    len:600, turn:-24, climb:20 },
-      { type:'ramp',    len:760, climb:30 },
+      { type:'chevron', len:900, climb:200, turnstiles:3 },
       { type:'cannon',  len:820, turn:+22, climb:200 },
       { type:'narrow',  len:760, turn:-26, climb:20 },
       { type:'bumper',  len:640, climb:20 },
@@ -2271,6 +2271,25 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='chevron'){
+        // A slope painted with chevrons, net walls down both sides, and a few
+        // turnstiles across it. The climb itself comes from the section's own
+        // `climb`, through the course script, so it costs speed via SLOPE_PULL
+        // like any other gradient. A turnstile is a short spin bar on a
+        // vertical axis -- which is exactly what a spinbar already is -- so it
+        // arrives with collision, a mesh, a bot plan and check 6 for free.
+        const nT = clamp(sec.turnstiles || 3, 2, 4);
+        const clen = clamp(len-200, 520, 1200);
+        const yStart2 = cursor + gap + 90, yEnd2 = yStart2 + clen;
+        obs.push({type:'chevron', yStart:yStart2, yEnd:yEnd2, y0:yStart2, y1:yEnd2,
+                  nets: sec.nets !== false});
+        for(let i=0;i<nT;i++){
+          const ty = yStart2 + clen*(i+0.5)/nT;
+          obs.push({type:'spinbar', y:ty, cx: cx + rand(-90,90), length: rand(240,320),
+                    speed: rand(1.0,1.5)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                    thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
+        }
+        cursor = yEnd2 + 80;
     } else if(type==='plank'){
         // Two or three narrow planks side by side over a drop, with a hammer
         // on a rope swinging across the middle of them. Pick a plank, time the
@@ -2702,6 +2721,41 @@
     if(uvFn) g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
     g.computeVertexNormals();
     return g;
+  }
+
+  // Procedural, cached by colour: chevrons for the slope and a mesh for the
+  // net walls. Nothing in this project loads an image from anywhere.
+  const _v21Tex = {};
+  function chevronTexture(hex){
+    const k = 'chev'+hex; if(_v21Tex[k]) return _v21Tex[k];
+    const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d');
+    g.fillStyle = hex; g.fillRect(0,0,N,N);
+    g.strokeStyle = '#ffffff'; g.lineWidth = N*0.11;
+    for(let i=-2;i<5;i++){
+      const y = i*(N/3);
+      g.beginPath(); g.moveTo(0,y); g.lineTo(N/2, y+N/4); g.lineTo(N, y); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    _v21Tex[k] = t; return t;
+  }
+  function netTexture(hex){
+    const k = 'net'+hex; if(_v21Tex[k]) return _v21Tex[k];
+    const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d');
+    g.clearRect(0,0,N,N);
+    g.strokeStyle = hex; g.lineWidth = 4;
+    for(let i=0;i<=8;i++){
+      const p = i*(N/8);
+      g.beginPath(); g.moveTo(p,0); g.lineTo(p,N); g.stroke();
+      g.beginPath(); g.moveTo(0,p); g.lineTo(N,p); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    _v21Tex[k] = t; return t;
   }
 
   let courseLook = null;
@@ -4084,6 +4138,34 @@
         placeAt(g, o.cx, o.y, 0);
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
+
+      } else if(o.type==='chevron'){
+        // Built in segments so the paint and the nets follow the bend rather
+        // than cutting the corner off it.
+        const segs = Math.max(4, Math.round((o.yEnd-o.yStart)/150));
+        const segLen = (o.yEnd-o.yStart)/segs;
+        const chev = chevronTexture(look.accents[0]);
+        const net  = netTexture(look.accents[1]);
+        for(let i=0;i<segs;i++){
+          const sy = o.yStart + segLen*(i+0.5);
+          const tex = chev.clone(); tex.needsUpdate = true;
+          tex.repeat.set(1, segLen/150);
+          const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
+            new THREE.MeshLambertMaterial({map:tex}));
+          plate.receiveShadow = true;
+          placeAt(plate, TRACK_W/2, sy, 1.8);
+          courseGroup.add(plate);
+          if(o.nets) for(const sx of [8, TRACK_W-8]){
+            const ntex = net.clone(); ntex.needsUpdate = true;
+            ntex.repeat.set(segLen/110, 0.8);
+            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88),
+              new THREE.MeshLambertMaterial({map:ntex, transparent:true, side:THREE.DoubleSide}));
+            const w = toWorld(sx, sy, 44);
+            wall.position.set(w.x, w.y, w.z);
+            wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
+            courseGroup.add(wall);
+          }
+        }
 
       } else if(o.type==='plank'){
         const deck = look.softMat(0);

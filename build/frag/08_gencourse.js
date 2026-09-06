@@ -156,6 +156,25 @@
       const gy0 = yStart + Math.max(60, (len-280)/2), gy1 = Math.min(yEnd-40, gy0+280);
       obs.push({type:'gap', yStart:gy0, yEnd:gy1, y0:gy0, y1:gy1, cx, halfWidth:hw});
       return;
+    } else if(type==='chevron'){
+        // A slope painted with chevrons, net walls down both sides, and a few
+        // turnstiles across it. The climb itself comes from the section's own
+        // `climb`, through the course script, so it costs speed via SLOPE_PULL
+        // like any other gradient. A turnstile is a short spin bar on a
+        // vertical axis -- which is exactly what a spinbar already is -- so it
+        // arrives with collision, a mesh, a bot plan and check 6 for free.
+        const nT = clamp(sec.turnstiles || 3, 2, 4);
+        const clen = clamp(len-200, 520, 1200);
+        const yStart2 = cursor + gap + 90, yEnd2 = yStart2 + clen;
+        obs.push({type:'chevron', yStart:yStart2, yEnd:yEnd2, y0:yStart2, y1:yEnd2,
+                  nets: sec.nets !== false});
+        for(let i=0;i<nT;i++){
+          const ty = yStart2 + clen*(i+0.5)/nT;
+          obs.push({type:'spinbar', y:ty, cx: cx + rand(-90,90), length: rand(240,320),
+                    speed: rand(1.0,1.5)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                    thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
+        }
+        cursor = yEnd2 + 80;
     } else if(type==='plank'){
         // Two or three narrow planks side by side over a drop, with a hammer
         // on a rope swinging across the middle of them. Pick a plank, time the

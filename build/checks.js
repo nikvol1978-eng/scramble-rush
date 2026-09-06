@@ -1467,6 +1467,59 @@
                : b.planks.length+' planks of '+widths[0]+' bean-widths, the gap between them drops you, hammer crosses them' };
   }
 
+  // ---------- v: the chevron slope climbs, and turnstiles bar the way up ----------
+  // The section is a composition rather than one new mechanic, so what has to
+  // be true is that the parts are all actually there and doing their jobs: it
+  // really climbs, the climb really costs speed, and the turnstiles really
+  // sweep the ground a racer has to walk over.
+  function checkChevron(){
+    const bad = [];
+    begin('cannonc');
+    const c = obstacles.find(o=>o.type==='chevron');
+    if(!c) return { name:'v the chevron slope climbs, and turnstiles bar the way up', pass:false,
+                    detail:'no chevron section generated on cannonc' };
+
+    // (a) it climbs, over its whole length
+    const h0 = pathHeight(c.yStart), h1 = pathHeight(c.yEnd);
+    if(h1 - h0 < 60) bad.push('the chevron slope only rises '+Math.round(h1-h0));
+
+    // (b) the climb costs speed against the flat
+    const p = player();
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
+    function terminalAt(atY){
+      p.x = TRACK_W/2; p.h = 0; p.vx = 0; p.vy = 0; p.floorH = 0;
+      p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.windT = 0;
+      window.__dbg.hold('w', true);
+      for(let i=0;i<150;i++){ p.y = atY; p.h = 0; p.floorH = 0; p.invuln = 9999; p.falling = false; window.__dbg.tick(1); }
+      window.__dbg.hold('w', false);
+      return p.vy;
+    }
+    const onSlope = terminalAt((c.yStart + c.yEnd)/2);
+    let flatY = null;
+    for(let y=400; y<trackLength-600; y+=90) if(Math.abs(pathSlope(y)) < 0.02){ flatY = y; break; }
+    const onFlat = flatY===null ? null : terminalAt(flatY);
+    if(onFlat !== null && onSlope > onFlat*0.95)
+      bad.push('the slope costs nothing ('+onSlope.toFixed(2)+' of '+onFlat.toFixed(2)+')');
+
+    // (c) two to four turnstiles stand in the section, and each one sweeps
+    const gates = obstacles.filter(o=>o.type==='spinbar' && o.turnstile && o.y > c.yStart && o.y < c.yEnd);
+    if(gates.length < 2 || gates.length > 4) bad.push(gates.length+' turnstiles on the slope, want 2-4');
+    for(const g of gates){
+      let lo = 1e9, hi = -1e9;
+      for(let i=0;i<=90;i++){
+        const a = spinAngle(g, i*0.05);
+        const x = g.cx + Math.cos(a)*g.length/2;
+        lo = Math.min(lo, x); hi = Math.max(hi, x);
+      }
+      if(hi - lo < g.length*0.9){ bad.push('a turnstile at y='+Math.round(g.y)+' barely turns'); break; }
+    }
+
+    return { name:'v the chevron slope climbs, and turnstiles bar the way up', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'rises '+Math.round(h1-h0)+', '+onSlope.toFixed(2)+' up the slope against '+(onFlat===null?'?':onFlat.toFixed(2))
+                 +' on the flat, '+gates.length+' turnstiles' };
+  }
+
   // ---------- 5: the bean rig ----------
   // Proportions and the small animations that make a bean read as a bean: it
   // stands about twice as tall as it is wide, its arms reach below the waist,
@@ -1875,7 +1928,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)]
       ];

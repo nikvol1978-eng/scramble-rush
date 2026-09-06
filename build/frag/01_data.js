@@ -415,7 +415,7 @@
       { type:'narrow',  len:760, turn:+26, climb:20 },
       { type:'cannon',  len:820, climb:200 },
       { type:'gate',    len:600, turn:-24, climb:20 },
-      { type:'ramp',    len:760, climb:30 },
+      { type:'chevron', len:900, climb:200, turnstiles:3 },
       { type:'cannon',  len:820, turn:+22, climb:200 },
       { type:'narrow',  len:760, turn:-26, climb:20 },
       { type:'bumper',  len:640, climb:20 },

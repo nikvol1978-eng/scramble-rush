@@ -264,6 +264,34 @@
         courseGroup.add(g);
         o.mesh=g; o.disc=disc; o.lip=bands;
 
+      } else if(o.type==='chevron'){
+        // Built in segments so the paint and the nets follow the bend rather
+        // than cutting the corner off it.
+        const segs = Math.max(4, Math.round((o.yEnd-o.yStart)/150));
+        const segLen = (o.yEnd-o.yStart)/segs;
+        const chev = chevronTexture(look.accents[0]);
+        const net  = netTexture(look.accents[1]);
+        for(let i=0;i<segs;i++){
+          const sy = o.yStart + segLen*(i+0.5);
+          const tex = chev.clone(); tex.needsUpdate = true;
+          tex.repeat.set(1, segLen/150);
+          const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-18, 3, segLen*0.99),
+            new THREE.MeshLambertMaterial({map:tex}));
+          plate.receiveShadow = true;
+          placeAt(plate, TRACK_W/2, sy, 1.8);
+          courseGroup.add(plate);
+          if(o.nets) for(const sx of [8, TRACK_W-8]){
+            const ntex = net.clone(); ntex.needsUpdate = true;
+            ntex.repeat.set(segLen/110, 0.8);
+            const wall = new THREE.Mesh(new THREE.PlaneGeometry(segLen*0.99, 88),
+              new THREE.MeshLambertMaterial({map:ntex, transparent:true, side:THREE.DoubleSide}));
+            const w = toWorld(sx, sy, 44);
+            wall.position.set(w.x, w.y, w.z);
+            wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
+            courseGroup.add(wall);
+          }
+        }
+
       } else if(o.type==='plank'){
         const deck = look.softMat(0);
         const edge = look.hazardMat(0);

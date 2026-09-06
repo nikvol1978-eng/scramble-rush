@@ -30,6 +30,41 @@
     return g;
   }
 
+  // Procedural, cached by colour: chevrons for the slope and a mesh for the
+  // net walls. Nothing in this project loads an image from anywhere.
+  const _v21Tex = {};
+  function chevronTexture(hex){
+    const k = 'chev'+hex; if(_v21Tex[k]) return _v21Tex[k];
+    const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d');
+    g.fillStyle = hex; g.fillRect(0,0,N,N);
+    g.strokeStyle = '#ffffff'; g.lineWidth = N*0.11;
+    for(let i=-2;i<5;i++){
+      const y = i*(N/3);
+      g.beginPath(); g.moveTo(0,y); g.lineTo(N/2, y+N/4); g.lineTo(N, y); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    _v21Tex[k] = t; return t;
+  }
+  function netTexture(hex){
+    const k = 'net'+hex; if(_v21Tex[k]) return _v21Tex[k];
+    const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d');
+    g.clearRect(0,0,N,N);
+    g.strokeStyle = hex; g.lineWidth = 4;
+    for(let i=0;i<=8;i++){
+      const p = i*(N/8);
+      g.beginPath(); g.moveTo(p,0); g.lineTo(p,N); g.stroke();
+      g.beginPath(); g.moveTo(0,p); g.lineTo(N,p); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    _v21Tex[k] = t; return t;
+  }
+
   let courseLook = null;
   function buildCourseMeshes(){
     clearGroup(courseGroup);
