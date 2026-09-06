@@ -105,6 +105,33 @@ def sub(old, new, label, count=1):
         errors.append("anchor missing (%d found): %s" % (src.count(old), label)); return
     src = src.replace(old, new, count)
 
+# --------------------------------------------------------------- three r160
+# r128 came off cdnjs as a global. r160 is ES modules only for the addons we
+# want (RoomEnvironment, Sky, the composer), so the page gets an import map and
+# the game script becomes a module. Module scripts are deferred, which is fine:
+# nothing outside the IIFE touches the game, and peerjs stays a global.
+sub('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
+    '<script type="importmap">' + chr(10)
+    + '{ "imports": {' + chr(10)
+    + '  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",' + chr(10)
+    + '  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"' + chr(10)
+    + '} }' + chr(10)
+    + '</script>',
+    "three r160 import map")
+sub("<script>" + chr(10) + "(function(){",
+    '<script type="module">' + chr(10)
+    + "import * as THREE from 'three';" + chr(10)
+    + "(function(){",
+    "game script becomes a module")
+
+# r152 turned colour management on and r155 turned legacy lights off. Both
+# change how every existing colour and light reads, and this commit is meant to
+# be the API move and nothing else -- the look is retuned two commits from now.
+sub("  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});",
+    "  THREE.ColorManagement.enabled = false;" + chr(10)
+    + "  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});",
+    "colour management off for now")
+
 # ---------------------------------------------------------------- title
 # a zero-height window makes aspect NaN, and every projected position with it
 sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); }",
@@ -113,7 +140,8 @@ sub("  function resize(){ W=window.innerWidth; H=window.innerHeight; renderer.se
 
 # v20 look: filmic tone mapping, and a shadow bias that keeps the beans on the floor
 sub("  renderer.outputEncoding = THREE.sRGBEncoding;",
-    "  renderer.outputEncoding = THREE.sRGBEncoding;"
+    "  renderer.outputColorSpace = THREE.SRGBColorSpace;"
+    + chr(10) + "  renderer.useLegacyLights = true;"
     + chr(10) + "  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;",
     "tone mapping")
 sub("  dirLight.shadow.bias = -0.0008;",
@@ -133,9 +161,15 @@ sub("      r.targetX=TRACK_W/2+(r.aiRoute-0.5)*o.halfWidth*0.7;",
     "      r.targetX=TRACK_W/2+(o.offset||0)+(r.aiRoute-0.5)*o.halfWidth*0.7;",
     "bot aims at the narrow channel")
 
+# Textures name a colour space now, not an encoding. Both canvas textures in
+# the base say the same line, so both are renamed before the filtering sub
+# below picks the first of them out by its new text.
+sub("tex.encoding=THREE.sRGBEncoding;", "tex.colorSpace=THREE.SRGBColorSpace;",
+    "texture colour space", count=2)
+
 # The checkerboard moired badly at distance: no mipmaps, no anisotropy.
-sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding; return tex;",
-    "    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding;"
+sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace; return tex;",
+    "    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace;"
     + chr(10) + "    tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;"
     + chr(10) + "    tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;",
     "ground texture filtering")

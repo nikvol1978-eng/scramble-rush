@@ -509,7 +509,7 @@
       g.fillStyle='#ff4fa3'; g.fillRect(0,0,512,104);
       g.fillStyle='#ffffff'; g.font='bold 78px Fredoka, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle';
       g.fillText('FINISH', 256, 56);
-      _finishBanner = new THREE.CanvasTexture(cv); _finishBanner.encoding = THREE.sRGBEncoding;
+      _finishBanner = new THREE.CanvasTexture(cv); _finishBanner.colorSpace = THREE.SRGBColorSpace;
     }
     return _finishBanner;
   }

@@ -112,7 +112,10 @@
       // the key at full, and with the hemisphere fill on top of that a pink
       // bean came out nearly white.
       const data = new Uint8Array([64, 112, 158, 196]);
-      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.LuminanceFormat);
+      // LuminanceFormat went after r136. The toon shader reads .r off this
+      // ramp, so a single red channel says exactly what it needs and nothing
+      // more.
+      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.RedFormat);
       _toonRamp.minFilter = THREE.NearestFilter; _toonRamp.magFilter = THREE.NearestFilter;
       _toonRamp.generateMipmaps = false; _toonRamp.needsUpdate = true;
     }

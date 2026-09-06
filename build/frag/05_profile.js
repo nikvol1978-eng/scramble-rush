@@ -19,7 +19,7 @@
       g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/27); g.closePath(); g.fill();
     }
     g.globalAlpha=1;
-    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.encoding=THREE.sRGBEncoding;
+    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.colorSpace=THREE.SRGBColorSpace;
     return _lobbyRingTex;
   }
   // Browsing the shop shows the item on the model without committing to it.

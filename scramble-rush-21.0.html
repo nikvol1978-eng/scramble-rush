@@ -6,7 +6,12 @@
 <title>Scramble Rush 3D — v21.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
 <script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>
 <style>
   :root{
@@ -775,7 +780,8 @@
 <div id="results" class="screen shade hidden"></div>
 <div id="gameover" class="screen shade hidden"></div>
 
-<script>
+<script type="module">
+import * as THREE from 'three';
 (function(){
   const $ = id => document.getElementById(id);
   const canvas = $('game');
@@ -1514,11 +1520,13 @@
   // ============================================================
   // THREE.JS SETUP
   // ============================================================
+  THREE.ColorManagement.enabled = false;
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.useLegacyLights = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
@@ -1580,7 +1588,7 @@
     const cv=document.createElement('canvas'); cv.width=cv.height=256; const g=cv.getContext('2d');
     const n=cells||4, s=256/n;
     for(let y=0;y<n;y++)for(let x=0;x<n;x++){ g.fillStyle=((x+y)%2===0)?c1:c2; g.fillRect(x*s,y*s,s,s); }
-    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding;
+    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace;
     tex.generateMipmaps=true; tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;
     tex.anisotropy=renderer.capabilities.getMaxAnisotropy(); return tex;
   }
@@ -1588,7 +1596,7 @@
     const cv=document.createElement('canvas'); cv.width=cv.height=128; const g=cv.getContext('2d');
     g.fillStyle=c1; g.fillRect(0,0,128,128); g.fillStyle=c2;
     for(let i=-128;i<256;i+=32){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+16,0); g.lineTo(i+16-128,128); g.lineTo(i-128,128); g.fill(); }
-    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.encoding=THREE.sRGBEncoding; return tex;
+    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.colorSpace=THREE.SRGBColorSpace; return tex;
   }
   const groundTex = checkerTexture('#ffe17a','#ffd24c',2);
   const stripeTex = stripeTexture('#ffcb3d','#1a1033');
@@ -1716,7 +1724,10 @@
       // the key at full, and with the hemisphere fill on top of that a pink
       // bean came out nearly white.
       const data = new Uint8Array([64, 112, 158, 196]);
-      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.LuminanceFormat);
+      // LuminanceFormat went after r136. The toon shader reads .r off this
+      // ramp, so a single red channel says exactly what it needs and nothing
+      // more.
+      _toonRamp = new THREE.DataTexture(data, 4, 1, THREE.RedFormat);
       _toonRamp.minFilter = THREE.NearestFilter; _toonRamp.magFilter = THREE.NearestFilter;
       _toonRamp.generateMipmaps = false; _toonRamp.needsUpdate = true;
     }
@@ -2801,7 +2812,7 @@
       g.beginPath(); g.moveTo(0,y); g.lineTo(N/2, y+N/4); g.lineTo(N, y); g.stroke();
     }
     const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     _v21Tex[k] = t; return t;
@@ -2818,7 +2829,7 @@
       g.beginPath(); g.moveTo(0,p); g.lineTo(N,p); g.stroke();
     }
     const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     _v21Tex[k] = t; return t;
   }
 
@@ -4473,7 +4484,7 @@
       g.fillStyle='#ff4fa3'; g.fillRect(0,0,512,104);
       g.fillStyle='#ffffff'; g.font='bold 78px Fredoka, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle';
       g.fillText('FINISH', 256, 56);
-      _finishBanner = new THREE.CanvasTexture(cv); _finishBanner.encoding = THREE.sRGBEncoding;
+      _finishBanner = new THREE.CanvasTexture(cv); _finishBanner.colorSpace = THREE.SRGBColorSpace;
     }
     return _finishBanner;
   }
@@ -6581,7 +6592,7 @@
       g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/27); g.closePath(); g.fill();
     }
     g.globalAlpha=1;
-    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.encoding=THREE.sRGBEncoding;
+    _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.colorSpace=THREE.SRGBColorSpace;
     return _lobbyRingTex;
   }
   // Browsing the shop shows the item on the model without committing to it.

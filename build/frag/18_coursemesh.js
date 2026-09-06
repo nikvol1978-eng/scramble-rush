@@ -44,7 +44,7 @@
       g.beginPath(); g.moveTo(0,y); g.lineTo(N/2, y+N/4); g.lineTo(N, y); g.stroke();
     }
     const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     _v21Tex[k] = t; return t;
@@ -61,7 +61,7 @@
       g.beginPath(); g.moveTo(0,p); g.lineTo(N,p); g.stroke();
     }
     const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     _v21Tex[k] = t; return t;
   }
 
