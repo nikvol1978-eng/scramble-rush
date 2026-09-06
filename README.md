@@ -55,12 +55,18 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 Round 1 is always a race. Round 2 is a coin flip between a race and a minigame.
 Round 3 is always the Closing Circle final.
 
+Since v21 the four race courses are **authored**, not shuffled: each map has an
+ordered list of named sections, and each section carries its own turn and climb.
+Every race map bends at least twice by 25° or more, so you can see the route
+change ahead of you rather than running down a corridor. The obstacles inside a
+section are still generated, so no two layouts are identical.
+
 | Round | Kind | Signature |
 |---|---|---|
-| Sunny Sprint | race | hammers, pillars, gates, a fork with a fast lane, and one hole down the middle you must steer around |
-| Cannon Climb | race | a climbing course with cannons that fire on a rhythm |
-| Super Slide | race | a descent on ice, boost pads, crumbling bridges |
-| Neon Nightrun | race | spin bars and laser beams in the dark |
+| Sunny Sprint | race | a chequered start pad, hammers and pillars, a field of turning discs with sweeping arms, a hole down the middle, then a zigzag of small discs and a crumbling bridge |
+| Cannon Climb | race | a stepped climb with cannons that fire on a rhythm, and a chevron-painted slope walled in netting with turnstiles across it |
+| Super Slide | race | a descent on ice, boost pads, crumbling bridges, a shortcut lane |
+| Neon Nightrun | race | spin bars and laser beams in the dark, and a plank bridge with a hammer swinging across it |
 | Lava Rise | minigame | the lava chases the pack and never lets a total wipe happen |
 | Door Dash | minigame | six doors a row, two are paper |
 | Tile Tumble | knockout | three floors of tiles; fall through one and you land on the next, fall through the bottom and you are out |
@@ -111,11 +117,16 @@ a one-line change to `MAPS`/`MINIGAMES` once the bots can.
 
 All from CDN at runtime — nothing is bundled, so the game needs a connection to start:
 
-- **Three.js r128** (cdnjs) — 3D rendering
+- **Three.js r160** (jsdelivr) — 3D rendering, loaded as ES modules through an
+  import map, with the addons under `three/addons/`: `RoomEnvironment`, `Sky`,
+  and the `EffectComposer` passes
 - **PeerJS** (unpkg) — peer-to-peer multiplayer
 - **Fredoka** (Google Fonts) — typography
 
-The local `npm` install is only Vite, used as the dev server.
+The local `npm` install is Vite plus a copy of three pinned to the same 0.160.0.
+Vite rewrites bare imports itself and never looks at an import map, so the dev
+server needs the package on disk; `vite.config.js` maps `three/addons/` onto it.
+The released HTML resolves both names from the CDN and does not use either.
 
 ## Saved data
 

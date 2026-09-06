@@ -872,8 +872,11 @@ const QUALITY = {
     // something you have to steer as well.
     mouseLook:false, autoCentre:true,
     // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
-    // skips the composer altogether. It steps itself down if it has to.
-    quality:'high'
+    // skips the composer altogether. Medium is the default because it is the
+    // one that holds a frame budget: the occlusion pass on High costs a second
+    // full render of the scene. High is still one click away, and still steps
+    // itself down if the machine cannot hold it.
+    quality:'medium'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
@@ -5481,7 +5484,8 @@ const QUALITY = {
   }
 
   function applyQuality(q){
-    const k = QUALITY[q] ? q : 'high';
+    // an unknown name lands on the default, not on the most expensive setting
+    const k = QUALITY[q] ? q : 'medium';
     qualityNow = k;
     const s = QUALITY[k];
     renderer.shadowMap.type = s.type === 'vsm' ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
@@ -5502,7 +5506,7 @@ const QUALITY = {
   // One place the whole game renders through, so the debug build and the
   // release take exactly the same path.
   function renderFrame(){
-    if(qualityNow === null) applyQuality(settings.quality || 'high');
+    if(qualityNow === null) applyQuality(settings.quality || 'medium');
     if(composer && QUALITY[qualityNow].composer) composer.render();
     else renderer.render(scene, camera);
   }

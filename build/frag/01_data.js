@@ -6,8 +6,11 @@
     // something you have to steer as well.
     mouseLook:false, autoCentre:true,
     // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
-    // skips the composer altogether. It steps itself down if it has to.
-    quality:'high'
+    // skips the composer altogether. Medium is the default because it is the
+    // one that holds a frame budget: the occlusion pass on High costs a second
+    // full render of the scene. High is still one click away, and still steps
+    // itself down if the machine cannot hold it.
+    quality:'medium'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };

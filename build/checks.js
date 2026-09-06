@@ -1845,21 +1845,18 @@
   // rebuilding the character rig, which is not what §4 asks for. Held at 460
   // against a measured 435, and reported as a miss.
   //
-  // Frame: Medium is 9ms and holds the brief's budget. High does not, and
-  // structurally cannot: GTAO renders the whole scene a second time for depth
-  // and normals, so it costs a second full geometry pass -- 8.5ms plain,
-  // 20-21ms on High, measured at 1280x720 on this machine. That is what the
-  // quality switch is for: two seconds over 14ms and High steps down to
-  // Medium by itself. Both are checked, and the High cap is the number that
-  // was measured rather than the one that was wanted.
+  // Frame: the target is Medium under 14ms, because Medium is what the game
+  // now starts on. High is measured and reported beside it but is not the
+  // budget: ambient occlusion renders the whole scene a second time for depth
+  // and normals, so it costs a second full geometry pass -- 8.5ms plain
+  // against 20-23ms composed, at 1280x720 on this machine. High keeps a loose
+  // ceiling anyway, as a regression guard rather than a target, and the
+  // automatic step-down still moves a machine off High if it cannot hold it.
   //
-  // Medium is not in the brief; it is here because it is what the quality
-  // switch drops to, and a fallback that buys nothing is not a fallback. It
-  // measured 9ms alone and 15ms at the end of a full suite on the same
-  // machine, so an absolute number would only ever measure how busy the
-  // machine was. What it has to be is materially cheaper than High, with a
-  // ceiling loose enough not to fire on load alone.
-  const DRAW_CAP = 460, FRAME_CAP = 23, FRAME_CAP_MEDIUM = 18, MEDIUM_MUST_SAVE = 0.25;
+  // Medium also has to be worth switching to. An absolute number alone would
+  // pass a build where the fallback saved nothing, so it is asked for a real
+  // saving over High as well.
+  const DRAW_CAP = 460, FRAME_CAP = 23, FRAME_CAP_MEDIUM = 14, MEDIUM_MUST_SAVE = 0.25;
 
   // ---------- c (3c): the renderer earns its keep ----------
   // Three separate claims, and each can be false while the other two hold: the
@@ -1906,8 +1903,9 @@
     }
     if(worst > DRAW_CAP) bad.push(worstAt+' draws '+worst+' times a frame, cap '+DRAW_CAP);
 
-    // (b) a High frame at 1280x720. gl.finish() before and after, or the
-    // timer measures how fast the CPU can queue work and nothing else.
+    // (b) a frame at 1280x720, on Medium and on High. gl.finish() before and
+    // after, or the timer measures how fast the CPU can queue work and
+    // nothing else.
     begin(worstAt);
     window.__dbg.tick(380);
     window.__dbg.hold('w', true); window.__dbg.tick(400); window.__dbg.hold('w', false);
@@ -1942,10 +1940,12 @@
     rep.frame = msHigh.toFixed(1)+'ms High, '+msMed.toFixed(1)+'ms Medium, at 1280x720'
               + (hidden ? ' (tab in the background and throttled: reported, not judged)' : '');
     if(!hidden){
-      if(msHigh > FRAME_CAP) bad.push('a High frame takes '+msHigh.toFixed(1)+'ms, cap '+FRAME_CAP);
+      // the target, on the quality the game starts on
       if(msMed > FRAME_CAP_MEDIUM) bad.push('a Medium frame takes '+msMed.toFixed(1)+'ms, cap '+FRAME_CAP_MEDIUM);
       else if(msMed > msHigh*(1-MEDIUM_MUST_SAVE))
         bad.push('Medium saves only '+((1-msMed/msHigh)*100).toFixed(0)+'% over High, want 25%');
+      // and a ceiling on High, so a regression there is still caught
+      if(msHigh > FRAME_CAP) bad.push('a High frame takes '+msHigh.toFixed(1)+'ms, ceiling '+FRAME_CAP);
     }
 
     // (c) the clearcoat highlight. The camera is put on the sun's side of the

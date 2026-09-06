@@ -59,7 +59,8 @@
   }
 
   function applyQuality(q){
-    const k = QUALITY[q] ? q : 'high';
+    // an unknown name lands on the default, not on the most expensive setting
+    const k = QUALITY[q] ? q : 'medium';
     qualityNow = k;
     const s = QUALITY[k];
     renderer.shadowMap.type = s.type === 'vsm' ? THREE.VSMShadowMap : THREE.PCFSoftShadowMap;
@@ -80,7 +81,7 @@
   // One place the whole game renders through, so the debug build and the
   // release take exactly the same path.
   function renderFrame(){
-    if(qualityNow === null) applyQuality(settings.quality || 'high');
+    if(qualityNow === null) applyQuality(settings.quality || 'medium');
     if(composer && QUALITY[qualityNow].composer) composer.render();
     else renderer.render(scene, camera);
   }

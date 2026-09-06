@@ -112,3 +112,14 @@ launch forward. The core game stays about movement and obstacles.
 | v18 | Gradients drive movement: hills finally cost and pay |
 | v19 | Eight maps that work, Fall Guys movement, bots that actually race, layered Tile Tumble, per-map acceptance test |
 | v20 | Jumping and diving no longer beat running; a taller toon-shaded bean; neutral floors and loud hazards; the lobby and the "NEXT UP IS…" reveal; longer round-1 courses; bots read the obstacle clock (a frenzy no longer throws every prediction off for the rest of the round); a pit rule that waits at the swing end and commits once |
+| v21 | Authored courses: every race map is an ordered list of named sections, each carrying its own turn and climb, so the route bends where it is meant to. Six new sections — a disc field with sweeping arms, a plank bridge under a hammer, a chevron slope with net walls and turnstiles, a zigzag of small discs, and chequered start and finish pads. Bots plan for all of them. Three.js r128 → r160 as ES modules, and a renderer to match: glossy physical materials with a clearcoat, image-based ambient from a room environment, VSM shadows, a real sky with a sun per map, cloud below the ribbon, and a composer with occlusion, bloom and SMAA behind a quality switch that steps itself down |
+
+## v22 candidates
+
+- **Bean rig rewrite: one skinned mesh per racer.** Sixteen characters of about
+  twenty animated parts each is 300 draw calls before any course is drawn,
+  which is why v21's renderer check caps at 460 rather than the 300 it was
+  asked for. One skinned mesh a racer would take the whole field to sixteen
+  draws and put the target back in reach.
+- **A GitHub remote.** Everything through v21 is committed locally only.
+
