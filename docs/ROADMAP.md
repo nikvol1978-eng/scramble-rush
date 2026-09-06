@@ -111,4 +111,4 @@ launch forward. The core game stays about movement and obstacles.
 | v17 | Ragdoll tumbles, second wind, catch-up draft, Gem Grab, cannonball chain reactions, per-map music |
 | v18 | Gradients drive movement: hills finally cost and pay |
 | v19 | Eight maps that work, Fall Guys movement, bots that actually race, layered Tile Tumble, per-map acceptance test |
-| v20 | Jumping and diving no longer beat running; a taller toon-shaded bean; neutral floors and loud hazards; the lobby and the "NEXT UP IS…" reveal |
+| v20 | Jumping and diving no longer beat running; a taller toon-shaded bean; neutral floors and loud hazards; the lobby and the "NEXT UP IS…" reveal; longer round-1 courses; bots read the obstacle clock (a frenzy no longer throws every prediction off for the rest of the round); a pit rule that waits at the swing end and commits once |

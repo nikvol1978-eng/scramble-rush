@@ -206,6 +206,11 @@
           r.aiObsFor = o;
           r.aiFork = Math.random() < 0.35 ? o.risk : -o.risk;
         }
+        // Once the divider has started, the side you are on is the side you
+        // have. Aiming at the lane beyond the wall pinned a bot between the
+        // wall and a pillar for the whole section -- thirteen seconds still
+        // with the throttle wide open.
+        if(r.y > o.wallFrom - RADIUS*2){ const side = r.x >= o.cx ? 1 : -1; if(side !== r.aiFork) r.aiFork = side; }
         return set(o.cx + r.aiFork*(TRACK_W/4), 1);
       }
 

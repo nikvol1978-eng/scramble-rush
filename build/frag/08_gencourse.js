@@ -5,7 +5,9 @@
     // A map whose whole mechanic is losing ground needs less ground to lose.
     // v20 slowed the beans by 12% and the field was home in 24-33 s against a
     // 40-50 s target, so round 1 is 25% longer and round 2 15% longer.
-    const total = Math.round((n===1?8800 : n===2?6900 : 5200) * (currentMap.lenScale||1));
+    // Sunny and Neon carry their own round-1 length (10,300): at 8,800 their
+    // field was home in 34-35 s against a 40 s target, and they scale with it.
+    const total = Math.round((n===1?(currentMap.round1Total||8800) : n===2?6900 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
     // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
     // crumbling bridge at y=560: anyone walking straight was stopped dead and

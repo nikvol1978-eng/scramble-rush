@@ -336,7 +336,7 @@
   // new cannon / bumper / pendulum / boost / spinlaser pieces.
   const MAPS = [
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
-      obstacles:['pillars','hammer','pit','ramp','fork','gate','narrow','bumper'] },
+      round1Total:10300, obstacles:['pillars','hammer','pit','ramp','fork','gate','narrow','bumper'] },
 
     { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
       path:'climb', forcedGap:false, obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
@@ -345,7 +345,7 @@
       path:'slide', lenScale:1.6, hazardScale:0.62, forcedGap:false, obstacles:['boost','narrow','ramp','pillars','shortcut','crumble'] },
 
     { key:'neon', name:'Neon Nightrun', tip:'Jump a beat early on spinning bars — it is harder to judge in the dark.', ground:'#2b2140', groundAlt:'#241a37', wall:'#1a1033', wallTop:'#23e6c9', skyTop:'#1a0b2e', skyMid:'#3d1a5b', skyBot:'#ff4fa3', accent:'#23e6c9',
-      forcedGap:false, obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
+      round1Total:10300, forcedGap:false, obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
 
   ];
   // Three saturated accents a map paints its hazards with. Anything that can
