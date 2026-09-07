@@ -129,6 +129,25 @@
 
       poseCharacter(m, r, t, moving, speed);
 
+      // ---- the skid, on ice -------------------------------------------
+      // The one thing that says "sliding" without a number on screen: the gap
+      // between where the bean is pointed and where it is actually going. On
+      // dry ground that gap is nearly zero, so this does nothing there. It is
+      // applied after poseCharacter, which owns tilt.z for tumbles and clears
+      // it otherwise.
+      if(currentMap.slippery && r.tumbleT<=0 && !r.falling && speed>1.2){
+        let slip = Math.atan2(r.vy, r.vx) - (r.facing||0);
+        while(slip> Math.PI) slip-=Math.PI*2;
+        while(slip<-Math.PI) slip+=Math.PI*2;
+        const want = clamp(slip, -1.0, 1.0) * 0.34;   // about 20 degrees at full skid
+        r.skidLean = (r.skidLean||0) + (want - (r.skidLean||0))*0.14;
+        m.tilt.rotation.z = r.skidLean;
+      } else if(r.skidLean){
+        r.skidLean *= 0.86;
+        if(Math.abs(r.skidLean) < 0.004) r.skidLean = 0;
+        else if(r.tumbleT<=0) m.tilt.rotation.z = r.skidLean;
+      }
+
       // whole-body squash, kept so hits and landings still read
       let sxs=1,sys=1,szs=1;
       if(r.stumbleT>0){ sxs=1.14; sys=0.84; szs=1.14; }

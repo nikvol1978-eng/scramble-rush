@@ -7,25 +7,34 @@
   // arm that reaches past the body's waist looks like a growth, not a limb.
   // The whole figure still occupies the 34-unit box the old sphere did, so the
   // physics (RADIUS = 17) is untouched.
-  // v20: taller. The v19 bean was 26 high by 23 wide, which read as squat
-  // next to the reference; this one stands 1.9 : 1 from crown to sole. It
-  // still sits on the same RADIUS = 17 collision sphere, feet on the floor.
+  // v22: shorter, wider, and top-heavy. v20 stretched the bean to 1.9 : 1,
+  // which reads as a tall oval with a face painted halfway down it -- the
+  // silhouette had no head. This one is built the other way round: a big
+  // rounded head that is the widest part of the figure, a waist pinched in
+  // under it, a short chunky body, and stubby legs on big feet. It stands
+  // about 1.45 : 1. The collision sphere is untouched at RADIUS = 17, so
+  // nothing in the simulation moves; this is the silhouette only.
   const RIG = {
-    topY:22.5, bottomY:-10.2, maxR:10.6,
-    faceY:14.2, faceZ:5.8, faceR:7.0,
-    hipY:-9.6, legLen:5.0, legR:2.6, legX:4.6,
-    footR:3.6, footY:-14.6,
-    // arms hang from the shoulder to just below the waist, thick at the top
-    shoulderY:9.5, shoulderX:9.9, armLen:14.0, armR:2.7, armTipR:1.8, mittR:2.6,
-    hatScale:0.84
+    topY:18.6, bottomY:-9.2, maxR:12.4,
+    // the face sits on the head bulge, and is bigger for it
+    faceY:10.2, faceZ:6.8, faceR:8.0,
+    hipY:-8.6, legLen:4.2, legR:3.0, legX:5.2,
+    footR:4.1, footY:-12.8,
+    // arms hang from the waist pinch, under the head, and end at the hip
+    shoulderY:3.2, shoulderX:10.3, armLen:9.6, armR:3.0, armTipR:2.1, mittR:3.0,
+    hatScale:0.98
   };
   RIG.waistY = (RIG.topY + RIG.bottomY)/2;
 
   // Profile of the bean, bottom to top. x is radius, y is height.
+  // Bottom to top: a rounded base, a body that swells and then pinches at the
+  // waist, and above it a head bulge wider than the body -- which is what puts
+  // the head in the silhouette instead of leaving one flat oval.
   const BEAN_PROFILE = [
-    [0.0, -10.2], [3.4, -10.1], [6.6, -9.4], [8.8, -7.6], [10.1, -4.6],
-    [10.6, -0.8], [10.6, 3.6], [10.4, 7.6], [10.0, 11.2], [9.2, 14.6],
-    [7.9, 17.6], [6.0, 20.0], [3.4, 21.8], [0.0, 22.5]
+    [0.0, -9.2], [3.9, -9.1], [7.4, -8.3], [9.8, -6.4], [11.1, -3.6],
+    [11.4, -0.6], [10.8,  2.2],
+    [11.7,  5.2], [12.4,  8.6], [12.2, 11.6],
+    [11.2, 14.2], [9.2, 16.4], [5.6, 17.9], [0.0, 18.6]
   ];
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
@@ -37,7 +46,9 @@
       for(let i=0;i<n;i++){
         const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
         let ao = 1;
-        if(y < -4) ao -= 0.24 * Math.min(1, (-4 - y)/5.5);
+        if(y < -3.4) ao -= 0.24 * Math.min(1, (-3.4 - y)/5.0);
+        // and the shade under the head, which is what sells the pinch
+        if(y > 0.4 && y < 4.6) ao -= 0.16 * (1 - Math.abs(y - 2.4)/2.2);
         for(const s of [-1,1]){
           const d = Math.hypot(x - s*RIG.shoulderX, y - RIG.shoulderY, z);
           if(d < 6.5) ao -= 0.16 * (1 - d/6.5);
@@ -159,31 +170,34 @@
     const eyes = opts.eyes||'round';
     const pupils=[], scleras=[];
     const ez = RIG.faceZ + RIG.faceR*0.52 - 0.6;
-    [-3.1, 3.1].forEach((x,i)=>{
+    // Everything on the face is a fraction of the face, so a bigger head gets
+    // bigger eyes rather than the same two dots lost on a wider plate.
+    const FS = RIG.faceR/7.0;
+    [-RIG.faceR*0.45, RIG.faceR*0.45].forEach((x,i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
-      const slot = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8),
+      const slot = new THREE.Mesh(new THREE.SphereGeometry(2.5*FS, 10, 8),
         new THREE.MeshBasicMaterial({color:0xfdfdff}));
-      slot.position.set(x, 0.5, ez-0.3); slot.scale.set(1,1,0.3); eyeGroup.add(slot); scleras.push(slot);
+      slot.position.set(x, 0.5*FS, ez-0.3); slot.scale.set(1,1,0.3); eyeGroup.add(slot); scleras.push(slot);
 
       // two tall ovals
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.7, 12, 10), darkMat);
-      dot.position.set(x, 0.6, ez); dot.scale.set(1, 1.55, 0.45);
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(2.0*FS, 12, 10), darkMat);
+      dot.position.set(x, 0.6*FS, ez); dot.scale.set(1, 1.55, 0.45);
       eyeGroup.add(dot); pupils.push(dot);
 
-      if(eyes==='happy'){ dot.scale.set(1.30, 0.50, 0.45); dot.position.y=1.0; }
-      if(eyes==='sleepy'){ dot.scale.set(1.40, 0.26, 0.45); dot.position.y=0.3; }
+      if(eyes==='happy'){ dot.scale.set(1.30, 0.50, 0.45); dot.position.y=1.0*FS; }
+      if(eyes==='sleepy'){ dot.scale.set(1.40, 0.26, 0.45); dot.position.y=0.3*FS; }
       if(eyes==='angry'){
-        const brow = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.9, 0.7), darkMat);
-        brow.position.set(x, 2.3, ez-0.15); brow.rotation.z = (i===0? -0.42 : 0.42); eyeGroup.add(brow);
+        const brow = new THREE.Mesh(new THREE.BoxGeometry(3.4*FS, 1.0*FS, 0.7), darkMat);
+        brow.position.set(x, 2.6*FS, ez-0.15); brow.rotation.z = (i===0? -0.42 : 0.42); eyeGroup.add(brow);
       }
     });
 
     // A bean's face is just eyes — the mouth only shows when pulling a face.
-    const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.4,0.45,6,12,Math.PI), darkMat);
-    mouth.position.set(0,-2.2,ez-0.25); mouth.rotation.z=Math.PI; mouth.scale.z=0.4;
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(1.4*FS,0.45*FS,6,12,Math.PI), darkMat);
+    mouth.position.set(0,-2.4*FS,ez-0.25); mouth.rotation.z=Math.PI; mouth.scale.z=0.4;
     mouth.visible=false; faceGroup.add(mouth);
-    const tongue = new THREE.Mesh(new THREE.SphereGeometry(1.3,10,8), new THREE.MeshLambertMaterial({color:0xff4fa3}));
-    tongue.position.set(0,-3.0,ez-0.15); tongue.scale.set(1,0.65,0.45); tongue.visible=false; faceGroup.add(tongue);
+    const tongue = new THREE.Mesh(new THREE.SphereGeometry(1.3*FS,10,8), new THREE.MeshLambertMaterial({color:0xff4fa3}));
+    tongue.position.set(0,-3.2*FS,ez-0.15); tongue.scale.set(1,0.65,0.45); tongue.visible=false; faceGroup.add(tongue);
 
     // ---- hat, on the crown. Scaled down: these were sized for a separate head.
     const hatGroup = new THREE.Group();

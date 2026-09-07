@@ -65,7 +65,7 @@ section are still generated, so no two layouts are identical.
 |---|---|---|
 | Sunny Sprint | race | a chequered start pad, hammers and pillars, a field of turning discs with sweeping arms, a hole down the middle, then a zigzag of small discs and a crumbling bridge |
 | Cannon Climb | race | a stepped climb with cannons that fire on a rhythm, and a chevron-painted slope walled in netting with turnstiles across it |
-| Super Slide | race | a descent on ice, boost pads, crumbling bridges, a shortcut lane |
+| Super Slide | race | a descent on real ice: your momentum carries, your boots do not bite sideways, and the bean banks into the skid. Boost pads, crumbling bridges, a shortcut lane |
 | Neon Nightrun | race | spin bars and laser beams in the dark, and a plank bridge with a hammer swinging across it |
 | Lava Rise | minigame | the lava chases the pack and never lets a total wipe happen |
 | Door Dash | minigame | six doors a row, two are paper |
@@ -74,7 +74,15 @@ section are still generated, so no two layouts are identical.
 
 Bots run at the player's speed, have a plan for every obstacle type on these
 maps, and have a fall-loop breaker so one unlucky pit does not cost a bot the
-whole round. They wear colourways and patterns from the wardrobe, so the pack
+whole round. On ice they steer against their own drift as well as towards
+where they are going, because correcting late on a surface that answers slowly
+is how you end up in the void.
+
+Getting hit is a setback, not a sentence: you cannot be knocked over while you
+are already down, and standing up leaves you briefly untouchable, so the hazard
+that caught you cannot simply catch you again. A dive is invulnerable from the
+moment you leave your feet until you are back on them, and costs you nothing in
+distance -- it is how you go through something rather than around it. They wear colourways and patterns from the wardrobe, so the pack
 looks like a pack from behind.
 
 Every round opens with **NEXT UP IS…**: a carousel of course cards that spins

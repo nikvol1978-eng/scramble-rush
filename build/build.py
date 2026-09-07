@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, re, sys
 
-VERSION = 21                                  # single source of truth
+VERSION = 22                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -513,11 +513,22 @@ sub("  function fallDown(r){",
 # ------------------------------------------------------- bots keep up now
 # Bots drove at 0.52*speed(0.84-1.04) against the player's ACCEL. That is a
 # 20-35% handicap, which is why holding W won races.
+# v22: bots run on the same ice the player does. Without this they steered
+# normally down Super Slide while the player skidded, which is both unfair and
+# the reason the map never read as ice from behind a bot.
 sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
-    "    r.vy+=ACCEL*(r.speed||1)*diffMult()*throttle*WIND(r)*f;",
+    "    r.vy+=ACCEL*iceDriveK()*(r.speed||1)*diffMult()*throttle*WIND(r)*f;",
     "bot accel")
+# On ice a bot needs to steer against its own drift as well as towards its
+# target -- the second term is the damping, and it is the difference between
+# aiming at a gap and arriving in it. The clamp is unchanged, so a bot's
+# hardest push sideways is still exactly what it was; it just stops
+# overshooting. Bots correct errors they have already made, and on a surface
+# that takes a second to answer the helm that alone took them from a median of
+# two falls a layout on Super Slide to eight, all of them at narrow channels
+# and crumbling bridges where the line has to be held.
 sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
-    "    r.vx+=clamp(dx*0.055,-1.5,1.5)*f;",
+    "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055) - (currentMap.slippery?r.vx*0.55:0),-1.5,1.5)*iceSteerK()*f;",
     "bot steering keeps up with the new friction")
 sub("x:s, speed:rand(0.84,1.04),",
     "x:s, speed:(i<3 ? rand(1.00,1.05) : rand(0.93,1.03)),",

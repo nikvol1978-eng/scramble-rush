@@ -29,8 +29,12 @@
         while(off<-Math.PI) off+=Math.PI*2;
         if(Math.hypot(p.vx,p.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) p.turnGrip = 6;
       }
-      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.30 : p.diveT>0?0.12 : p.h>0?0.65:1;
-      p.vx+=ix*ACCEL*(1+p.draft)*WIND(p)*control*f; p.vy+=iy*ACCEL*(1+p.draft)*WIND(p)*control*f;
+      // v22: getting up gives you a little more of yourself back than it did.
+      // At 0.30 the last quarter-second of every knock felt like a second knock.
+      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
+      let pax = ix*ACCEL*(1+p.draft)*WIND(p)*control, pay = iy*ACCEL*(1+p.draft)*WIND(p)*control;
+      const iceK = iceBlend(p, pax, pay);
+      p.vx+=pax*iceK*f; p.vy+=pay*iceK*f;
       // let go of jump early and the hop is short — hold it and you clear more
       if(p.h>0 && p.vh>2.6 && !keys[settings.keys.jump] && !p.jumpCut){ p.vh*=0.5; p.jumpCut=true; }
       if(p.h<=0) p.jumpCut=false;
@@ -81,7 +85,7 @@
             if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
             r.facing=want;
           }
-          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.30 : r.diveT>0?0.12 : r.h>0?0.65:1;
+          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
@@ -97,7 +101,13 @@
         r.tumbleT -= dt*1000;
         if(r.tumbleT<=0){
           if(r.h>0.5){ r.tumbleT = 60; }        // still airborne: hold the pose
-          else { r.tumbleT = 0; r.tumbleSpin = 0; r.getUpT = Math.max(r.getUpT, 240); r.getUpTotal = r.getUpT; r.windT = 1800; }
+          else {
+            r.tumbleT = 0; r.tumbleSpin = 0;
+            r.getUpT = Math.max(r.getUpT, TUMBLE_GETUP_MS); r.getUpTotal = r.getUpT; r.windT = 1800;
+            // and a moment on your feet before anything may touch you again,
+            // or the hazard that put you down simply takes you again
+            r.invuln = Math.max(r.invuln, GETUP_INVULN_MS);
+          }
         }
       }
       if(r.windT>0) r.windT-=dt*1000;
@@ -111,7 +121,7 @@
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
-        if(r.diveT<=0 && r.h<=0){ r.getUpT=DIVE_GETUP_MS; r.getUpTotal=DIVE_GETUP_MS; }
+        if(r.diveT<=0 && r.h<=0){ r.getUpT=diveGetUp(r); r.getUpTotal=r.getUpT; }
       }
 
       // ---- vertical: floaty on the way up, snappier on the way down
@@ -124,7 +134,7 @@
         if(r.h<=0){
           r.h=0; r.vh=0;
           r.landT = LAND_MS;                    // the landing squash keyframe
-          if(r.diveT>0){ r.getUpT=Math.max(r.getUpT, DIVE_GETUP_MS); r.getUpTotal=DIVE_GETUP_MS; }
+          if(r.diveT>0){ const g=diveGetUp(r); r.getUpT=Math.max(r.getUpT, g); r.getUpTotal=g; }
         }
         r.coyote=0;
       } else {
@@ -142,7 +152,7 @@
       // Only with your feet on it: in the air, ordinary gravity is already
       // doing the work, and a pull up there would just bend jumps sideways.
       if(coursePath && r.h <= 0.5 && !r.falling && !r.finished && r.y < trackLength){
-        r.vy -= Math.sin(pathSlope(r.y)) * SLOPE_PULL * f;
+        r.vy -= Math.sin(pathSlope(r.y)) * slopePull() * f;
       }
 
       // ---- horizontal: prone dives slide, ice holds your momentum

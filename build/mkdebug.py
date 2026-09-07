@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 21
+VERSION = 22
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -70,6 +70,12 @@ hook = """
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
+    // jump and dive fire on keydown, so holding the key does nothing. These are
+    // what a playtest presses.
+    press:(what)=>{ const p=racers.find(r=>r.isPlayer); if(!p) return false;
+                    return what==='dive' ? doDive(p) : doJump(p); },
+    event:(kind)=>{ window.__forceEvent = kind||null; return kind||'random'; },
+    ev:()=>mapEvent && ({kind:mapEvent.kind, t:+mapEvent.t.toFixed(1), active:mapEvent.active, warned:mapEvent.warned}),
     parts:()=>({live:particles.length, group:particleGroup.children.length}),
     renderFull:()=>{ renderFrame(); },
     quality:(q)=>applyQuality(q),

@@ -313,7 +313,17 @@
       } else if(type==='narrow'){
         const nlen = clamp(len-140, 300, 520);
         const yStart2=cursor+gap+70, yEnd2=yStart2+nlen;
-        const icy = currentMap.slippery ? 1.4 : 1;
+        // v22 made ice genuinely slippery, and a course of tight channels is
+        // the wrong course to put on it: threading a gap you cannot steer
+        // into is not sliding, it is a punish. On ice the channel is wider and
+        // sits nearer the middle, so the section asks you to commit to a line
+        // early rather than to correct at the last moment -- which is the
+        // skill a slide is supposed to test.
+        // 1.75 was too generous: it widened the channel past the bias, so the
+        // centre line ran through every one of them and a player holding
+        // forward won Super Slide outright. A channel has to stay a thing you
+        // steer into, on ice as much as anywhere.
+        const icy = currentMap.slippery ? 1.55 : 1;
         const halfWidth = (hard? rand(52,66): rand(60,78))*icy;
         // How far off the centre line the channel sits. Left to the old
         // +-70 (halved on ice) the channel always still covered the middle of
@@ -394,7 +404,11 @@
                   // the field behind them arrives to nothing. A quicker rebuild
                   // is what keeps the back of the pack from queueing at the
                   // edge and then falling in when the wait times out.
-                  slabs, h: 26, fuseTime: hard?1.1:1.4, respawnTime: hard?1.3:1.0});
+                  // On ice you cannot stop to time your crossing, so the slab
+                  // has to wait for you rather than the other way round.
+                  slabs, h: 26,
+                  fuseTime: (hard?1.1:1.4) * (currentMap.slippery ? 1.45 : 1),
+                  respawnTime: hard?1.3:1.0});
         cursor = yEnd2+150;
       //<<shelved:gencourse-log-roller>>
       } else if(type==='shortcut'){

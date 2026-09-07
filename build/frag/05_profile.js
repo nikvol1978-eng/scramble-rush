@@ -70,14 +70,23 @@
       new THREE.MeshBasicMaterial({color:0x120a26, side:THREE.BackSide}));
     stageBackdrop.position.y=-RADIUS-16; previewGroup.add(stageBackdrop);
 
-    stageSpot=new THREE.SpotLight(0xfff4d6, 1.5, 900, 0.44, 0.55, 1.1);
-    stageSpot.position.set(70, 320, -120);
+    // decay 0, on purpose. v21 moved the renderer to physically-based lights,
+    // where intensity is candela and falls off with distance: this spotlight
+    // sits 340 units from the character, so at the old decay of 1.1 it arrived
+    // about six hundred times weaker than it was tuned to be, and the locker
+    // went black. A stage light is the one place a flat, aimed beam is what is
+    // wanted, so the falloff is switched off rather than compensated for.
+    stageSpot=new THREE.SpotLight(0xfff4d6, 2.6, 900, 0.46, 0.5, 0);
+    stageSpot.position.set(120, 300, -150);
     stageSpot.target.position.set(0, -4, 0);
     stageSpot.castShadow=true;
     stageSpot.shadow.mapSize.width=1024; stageSpot.shadow.mapSize.height=1024;
     previewGroup.add(stageSpot); previewGroup.add(stageSpot.target);
-    const rim=new THREE.PointLight(0x8b5cf6, 0.9, 600);
-    rim.position.set(-160, 90, 120); previewGroup.add(rim);
+    const rim=new THREE.PointLight(0x8b5cf6, 1.1, 600, 0);   // same reason
+    rim.position.set(-170, 90, 150); previewGroup.add(rim);
+    // a soft fill from the front so the face is never in its own shadow
+    const faceFill=new THREE.DirectionalLight(0xfff2e2, 0.55);
+    faceFill.position.set(-40, 60, -180); previewGroup.add(faceFill);
 
     menuBlob=makeCharacter({skin:skinOf(previewSkin||custom.skin), pattern:patternOf(previewPattern||custom.pattern), hat:custom.hat, eyes:custom.eyes});
     previewGroup.add(menuBlob.group);
@@ -229,11 +238,17 @@
     // world +X reads as screen-left from this camera, so a negative shift stands
     // the character on the right of the screen with the tiles to their left. The
     // visible half-width at this distance is only about 120 units.
-    const wantX = (profOpen && W>=861) ? -70 : 0;
+    // Far enough clear of the card to read as a separate thing. At -70 the
+    // character stood on the card's edge; the panel takes the left three
+    // fifths of the screen, so the stage belongs in the right fifth.
+    const wantX = profOpen ? (W>=861 ? -132 : -62) : 0;
     previewGroup.position.x += (wantX - previewGroup.position.x)*0.12;
 
     const dailyOpen = !$('daily').classList.contains('hidden');
-    previewGroup.visible = (!profOpen || W>=861) && !dailyOpen;
+    // Never hidden while the locker is open: you are choosing how this
+    // character looks, and on a narrow window the old rule removed it from the
+    // screen altogether, which is the one place it has to be.
+    previewGroup.visible = !dailyOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
     if(stageFloor) stageFloor.visible = profOpen;
@@ -242,11 +257,17 @@
     // Close in while the locker is open: this is the shot the screen is built
     // around, and the character should fill their half of it.
     // pull back when the card is beside them, so the offset stays in frame
-    const camZ = (profOpen && W>=861) ? -186 : -150;
-    camera.position.set(0,40,camZ); camera.lookAt(0,4,0);
+    // Closer while the locker is open, not further away: the character is the
+    // subject of this screen and was being framed like scenery.
+    const camZ = (profOpen && W>=861) ? -150 : -150;
+    // The v22 character is shorter than the v20 one it replaces, so the shot
+    // comes down with it rather than framing the empty air above its head.
+    camera.position.set(0,34,camZ); camera.lookAt(0,1,0);
     // dim the room so the spotlight reads
-    dirLight.intensity = profOpen ? 0.30 : KEY_LIGHT;
-    hemi.intensity     = profOpen ? 0.20 : FILL_LIGHT;
+    // Dimmed for the spotlight to read against, not extinguished. At 0.30 and
+    // 0.20 under physical lights the character was a silhouette.
+    dirLight.intensity = profOpen ? 1.15 : KEY_LIGHT;
+    hemi.intensity     = profOpen ? 0.50 : FILL_LIGHT;
     dirLight.position.set(120,300,-150); dirLight.target.position.set(0,0,0);
     showSky(false);                                         // the ring backdrop is the sky here
     sky.position.set(camera.position.x,0,camera.position.z);
