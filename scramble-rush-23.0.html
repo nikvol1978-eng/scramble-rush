@@ -1409,8 +1409,10 @@ const QUALITY = {
     const dome = skyMeshFor(), u = dome.material.uniforms;
     u.turbidity.value = s.turbidity;
     u.rayleigh.value = s.rayleigh;
-    u.mieCoefficient.value = 0.006;
+    u.mieCoefficient.value = (s.mie !== undefined) ? s.mie : 0.006;
     u.mieDirectionalG.value = 0.8;
+    // the map's own sky colour, mixed into the band the camera looks at
+    if(u.uHaze){ u.uHaze.value.set(currentMap.skyMid); u.uHazeAmt.value = s.haze || 0; }
     const sun = sunVector(s.elev, s.azim);
     u.sunPosition.value.copy(sun);
     renderer.toneMappingExposure = s.exposure;
@@ -2475,7 +2477,10 @@ const QUALITY = {
         for(let i=0;i<nT;i++){
           const ty = yStart2 + clen*(i+0.5)/nT;
           obs.push({type:'spinbar', y:ty, cx: cx + rand(-90,90), length: rand(240,320),
-                    speed: rand(1.0,1.5)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                    // fast enough to be a barrier rather than scenery: at the
+                    // old 1.0x floor a turnstile on a slow map took ten seconds
+                    // to come round, which you simply walk past
+                    speed: rand(1.4,1.9)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
@@ -5439,14 +5444,22 @@ const QUALITY = {
   // v5 stays in the scene but hidden -- the Sky shader wants a sun, not three
   // colours, and the dome is what the code elsewhere still holds a handle to.
   const SKY_SUN = {
-    sunny:   { elev:42,  azim:158, turbidity:3,  rayleigh:2.2, exposure:0.60 },
-    cannonc: { elev:74,  azim:190, turbidity:2,  rayleigh:1.4, exposure:0.60 },  // noon
-    slide:   { elev:19,  azim:128, turbidity:2,  rayleigh:3.0, exposure:0.58 },  // cold bright morning
-    neon:    { elev:2.4, azim:250, turbidity:8,  rayleigh:3.4, exposure:0.52 },  // dusk
-    lava:    { elev:6,   azim:205, turbidity:12, rayleigh:4.2, exposure:0.55 },
-    doors:   { elev:30,  azim:180, turbidity:5,  rayleigh:2.2, exposure:0.60 },
-    _default:{ elev:35,  azim:170, turbidity:4,  rayleigh:2.2, exposure:0.60 }
+    // `haze` is how much of the map's own skyMid is blended into the band just
+    // above the horizon. A chase camera looks at that band and almost nothing
+    // else, and the band is the palest part of a physical sky -- so on the
+    // daytime maps the backdrop read as white paper. Turbidity and mie come
+    // down to stop the haze washing it out, and the map's blue is mixed back
+    // in where the player is actually looking. Neon's dusk and Lava's smoke
+    // are the two skies that are supposed to be hazy, and keep theirs.
+    sunny:   { elev:42,  azim:158, turbidity:1.5, rayleigh:2.4, mie:0.003, haze:0.85, exposure:0.60 },
+    cannonc: { elev:74,  azim:190, turbidity:1.5, rayleigh:1.8, mie:0.003, haze:0.80, exposure:0.60 },  // noon
+    slide:   { elev:19,  azim:128, turbidity:1.5, rayleigh:3.0, mie:0.003, haze:0.85, exposure:0.58 },  // cold bright morning
+    neon:    { elev:2.4, azim:250, turbidity:8,   rayleigh:3.4, mie:0.006, haze:0.00, exposure:0.52 },  // dusk
+    lava:    { elev:6,   azim:205, turbidity:12,  rayleigh:4.2, mie:0.006, haze:0.00, exposure:0.55 },
+    doors:   { elev:30,  azim:180, turbidity:1.5, rayleigh:2.2, mie:0.003, haze:0.80, exposure:0.60 },
+    _default:{ elev:35,  azim:170, turbidity:4,   rayleigh:2.2, mie:0.006, haze:0.00, exposure:0.60 }
   };
+  const NL = String.fromCharCode(10);   // GLSL needs real newlines, not spaces
   let skyDome = null, cloudGroup = null, _cloudTex = null;
   const sunOff = new THREE.Vector3(220, 420, -160);
 
@@ -5457,6 +5470,34 @@ const QUALITY = {
   function skyMeshFor(){
     if(!skyDome){
       skyDome = new THREE.Sky();
+      // Two uniforms spliced into the Sky shader so the horizon band can carry
+      // the map's colour. The band is where a chase camera spends its whole
+      // life, and the model's own answer there is haze, which is white.
+      const m = skyDome.material;
+      m.uniforms.uHaze    = { value: new THREE.Color(0x4a90c9) };
+      m.uniforms.uHazeAmt = { value: 0.0 };
+      m.onBeforeCompile = sh => {
+        sh.uniforms.uHaze    = m.uniforms.uHaze;
+        sh.uniforms.uHazeAmt = m.uniforms.uHazeAmt;
+        sh.fragmentShader = 'uniform vec3 uHaze;' + NL + 'uniform float uHazeAmt;' + NL + sh.fragmentShader
+          .replace('gl_FragColor = vec4( retColor, 1.0 );',
+            // strongest on the horizon, gone by halfway up the dome, and never
+            // applied below it -- there is course down there, not sky
+            'float hz = 1.0 - smoothstep(0.0, 0.42, max(0.0, direction.y));' + NL
+          // Take the hue, keep the brightness. Mixing straight towards the
+          // colour drags a sky that is far brighter than white down towards a
+          // dim blue and it still reads as grey; scaling the tint up to the
+          // luminance already there swaps the hue and leaves the light alone.
+          + 'float skyLum = dot(retColor, vec3(0.2126, 0.7152, 0.0722));' + NL
+          + 'float hazeLum = max(1e-4, dot(uHaze, vec3(0.2126, 0.7152, 0.0722)));' + NL
+          // ...at about two thirds of it. ACES pulls anything this bright
+          // towards white, so a tint applied at the original luminance comes
+          // back out as the grey it replaced; giving up a third of the
+          // brightness is what lets the colour survive the tone mapper.
+          + 'retColor = mix(retColor, uHaze * (skyLum / hazeLum) * 0.66, hz * uHazeAmt);' + NL
+          + 'gl_FragColor = vec4( retColor, 1.0 );');
+      };
+      m.customProgramCacheKey = () => 'skyhaze';
       skyDome.scale.setScalar(3000);
       skyDome.frustumCulled = false;
       // The dome has to be inside the far plane to be drawn at all, and a

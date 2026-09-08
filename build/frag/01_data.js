@@ -543,8 +543,10 @@
     const dome = skyMeshFor(), u = dome.material.uniforms;
     u.turbidity.value = s.turbidity;
     u.rayleigh.value = s.rayleigh;
-    u.mieCoefficient.value = 0.006;
+    u.mieCoefficient.value = (s.mie !== undefined) ? s.mie : 0.006;
     u.mieDirectionalG.value = 0.8;
+    // the map's own sky colour, mixed into the band the camera looks at
+    if(u.uHaze){ u.uHaze.value.set(currentMap.skyMid); u.uHazeAmt.value = s.haze || 0; }
     const sun = sunVector(s.elev, s.azim);
     u.sunPosition.value.copy(sun);
     renderer.toneMappingExposure = s.exposure;

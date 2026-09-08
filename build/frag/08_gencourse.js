@@ -207,7 +207,10 @@
         for(let i=0;i<nT;i++){
           const ty = yStart2 + clen*(i+0.5)/nT;
           obs.push({type:'spinbar', y:ty, cx: cx + rand(-90,90), length: rand(240,320),
-                    speed: rand(1.0,1.5)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
+                    // fast enough to be a barrier rather than scenery: at the
+                    // old 1.0x floor a turnstile on a slow map took ten seconds
+                    // to come round, which you simply walk past
+                    speed: rand(1.4,1.9)*spd*(Math.random()<0.5?-1:1), phase: rand(0,6.28),
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;

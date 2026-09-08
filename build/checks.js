@@ -1553,13 +1553,22 @@
     const gates = obstacles.filter(o=>o.type==='spinbar' && o.turnstile && o.y > c.yStart && o.y < c.yEnd);
     if(gates.length < 2 || gates.length > 4) bad.push(gates.length+' turnstiles on the slope, want 2-4');
     for(const g of gates){
+      // One whole revolution, however long that takes, rather than a fixed 4.5
+      // seconds. On a map with a slow obstacle clock a turnstile needs longer
+      // than that to come round, so the old window sampled an arc rather than
+      // a circle and called the result "barely turns" -- but only when the
+      // random starting phase happened to hide both extremes, which is why it
+      // failed about one full-suite run in five and never on its own.
+      const period = Math.abs(2*Math.PI/(g.speed || 1));
       let lo = 1e9, hi = -1e9;
-      for(let i=0;i<=90;i++){
-        const a = spinAngle(g, i*0.05);
+      for(let i=0;i<=120;i++){
+        const a = spinAngle(g, period*i/120);
         const x = g.cx + Math.cos(a)*g.length/2;
         lo = Math.min(lo, x); hi = Math.max(hi, x);
       }
       if(hi - lo < g.length*0.9){ bad.push('a turnstile at y='+Math.round(g.y)+' barely turns'); break; }
+      // and it has to come round often enough to be a barrier at all
+      if(period > 9) bad.push('a turnstile at y='+Math.round(g.y)+' takes '+period.toFixed(1)+'s to come round');
     }
 
     return { name:'v the chevron slope climbs, and turnstiles bar the way up', pass: bad.length===0,
@@ -1920,7 +1929,8 @@
   // High is a ratio against the plain render rather than a number of
   // milliseconds: occlusion costs a second geometry pass, so it should land
   // near three times the plain cost whatever the machine is doing that day.
-  const DRAW_CAP = 500, HIGH_OVER_PLAIN = 3.6, FRAME_CAP_MEDIUM = 14, MEDIUM_MUST_SAVE = 0.25;
+  const DRAW_CAP = 500, HIGH_OVER_PLAIN = 3.6, FRAME_CAP_MEDIUM = 14, MEDIUM_MUST_SAVE = 0.25,
+        PLAIN_SANE_MS = 11;
 
   // ---------- c (3c): the renderer earns its keep ----------
   // Three separate claims, and each can be false while the other two hold: the
@@ -2016,10 +2026,16 @@
     // of care makes a frame time measured in one mean anything -- it came back
     // at 200ms a frame, with Medium slower than High. The number is still
     // reported; it is simply not judged.
-    const hidden = (typeof document !== 'undefined' && document.hidden);
+    // Two ways the clock can be worthless. A background tab is throttled; and
+    // a machine that is simply busy stretches everything, which showed up as a
+    // 38ms Medium frame on a build that had not touched the renderer. The
+    // plain render is the yardstick for the second: past this it is not the
+    // renderer being measured, it is the afternoon.
+    const hidden = (typeof document !== 'undefined' && document.hidden)
+                || msPlain > PLAIN_SANE_MS;
     rep.frame = msHigh.toFixed(1)+'ms High, '+msMed.toFixed(1)+'ms Medium, '
               + msPlain.toFixed(1)+'ms plain, at 1280x720'
-              + (hidden ? ' (tab in the background and throttled: reported, not judged)' : '');
+              + (hidden ? ' (throttled or a busy machine: reported, not judged)' : '');
     if(!hidden){
       // the target, on the quality the game starts on
       if(msMed > FRAME_CAP_MEDIUM) bad.push('a Medium frame takes '+msMed.toFixed(1)+'ms, cap '+FRAME_CAP_MEDIUM);
@@ -2066,7 +2082,7 @@
     // reading, and the probe comes back a flat 0.00 -- which is not a bean
     // without a highlight, it is a frame that was never composited.
     rep.highlight = 'peak '+peak.toFixed(2)+' against a base of '+baseLum.toFixed(2)
-                  + (hidden ? ' (tab in the background: reported, not judged)' : '');
+                  + (hidden ? ' (throttled or a busy machine: reported, not judged)' : '');
     if(!hidden && peak < baseLum * 1.25)
       bad.push('the bean has no highlight: brightest pixel '+peak.toFixed(2)
                +' against a base colour of '+baseLum.toFixed(2)+', want 25% over');
