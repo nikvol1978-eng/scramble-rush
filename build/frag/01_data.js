@@ -369,10 +369,37 @@
   };
   function mapAccents(){ const a = MAP_ACCENTS[currentMap.key]; return a || [currentMap.accent, currentMap.accent, currentMap.accent]; }
   // Colour arithmetic in HSL, returned as a hex string.
-  function withHSL(hex, fn){ const c = new THREE.Color(hex), h = {}; c.getHSL(h); fn(h); c.setHSL(h.h, h.s, h.l); return '#' + c.getHexString(); }
-  // A neutral floor: the map's hue, never more than moderately saturated and
-  // never so light that the tone mapper turns it white.
-  function neutralFloor(hex){ return withHSL(hex, h=>{ h.s = Math.min(h.s, 0.42); h.l = Math.min(h.l, 0.62); }); }
+  //
+  // In sRGB, explicitly. v21 turned three's colour management on, which made
+  // the working space linear -- and every one of these helpers silently began
+  // operating on linear values while still carrying numbers that had been
+  // tuned against sRGB ones. Super Slide's #4dd0e1 reads as lightness 0.59 to
+  // the eye and 0.41 to a linear getHSL, so a rule about "light" floors was
+  // deciding the opposite of what it was written to decide. The palette is
+  // authored in sRGB hex, so the arithmetic belongs there too.
+  function withHSL(hex, fn){
+    const c = new THREE.Color(hex), h = {};
+    c.getHSL(h, THREE.SRGBColorSpace);
+    fn(h);
+    c.setHSL(h.h, h.s, h.l, THREE.SRGBColorSpace);
+    return '#' + c.getHexString(THREE.SRGBColorSpace);
+  }
+  // The floor keeps the map's colour. v20 capped it at 0.42 saturation and 0.62
+  // lightness to stop it competing with the hazards, and the cure was worse
+  // than the complaint: Sunny Sprint's #ffe17a came out khaki, Super Slide
+  // grey-teal, Cannon Climb a washed lavender. Every map read as the same
+  // dishwater. Floors are pastel now -- saturated and light -- and a hazard
+  // earns its place by being darker and fully saturated instead.
+  //
+  // The lightness floor only applies to maps that were light to begin with.
+  // Neon Nightrun and Lava Rise are dark on purpose, and lifting their floors
+  // to 0.72 would turn a night course into an afternoon one.
+  function neutralFloor(hex){
+    return withHSL(hex, h=>{
+      h.s = Math.min(h.s, 0.70);
+      h.l = h.l >= 0.45 ? clamp(h.l, 0.72, 0.80) : Math.min(h.l, 0.80);
+    });
+  }
   // Pale and desaturated: walls and anything that cannot hurt you.
   function paleOf(hex){ return withHSL(hex, h=>{ h.s = h.s*0.35; h.l = Math.max(h.l, 0.80); }); }
   function softAccent(hex){ return withHSL(hex, h=>{ h.s = h.s*0.55; h.l = Math.max(h.l, 0.70); }); }

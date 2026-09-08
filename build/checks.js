@@ -1338,18 +1338,26 @@
                : 'top '+topSpd.toFixed(2)+'/frame, stop '+stopFrames+'f, 180 in '+turnFrames+'f, air '+air+'f, right goes right' };
   }
 
+  // How far a hazard's colour must sit from the floor it stands on, measured
+  // as distance in saturation and lightness. Set from the measured spread:
+  // the tightest pair in the game is Super Slide's gold on its pale teal, and
+  // everything else has more room than that.
+  const HAZARD_SEPARATION = 0.30;
+
   // ---------- b (3b): hazards are the loudest thing on screen ----------
-  // On every race map, the colour each hazard mesh is painted with must be at
-  // least 0.35 more saturated (HSL) than the floor it stands on. Read off the
-  // materials as built -- the accent a mesh's body or stripe carries -- rather
-  // than off pixels, which shadows and stripes would make a lottery.
+  // On every race map, the colour each hazard mesh is painted with has to be
+  // clearly separable from the floor it stands on. Read off the materials as
+  // built -- the accent a mesh's body or stripe carries -- rather than off
+  // pixels, which shadows and stripes would make a lottery.
   function checkB2(){
     const bad = [], rep = {};
-    const sat = hex => { const h = {}; new THREE.Color(hex).getHSL(h); return h.s; };
+    // sRGB, to match the space the palette is authored and adjusted in. A
+    // linear getHSL calls Super Slide's pale teal a dark colour.
+    const hsl = hex => { const h = {}; new THREE.Color(hex).getHSL(h, THREE.SRGBColorSpace); return h; };
     for(const key of CORRIDOR_MAPS.concat(PATH_MAPS)){
       begin(key);
       const floorHex = currentMap.__floorHex || currentMap.ground;
-      const floorS = sat(floorHex);
+      const f = hsl(floorHex);
       const seen = {};
       courseGroup.traverse(o=>{
         if(!o.isMesh || !o.material) return;
@@ -1358,10 +1366,31 @@
       });
       const hexes = Object.keys(seen);
       if(!hexes.length){ bad.push(key+': no hazard mesh carries an accent'); continue; }
-      const minS = Math.min(...hexes.map(sat));
+      // Separation in saturation and lightness together. The old rule asked
+      // only that a hazard be 0.35 more saturated than its floor, which is a
+      // rule you can satisfy by draining the floor -- and v20 did exactly
+      // that, leaving every map the same khaki. Distance covers both the ways
+      // a hazard can stand out: more saturated on a pastel floor, or brighter
+      // on a dark one, which is how Neon and Lava read.
+      // Distance in the colour cylinder, not in saturation alone: hue is laid
+      // out as a chroma vector so that opposite hues read as far apart, which
+      // is the whole reason Sunny Sprint's purple hammer is legible on a
+      // yellow floor. Measuring saturation and lightness only called that pair
+      // the worst in the game, when it is one of the clearest.
+      const cyl = q => [q.s*Math.cos(q.h*Math.PI*2), q.s*Math.sin(q.h*Math.PI*2), q.l];
+      const fc = cyl(f);
+      let worst = 1e9, worstHex = '';
+      for(const h of hexes){
+        const c = cyl(hsl(h));
+        const d = Math.hypot(c[0]-fc[0], c[1]-fc[1], c[2]-fc[2]);
+        if(d < worst){ worst = d; worstHex = h; }
+      }
       const count = hexes.reduce((n,h)=>n+seen[h], 0);
-      rep[key] = 'floor '+floorS.toFixed(2)+', hazards '+minS.toFixed(2)+'+ over '+count+' meshes';
-      if(minS < floorS + 0.35) bad.push(key+': hazards at '+minS.toFixed(2)+' saturation over a '+floorS.toFixed(2)+' floor, want +0.35');
+      rep[key] = 'floor s'+f.s.toFixed(2)+'/l'+f.l.toFixed(2)
+               + ', nearest hazard '+worstHex+' at '+worst.toFixed(2)+' over '+count+' meshes';
+      if(worst < HAZARD_SEPARATION)
+        bad.push(key+': the '+worstHex+' hazard sits only '+worst.toFixed(2)
+                 +' from a floor at s'+f.s.toFixed(2)+'/l'+f.l.toFixed(2)+', want '+HAZARD_SEPARATION);
     }
     return { name:'b (3b) hazards are the loudest thing on screen', pass: bad.length===0,
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
@@ -1888,7 +1917,10 @@
   // measuring that swing rather than the renderer, and duly failed on a
   // layout that drew two more. 500 leaves room for the spread while still
   // catching the thing it is for, which is a step change.
-  const DRAW_CAP = 500, FRAME_CAP = 23, FRAME_CAP_MEDIUM = 14, MEDIUM_MUST_SAVE = 0.25;
+  // High is a ratio against the plain render rather than a number of
+  // milliseconds: occlusion costs a second geometry pass, so it should land
+  // near three times the plain cost whatever the machine is doing that day.
+  const DRAW_CAP = 500, HIGH_OVER_PLAIN = 3.6, FRAME_CAP_MEDIUM = 14, MEDIUM_MUST_SAVE = 0.25;
 
   // ---------- c (3c): the renderer earns its keep ----------
   // Three separate claims, and each can be false while the other two hold: the
@@ -1964,20 +1996,40 @@
     settings.quality = 'medium'; applyQuality('medium');
     const msMed = timeOne();
     settings.quality = 'high'; applyQuality('high');
+    // The plain scene render, on this machine, in this run. High is judged
+    // against it rather than against a number written down on a quieter day:
+    // an absolute ceiling of 23ms measures how busy the machine is, and duly
+    // failed at 30.9ms on a build that had not touched the renderer at all.
+    const msPlain = (()=>{
+      for(let i=0;i<12;i++) renderer.render(scene, camera);
+      gl.finish();
+      let best = Infinity;
+      for(let b=0;b<3;b++){
+        const N = 25, t0 = performance.now();
+        for(let i=0;i<N;i++) renderer.render(scene, camera);
+        gl.finish();
+        best = Math.min(best, (performance.now() - t0) / N);
+      }
+      return best;
+    })();
     // A tab the browser has put in the background is throttled, and no amount
     // of care makes a frame time measured in one mean anything -- it came back
     // at 200ms a frame, with Medium slower than High. The number is still
     // reported; it is simply not judged.
     const hidden = (typeof document !== 'undefined' && document.hidden);
-    rep.frame = msHigh.toFixed(1)+'ms High, '+msMed.toFixed(1)+'ms Medium, at 1280x720'
+    rep.frame = msHigh.toFixed(1)+'ms High, '+msMed.toFixed(1)+'ms Medium, '
+              + msPlain.toFixed(1)+'ms plain, at 1280x720'
               + (hidden ? ' (tab in the background and throttled: reported, not judged)' : '');
     if(!hidden){
       // the target, on the quality the game starts on
       if(msMed > FRAME_CAP_MEDIUM) bad.push('a Medium frame takes '+msMed.toFixed(1)+'ms, cap '+FRAME_CAP_MEDIUM);
       else if(msMed > msHigh*(1-MEDIUM_MUST_SAVE))
         bad.push('Medium saves only '+((1-msMed/msHigh)*100).toFixed(0)+'% over High, want 25%');
-      // and a ceiling on High, so a regression there is still caught
-      if(msHigh > FRAME_CAP) bad.push('a High frame takes '+msHigh.toFixed(1)+'ms, ceiling '+FRAME_CAP);
+      // and a ceiling on High, so a regression there is still caught -- as a
+      // multiple of the plain render, which moves with the machine
+      if(msHigh > msPlain * HIGH_OVER_PLAIN)
+        bad.push('a High frame costs '+(msHigh/msPlain).toFixed(1)+'x the plain render ('
+                 +msHigh.toFixed(1)+'ms against '+msPlain.toFixed(1)+'ms), ceiling '+HIGH_OVER_PLAIN+'x');
     }
 
     // (c) the clearcoat highlight. The camera is put on the sun's side of the

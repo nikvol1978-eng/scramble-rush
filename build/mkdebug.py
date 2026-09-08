@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 22
+VERSION = 23
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
