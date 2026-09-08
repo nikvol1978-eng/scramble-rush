@@ -2097,6 +2097,24 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // Sunny Sprint's bot falls, measured head to head, because the question
+  // comes up every time someone reads an old commit message:
+  //
+  //                    disc field   crumble   pit    total per seed
+  //     v21 (d4f316e)      58          45      2     22 30 11 19 23
+  //     v23                20          16      2     10 11  7  7  3
+  //
+  // Five seeds each, whole field of fifteen bots, same probe, built from the
+  // two trees side by side. v22's knockdown rules halved them: a bot that
+  // cannot be knocked over while already down, and that is briefly untouchable
+  // on standing up, stops feeding itself back into the same hazard.
+  //
+  // The "0 to 1 falls on Sunny" figure that looks like a regression against
+  // this is from 408687b, a v20 commit -- before v21 gave Sunny a disc field,
+  // a zigzag of small discs and a crumbling bridge. It is a different course.
+  // What is left is one unlucky bot looping at one hazard, which is a respawn
+  // problem, and is what the twenty-second rule below is for.
+
   // ---------- +: the acceptance run, five seeds a map ----------
   // The brief's own test. A player who only holds forward and mashes jump used
   // to finish first or top-three on 8 of 13 race maps. Judged over five layouts
