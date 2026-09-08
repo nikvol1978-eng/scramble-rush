@@ -8,10 +8,10 @@
     }
     r.falling=false; r.h=0; r.vh=0;
     // respawn just before the hazard we fell into
-    let ry=r.y-260, rx=r.x;
+    let ry=r.y-260, rx=r.x, hitObs=null;
     for(const o of obstacles){
       if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
-        ry=o.yStart-90;
+        ry=o.yStart-90; hitObs=o;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
@@ -86,5 +86,33 @@
         r.tileGraceUntil = raceTime + 1.5;
       } else { ry=hex.yStart-90; r.floorH=0; }
     }
-    r.y=Math.max(-20, ry); r.x=clamp(rx, 60, TRACK_W-60); r.vx=0; r.vy=0.5; r.stumbleT=250; r.invuln=900; r.aiObs=null; r.aiPlat=null;
+    // A full section back, not ninety units. Landing on the lip of the hazard
+    // that just took you means arriving at it from a standstill with no run-up
+    // and no read on its timing, which is how a player collects twenty-five
+    // falls at one hole. Whichever is further back: the start of the previous
+    // section, or 400 units.
+    if(hitObs){
+      // One section, measured from the hazard's own section -- not from ry,
+      // which has already been pulled back to the hazard's lip and therefore
+      // usually sits in the previous section, so asking what came before *it*
+      // sent racers back two. That cost about five seconds a fall on Super
+      // Slide and left three bots short of the line inside the round.
+      const prev = sectionStartBefore(hitObs.yStart);
+      const back = Math.min(ry - 400, prev === null ? Infinity : prev);
+      if(isFinite(back)) ry = Math.max(-20, Math.min(ry, back));
+    }
+    r.y=Math.max(-20, ry); r.x=clamp(rx, 60, TRACK_W-60); r.vx=0; r.vy=0.5;
+    r.stumbleT=250; r.invuln=1400; r.aiObs=null; r.aiPlat=null;
+    // A bot put back where it started will make the same choice again and fall
+    // in the same place. Reroll the lane it fancies; and once it has failed
+    // here twice, stop letting it pick -- send it down the middle of whatever
+    // it is trying to cross, which is the line that works.
+    if(!r.isPlayer){
+      r.aiRoute = Math.random();
+      const burned = (hitObs && r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      if(burned >= 2) r.aiRoute = 0.5;
+    }
+    // A beat on your feet before you have to do anything with them. The
+    // invulnerability above covers it and a little more.
+    r.respawnFreeze = RESPAWN_FREEZE_S;
   }

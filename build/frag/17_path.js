@@ -13,6 +13,20 @@
   // The script the current course was built from, so the path and the mesh
   // builder can both read the section list genCourse walked.
   let courseScript = null;
+
+  // The start of the section before the one containing y. Respawning is the
+  // only caller: putting a racer back on the lip of the hazard that just took
+  // them is how one bad jump turns into ten, so they go back far enough to
+  // arrive at it running rather than standing on its edge.
+  function sectionStartBefore(y){
+    if(!courseScript || !courseScript.length) return null;
+    let acc = 0, prevStart = 0, thisStart = 0;
+    for(const sec of courseScript){
+      if(y < acc + sec.len){ thisStart = acc; break; }
+      prevStart = acc; acc += sec.len; thisStart = acc;
+    }
+    return prevStart < thisStart ? prevStart : thisStart;
+  }
   const PATH_STEP = 40;                    // arc-length between samples
 
   // spec: { slope(u), turn(u) } in radians, u = 0..1 along the course.

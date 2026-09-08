@@ -31,7 +31,7 @@
       }
       // v22: getting up gives you a little more of yourself back than it did.
       // At 0.30 the last quarter-second of every knock felt like a second knock.
-      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
+      const control = (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
       let pax = ix*ACCEL*(1+p.draft)*WIND(p)*control, pay = iy*ACCEL*(1+p.draft)*WIND(p)*control;
       const iceK = iceBlend(p, pax, pay);
       p.vx+=pax*iceK*f; p.vy+=pay*iceK*f;
@@ -85,7 +85,7 @@
             if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
             r.facing=want;
           }
-          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
+          const control = (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
@@ -110,6 +110,7 @@
           }
         }
       }
+      if(r.respawnFreeze>0){ r.respawnFreeze-=dt; r.vx=0; r.vy=0; }
       if(r.windT>0) r.windT-=dt*1000;
       if(r.stumbleT>0) r.stumbleT-=dt*1000;
       if(r.diveCd>0)   r.diveCd-=dt*1000;

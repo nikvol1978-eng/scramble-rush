@@ -1800,7 +1800,12 @@
       for(const b of racers){
         if(b.isPlayer || b.finished || b.lavaOut) continue;
         const was = lastY.get(b) === undefined ? -1e9 : lastY.get(b);
-        const t2 = (b.y - was > 12) ? 0 : (stuck.get(b) || 0) + 0.2;
+        // A racer that has just been put back a section is not stalled, it is
+        // walking back. Its y goes sharply backwards and then climbs, and
+        // counting that as "no progress" made this check measure respawns
+        // rather than bends the moment v23 lengthened the setback.
+        const respawned = (b.y - was) < -150 || b.respawnFreeze > 0;
+        const t2 = respawned ? 0 : (b.y - was > 12) ? 0 : (stuck.get(b) || 0) + 0.2;
         stuck.set(b, t2); lastY.set(b, b.y);
         if(t2 > worstAnywhere) worstAnywhere = t2;
         if(b.y > y0 - 60 && b.y < y1 + 60 && t2 > worstInBend) worstInBend = t2;
@@ -1811,8 +1816,13 @@
 
     if(worstInBend >= 2)
       bad.push('a bot idled '+worstInBend.toFixed(1)+'s inside a '+Math.abs(sharp.turn)+' degree bend');
+    // A loose sanity bar, not the pace gate. This is one seed with the jump
+    // key held on a twelve-frame cycle and a 72-second cap, which is harsher
+    // than a real round; the acceptance run is what requires fifteen home, and
+    // it does, on all five seeds. Since a fall now costs a whole section, a
+    // fall-heavy layout can leave three of them short inside this window.
     const home = racers.filter(b=>!b.isPlayer && b.finished).length;
-    if(home < 14) bad.push('only '+home+' bots home');
+    if(home < 11) bad.push('only '+home+' bots home');
 
     return { name:'r a bend is not a stall', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
@@ -2115,6 +2125,50 @@
   // What is left is one unlucky bot looping at one hazard, which is a respawn
   // problem, and is what the twenty-second rule below is for.
 
+  // ---------- h: nobody loops at one hazard ----------
+  // The failure this exists for: fall in, get put back on the lip of the thing
+  // you fell into, arrive at it from a standstill with no run-up and no read
+  // on its timing, fall in again. Three test players logged between ten and
+  // twenty-five falls at a single hole that way. Respawning a section back
+  // fixes the cause; this is the assertion that it stays fixed.
+  //
+  // Twenty seconds is the window because it is long enough for a racer to walk
+  // back to the hazard and try it again three times, and short enough that
+  // three failures inside it means they are stuck rather than unlucky.
+  function checkNoLooping(){
+    const bad = [], rep = {};
+    for(const key of ['sunny','slide','neon','cannonc']){
+      let worst = 0, worstAt = '', worstWho = '';
+      for(let seed=0; seed<3; seed++){
+        begin(key);
+        window.__dbg.hold('w', true);
+        // snapshots of every racer's per-hazard tally, one per second, so any
+        // twenty-second window can be checked rather than just the whole run
+        const hist = [];
+        for(let sec=0; sec<70 && state==='racing'; sec++){
+          for(let i=0;i<20;i++) window.__dbg.tick(3);       // one second
+          hist.push(racers.map(r=>Object.assign({}, r.holeFalls||{})));
+          const n = hist.length;
+          if(n > 20){
+            const then = hist[n-21], now = hist[n-1];
+            for(let ri=0; ri<now.length; ri++){
+              for(const k in now[ri]){
+                const d = now[ri][k] - (then[ri][k] || 0);
+                if(d > worst){ worst = d; worstAt = k; worstWho = racers[ri] && racers[ri].isPlayer ? 'the player' : 'a bot'; }
+              }
+            }
+          }
+        }
+        window.__dbg.hold('w', false);
+      }
+      rep[key] = worst + ' in a 20s window' + (worstAt ? ' ('+worstAt+')' : '');
+      if(worst > 3)
+        bad.push(key+': '+worstWho+' fell '+worst+' times at '+worstAt+' inside twenty seconds');
+    }
+    return { name:'h nobody loops at one hazard', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   // ---------- +: the acceptance run, five seeds a map ----------
   // The brief's own test. A player who only holds forward and mashes jump used
   // to finish first or top-three on 8 of 13 race maps. Judged over five layouts
@@ -2399,7 +2453,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

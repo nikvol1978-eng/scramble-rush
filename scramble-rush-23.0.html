@@ -2766,6 +2766,20 @@ const QUALITY = {
   // The script the current course was built from, so the path and the mesh
   // builder can both read the section list genCourse walked.
   let courseScript = null;
+
+  // The start of the section before the one containing y. Respawning is the
+  // only caller: putting a racer back on the lip of the hazard that just took
+  // them is how one bad jump turns into ten, so they go back far enough to
+  // arrive at it running rather than standing on its edge.
+  function sectionStartBefore(y){
+    if(!courseScript || !courseScript.length) return null;
+    let acc = 0, prevStart = 0, thisStart = 0;
+    for(const sec of courseScript){
+      if(y < acc + sec.len){ thisStart = acc; break; }
+      prevStart = acc; acc += sec.len; thisStart = acc;
+    }
+    return prevStart < thisStart ? prevStart : thisStart;
+  }
   const PATH_STEP = 40;                    // arc-length between samples
 
   // spec: { slope(u), turn(u) } in radians, u = 0..1 along the course.
@@ -4066,6 +4080,10 @@ const QUALITY = {
   // ground, which is what check L measures. Scaling it by the friction instead
   // made the drop worth 4% where it had been worth 7%.
   function slopePull(){ return SLOPE_PULL * iceDriveK(); }
+  // How long you stand still after a respawn before the controls answer. Long
+  // enough to see where you have been put and what is coming; short enough not
+  // to feel like a penalty on top of the fall.
+  const RESPAWN_FREEZE_S = 0.8;
   const COYOTE_MS = 110;                    // grace after stepping off an edge
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
@@ -4167,10 +4185,10 @@ const QUALITY = {
     }
     r.falling=false; r.h=0; r.vh=0;
     // respawn just before the hazard we fell into
-    let ry=r.y-260, rx=r.x;
+    let ry=r.y-260, rx=r.x, hitObs=null;
     for(const o of obstacles){
       if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
-        ry=o.yStart-90;
+        ry=o.yStart-90; hitObs=o;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
@@ -4245,7 +4263,35 @@ const QUALITY = {
         r.tileGraceUntil = raceTime + 1.5;
       } else { ry=hex.yStart-90; r.floorH=0; }
     }
-    r.y=Math.max(-20, ry); r.x=clamp(rx, 60, TRACK_W-60); r.vx=0; r.vy=0.5; r.stumbleT=250; r.invuln=900; r.aiObs=null; r.aiPlat=null;
+    // A full section back, not ninety units. Landing on the lip of the hazard
+    // that just took you means arriving at it from a standstill with no run-up
+    // and no read on its timing, which is how a player collects twenty-five
+    // falls at one hole. Whichever is further back: the start of the previous
+    // section, or 400 units.
+    if(hitObs){
+      // One section, measured from the hazard's own section -- not from ry,
+      // which has already been pulled back to the hazard's lip and therefore
+      // usually sits in the previous section, so asking what came before *it*
+      // sent racers back two. That cost about five seconds a fall on Super
+      // Slide and left three bots short of the line inside the round.
+      const prev = sectionStartBefore(hitObs.yStart);
+      const back = Math.min(ry - 400, prev === null ? Infinity : prev);
+      if(isFinite(back)) ry = Math.max(-20, Math.min(ry, back));
+    }
+    r.y=Math.max(-20, ry); r.x=clamp(rx, 60, TRACK_W-60); r.vx=0; r.vy=0.5;
+    r.stumbleT=250; r.invuln=1400; r.aiObs=null; r.aiPlat=null;
+    // A bot put back where it started will make the same choice again and fall
+    // in the same place. Reroll the lane it fancies; and once it has failed
+    // here twice, stop letting it pick -- send it down the middle of whatever
+    // it is trying to cross, which is the line that works.
+    if(!r.isPlayer){
+      r.aiRoute = Math.random();
+      const burned = (hitObs && r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      if(burned >= 2) r.aiRoute = 0.5;
+    }
+    // A beat on your feet before you have to do anything with them. The
+    // invulnerability above covers it and a little more.
+    r.respawnFreeze = RESPAWN_FREEZE_S;
   }
   function spawnBurst3D(simX,simY,colorHex,count){
     for(let i=0;i<(count||9);i++){
@@ -6823,7 +6869,7 @@ const QUALITY = {
       }
       // v22: getting up gives you a little more of yourself back than it did.
       // At 0.30 the last quarter-second of every knock felt like a second knock.
-      const control = p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
+      const control = (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
       let pax = ix*ACCEL*(1+p.draft)*WIND(p)*control, pay = iy*ACCEL*(1+p.draft)*WIND(p)*control;
       const iceK = iceBlend(p, pax, pay);
       p.vx+=pax*iceK*f; p.vy+=pay*iceK*f;
@@ -6877,7 +6923,7 @@ const QUALITY = {
             if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
             r.facing=want;
           }
-          const control = r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
+          const control = (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
@@ -6902,6 +6948,7 @@ const QUALITY = {
           }
         }
       }
+      if(r.respawnFreeze>0){ r.respawnFreeze-=dt; r.vx=0; r.vy=0; }
       if(r.windT>0) r.windT-=dt*1000;
       if(r.stumbleT>0) r.stumbleT-=dt*1000;
       if(r.diveCd>0)   r.diveCd-=dt*1000;

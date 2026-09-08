@@ -86,6 +86,10 @@
   // ground, which is what check L measures. Scaling it by the friction instead
   // made the drop worth 4% where it had been worth 7%.
   function slopePull(){ return SLOPE_PULL * iceDriveK(); }
+  // How long you stand still after a respawn before the controls answer. Long
+  // enough to see where you have been put and what is coming; short enough not
+  // to feel like a penalty on top of the fall.
+  const RESPAWN_FREEZE_S = 0.8;
   const COYOTE_MS = 110;                    // grace after stepping off an edge
   const BUFFER_MS = 150;                    // a jump pressed just early still fires on landing
   const FINISH_ZONE = 300;                  // how far past the line you may wander
