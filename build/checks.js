@@ -338,9 +338,10 @@
   // old 35-60 s / 3-6 window.
   function checkN(){
     const bad = [], runs = [];
-    // Nine rounds, not five. A Panel Drop round is 3-4 out and 50s most of the
-    // time, but a quarter of them end early with one or two gone, and a median
-    // of five samples lands on that tail often enough to fail a good build.
+    // Nine rounds, not five. On a field of twenty-four a Panel Drop round is
+    // 6-8 out and 45s most of the time, but a quarter of them end early with a
+    // couple gone, and a median of five samples lands on that tail often
+    // enough to fail a good build.
     for(let i=0;i<9;i++){
       begin('tiles');
       if(!currentMap.knockout) return { name:'N Panel Drop drops you a floor at a time',
@@ -361,8 +362,11 @@
 
     if(medSecs < 30)  bad.push('median round only '+medSecs+'s, want 30-60');
     if(medSecs > 60)  bad.push('median round '+medSecs+'s, past the 60s limit');
-    if(medOut < 2)    bad.push('median '+medOut+' eliminated, want 2-7');
-    if(medOut > 7)    bad.push('median '+medOut+' eliminated, want 2-7');
+    // The band is a share of the field, not a count: 2-7 of sixteen is
+    // 3-10 of twenty-four. Widening it for the bigger field is not a loosening
+    // -- the same fraction of the pad has to go through the floor.
+    if(medOut < 3)    bad.push('median '+medOut+' eliminated, want 3-10');
+    if(medOut > 10)   bad.push('median '+medOut+' eliminated, want 3-10');
     if(!runs.some(r=>r.everDropped)) bad.push('nobody ever dropped to a lower floor');
 
     const spread = runs.map(r=>r.out+'/'+r.secs+'s').join(' ');
@@ -2310,7 +2314,10 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(report) };
   }
 
-  // ---------- H: the match still cuts 16 -> 12 -> 6 ----------
+  // ---------- H: the match still cuts 24 -> 16 -> 8 ----------
+  // Was 16 -> 12 -> 6, from the ratio-based cut. v24 §1 replaces that with a
+  // stated ladder, so this asserts the ladder rather than the ratio.
+  // It is the one check that fails loudly if CUT_LADDER is edited by accident.
   function checkH(){
     begin('sunny');
     const seq = [racers.length];
@@ -2323,8 +2330,8 @@
     seq.push(racers.length);
     winRound();
     const title = (document.querySelector('#results .title')||{}).textContent || '';
-    const ok = seq[0]===16 && seq[1]===12 && seq[2]===6 && /VICTORY/.test(title);
-    return { name:'H match cuts 16 -> 12 -> 6 -> victory', pass: ok,
+    const ok = seq[0]===24 && seq[1]===16 && seq[2]===8 && /VICTORY/.test(title);
+    return { name:'H match cuts 24 -> 16 -> 8 -> victory', pass: ok,
              detail: seq.join(' -> ')+' -> '+title };
   }
 

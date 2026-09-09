@@ -1,15 +1,30 @@
   // ============================================================
   // ROUND FLOW — three rounds, six racers in the final
   // ============================================================
-  const ROUNDS = 3, FINAL_COUNT = 6;
+  // v24: twenty-four start, sixteen come out of round one, eight out of round
+  // two, and the last eight race for it. Written as counts rather than a ratio
+  // because they are the shape of the match, not a formula -- but the bot
+  // slider goes down to five, so a short field scales the same shape down.
+  const ROUNDS = 3, FIELD = 24, FINAL_COUNT = 8;
+  const CUT_LADDER = { 1: 16, 2: 8 };
   // The final leans hard into minigames — that is where they land best.
   // Round 1 is always a race so everyone learns the controls; round 2 is a
   // coin flip; round 3 is always the Closing Circle.
   const MINIGAME_CHANCE = {1:0, 2:0.5};
   let loadTimer = 0;
+  // How many actually lined up for round one. The ladder scales off this, not
+  // off however many are left in the round being cut: scaling off the round's
+  // own total made round two keep round(8 * 16/24) = 5 rather than 8, because
+  // sixteen is what the ladder itself had just produced.
+  let matchField = FIELD;
 
   function survivorsAfter(roundNum, total){
     if(roundNum>=ROUNDS) return 1;
+    const want = CUT_LADDER[roundNum];
+    if(want !== undefined){
+      const keep = Math.max(2, Math.round(want*matchField/FIELD));
+      return Math.max(2, Math.min(keep, total-1));
+    }
     if(roundNum===ROUNDS-1) return Math.max(2, Math.min(FINAL_COUNT, total-1));
     const target = Math.max(FINAL_COUNT+1, Math.ceil(total*0.72));
     return Math.max(2, Math.min(target, total-1));
@@ -145,6 +160,7 @@
     }
     buildCourseMeshes(); applyMapSky();
     racers=makeRacers(survivors); buildRacerMeshes();
+    if(n===1) matchField = racers.length;
     for(const r of racers){ r.floorH=0; r.onRamp=null; }
     clearParticles(); resetLook();
     courseGroup.visible=true; racerGroup.visible=true; previewGroup.visible=false;

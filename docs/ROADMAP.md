@@ -118,12 +118,29 @@ launch forward. The core game stays about movement and obstacles.
 
 | v23 | A fix pass on v22, from an independent play-through. Floors keep their colour and hazards earn contrast by being darker rather than by the floor being drab. The sky carries each map's own blue instead of haze. Falling sends you back a full section with a beat to gather yourself, and nothing can loop you at one hazard more than three times in twenty seconds. The camera fades gate walls and netting instead of shoving past them. Keyboard players get keyboard prompts, and the lobby frames the character rather than the podium |
 
+## v24, in progress
+
+Working through `docs/CLAUDE-CODE-BRIEF-v24.md` in order.
+
+- **Naming (done, ff3a343).** Every round has a name of its own.
+- **§1 match structure (done).** Twenty-four on the pad, cut to sixteen after
+  round one and to eight after round two. The cut is written down as a ladder
+  rather than derived from a ratio, and the HUD says QUALIFIED n/16 so you can
+  see what you are racing for. The start pad is a grid of eight columns three
+  rows deep, on an apron that now reaches back behind the line, because
+  twenty-five racers in one row would have started inside one another.
+  The bean rig is skinned: **2.0 draw calls a racer, down from 13.5**, which
+  takes a busy course from 580 draws to 138–226 and finally clears the 300
+  the brief asks for. Two fixes fell out of it — `botLook()` had been landing
+  on the survivors line, so every racer including the player was reskinned at
+  the start of rounds two and three; and sixteen survivors would have lined up
+  from x=-55 to x=815 on a 760-wide track.
+- **Open against §1:** check `h` (nobody falls more than three times at one
+  hazard in twenty seconds) now sits *on* its limit and tips to four in about
+  one run in three, always at Splash Slide's first ice channel. See the note
+  below.
+
 ## v24 candidates
 
-- **Bean rig rewrite: one skinned mesh per racer.** Sixteen characters of about
-  twenty animated parts each is 300 draw calls before any course is drawn,
-  which is why v21's renderer check caps at 460 rather than the 300 it was
-  asked for. One skinned mesh a racer would take the whole field to sixteen
-  draws and put the target back in reach.
-- **A GitHub remote.** Everything through v21 is committed locally only.
+- **A GitHub remote.** Everything through v23 is committed locally only.
 

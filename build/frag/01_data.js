@@ -1,6 +1,6 @@
   const DEFAULT_SETTINGS = {
     keys:{ forward:'w', back:'s', left:'a', right:'d', jump:' ', dive:'shift' },
-    camDist:1.0, botCount:15, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
+    camDist:1.0, botCount:23, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
     // Free-orbit mouse look is opt-in: the camera should follow you, not be
     // something you have to steer as well.
@@ -18,7 +18,10 @@
   const EYES = [['round','Round'],['happy','Happy'],['angry','Angry'],['sleepy','Sleepy']];
 
   const BOT_COLORS = ['#ff8a5c','#7ee8fa','#c084fc','#ffd166','#06d6a0','#f472b6','#a3e635','#60a5fa','#fca5a5','#fbbf24','#34d399','#ff5a4d','#e879f9','#fde68a','#5eead4','#f97316','#4ade80','#818cf8'];
-  const BOT_NAMES = ['Waddle','Boingo','Muncher','Squiggle','Tofu','Biscuit','Nugget','Zippy','Doodle','Blorp','Pudge','Wobble','Gizmo','Splat','Noodle','Pickle','Mochi','Bingo'];
+  // Twenty-four on the pad wants twenty-three of these, all different.
+  const BOT_NAMES = ['Waddle','Boingo','Muncher','Squiggle','Tofu','Biscuit','Nugget','Zippy',
+                     'Doodle','Blorp','Pudge','Wobble','Gizmo','Splat','Noodle','Pickle',
+                     'Mochi','Bingo','Custard','Peanut','Waffle','Dumpling','Sprout'];
   const BOT_HATS = ['none','none','none','party','halo','horns','prop'];
   // The pack wears the wardrobe too: a colourway from the cheaper tiers and a
   // pattern about half the time, so sixteen beans do not read as one flat blob.

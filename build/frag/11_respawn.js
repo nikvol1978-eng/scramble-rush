@@ -103,6 +103,10 @@
       // differently, and on ice it is the only way to be lined up in time.
       const burned = (r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
       if(burned >= 2 && prev !== null) prev = sectionStartBefore(prev - 1);
+      // A third rung was tried in v24 §1 for the bigger field and measured no
+      // better -- two runs in three either way. It is not here because it did
+      // not earn its place; the hazard it was aimed at is early enough that
+      // there is no third section to go back to.
       const back = Math.min(ry - 400, prev === null ? Infinity : prev);
       if(isFinite(back)) ry = Math.max(-20, Math.min(ry, back));
     }

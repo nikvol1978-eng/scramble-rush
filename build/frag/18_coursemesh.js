@@ -197,37 +197,39 @@
     }
     if(cursor<endZ){ addGround(0,TRACK_W,cursor,endZ,false); addWall(0,cursor,endZ); addWall(TRACK_W,cursor,endZ); }
 
-    // ---- the start pad: a wide chequered apron with the sixteen slots on it
-    // The slots are the same arithmetic makeRacers uses to place the field, so
+    // ---- the start pad: a wide chequered apron with the grid painted on it
+    // The lanes are the same arithmetic makeRacers uses to place the field, so
     // what is painted is where the racers actually stand rather than a
-    // decoration that drifts out of step with them.
+    // decoration that drifts out of step with them. The apron now reaches back
+    // behind the line, because three rows of eight stand there.
     const startSec = (courseScript||[]).find(s=>s.type==='start');
     if(startSec){
-      const padEnd = startSec.len;
+      const padEnd = startSec.len, padStart = -220, padLen = padEnd - padStart;
       const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
-      const segs = Math.max(3, Math.round(padEnd/150));
+      const segs = Math.max(3, Math.round(padLen/150));
       // One texture for the whole apron, not one per plate: every segment is
       // the same size and so wants the same repeat, and a clone is a separate
       // upload to the card for an identical image.
       const padTex = chk.clone(); padTex.needsUpdate = true;
-      padTex.repeat.set(4, (padEnd/segs)/90);
+      padTex.repeat.set(4, (padLen/segs)/90);
       const padMat = new THREE.MeshFloorMaterial({map:padTex});
       for(let i=0;i<segs;i++){
-        const sy = padEnd*(i+0.5)/segs;
-        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padEnd/segs)*0.99),
+        const sy = padStart + padLen*(i+0.5)/segs;
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padLen/segs)*0.99),
           padMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
       }
-      // one bay per starting slot, in the map's accent
-      const nSlots = 16;
-      const pitch = Math.min(58, (TRACK_W-80)/nSlots);
+      // One lane stripe between each pair of columns, in the map's accent --
+      // eight strips down the grid rather than a mark under every slot, which
+      // at twenty-four slots would be twenty-four more draw calls for paint.
+      const colW = (TRACK_W-140)/(START_COLS-1);
       const bayMat = new THREE.MeshLambertMaterial({color:accents[0]});
-      for(let i=0;i<=nSlots;i++){
-        const bx = TRACK_W/2 + (i-nSlots/2)*pitch;
+      for(let i=0;i<=START_COLS;i++){
+        const bx = TRACK_W/2 + (i-START_COLS/2)*colW;
         if(bx < 20 || bx > TRACK_W-20) continue;
-        const bay = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 54), bayMat);
-        placeAt(bay, bx, -34, 2.2); courseGroup.add(bay);
+        const bay = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 200), bayMat);
+        placeAt(bay, bx, -105, 2.2); courseGroup.add(bay);
       }
     }
     // start line

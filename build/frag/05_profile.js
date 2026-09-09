@@ -220,8 +220,7 @@
     for(const pu of b.pupils){ pu.position.x = pu.userData.baseX !== undefined ? pu.userData.baseX : (pu.userData.baseX = pu.position.x); }
     b.pupils.forEach(pu=>{ pu.position.x = pu.userData.baseX + pupilX; pu.position.y = 5 + pupilY; });
     b.scleras.forEach(sc=>{ sc.scale.y = (custom.eyes==='happy'||custom.eyes==='sleepy'? (custom.eyes==='happy'?0.55:0.5) : 1) * (1 - squint*0.55); });
-    b.tongue.visible = tongue;
-    b.mouth.scale.set(1 + (tongue?0.35:0), 1 + (tongue?0.35:0), 1);
+    b.tongue.scale.setScalar(tongue ? 1 : 0.0001);
   }
 
   function syncPreview(t,dt){

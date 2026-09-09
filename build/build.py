@@ -335,28 +335,20 @@ cut("  function genCourse(n){",
 
 
 
-# ---------------------------------------------------------------- racers wear skins
-sub("      list.push(Object.assign(baseRacer(), {isPlayer:true, remoteId:null, _localId:'host', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes, x:pslot, y:-60}));",
-    "      list.push(Object.assign(baseRacer(), {isPlayer:true, remoteId:null, _localId:'host', name:custom.name||'YOU', skinId:custom.skin, color:skinBaseColor(skinOf(custom.skin)), hat:custom.hat, eyes:custom.eyes, x:pslot, y:-60}));",
-    "player racer skin")
-sub("      const n=clamp(settings.botCount,3,15);",
-    "      const n=clamp(settings.botCount,3,19);", "bot clamp")
-sub("      const order=[...Array(15).keys()].sort(()=>Math.random()-0.5);",
-    "      const order=[...Array(BOT_NAMES.length).keys()].sort(()=>Math.random()-0.5);", "bot order")
-sub("        const k=order[i%15];",
-    "        const k=order[i%BOT_NAMES.length];", "bot index")
-sub("      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, hat:s.hat, eyes:s.eyes,",
-    "      survivors.forEach((s,i)=>{ list.push(Object.assign(s, baseRacer(), {isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, hat:s.hat, eyes:s.eyes,",
-    "survivor skin carry")
+# ---------------------------------------------------------------- the field
+# makeRacers is replaced outright rather than patched. It used to carry seven
+# separate subs -- the field size, the name pool, the wardrobe, the start
+# slots -- and one of them was landing on the wrong line: "bot look" anchored
+# on a string the survivors branch happened to share, so every racer including
+# the player was reskinned at the start of rounds two and three. A field of
+# twenty-four needs a grid rather than a row, and that is easier to read whole.
+cut("  function makeRacers(survivors){",
+    "  function buildRacerMeshes(){",
+    frag("29_racers.js"),
+    "the field")
 sub("      const b=makeBlob({color:r.color, hat:r.hat, eyes:r.eyes});",
     "      const b=makeCharacter(r.skinId ? {skin:skinOf(r.skinId), pattern:patternOf(r.patternId), hat:r.hat, eyes:r.eyes} : {color:r.color, hat:r.hat, eyes:r.eyes});",
     "racer mesh skin")
-sub("skinId:custom.skin, color:skinBaseColor(skinOf(custom.skin))",
-    "skinId:custom.skin, patternId:custom.pattern, color:skinBaseColor(skinOf(custom.skin))",
-    "player pattern")
-sub("{isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, hat:s.hat, eyes:s.eyes,",
-    "{isPlayer:s.isPlayer, name:s.name, color:s.color, skinId:s.skinId, patternId:s.patternId, hat:s.hat, eyes:s.eyes,",
-    "survivor pattern carry")
 sub("  function buildRacerMeshes(){\n    clearGroup(racerGroup);",
     "  function buildRacerMeshes(){\n    clearGroup(racerGroup);\n    animatedMats=[];",
     "reset animated mats")
@@ -530,13 +522,6 @@ sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
 sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
     "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055) - (currentMap.slippery?r.vx*0.55:0),-1.5,1.5)*iceSteerK()*f;",
     "bot steering keeps up with the new friction")
-sub("x:s, speed:rand(0.84,1.04),",
-    "x:s, speed:(i<3 ? rand(1.00,1.05) : rand(0.93,1.03)),",
-    "bot speed spread, with a few elites")
-# bots wear skins and patterns, not one flat colour each
-sub("targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)}));",
-    "targetX:cx+rand(-250,250), aiDecideT:rand(0,0.5)}, botLook()));",
-    "bot look")
 
 # ------------------------------------------------------------ arena bot ai
 sub("  function racerCollisions(){",
@@ -631,7 +616,7 @@ cut("  function refreshPreview(){",
 
 # ---------------------------------------------------------------- settings additions
 sub("""    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=3; br.max=15;""",
-    """    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=5; br.max=19;""",
+    """    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=5; br.max=23;""",
     "bot slider range")
 sub("""    toggle('shake','Camera shake');""",
     """    toggle('freeLook','Free look (trackpad / drag)');
@@ -669,6 +654,13 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     "loop hooks")
 
 # HUD progress dots should show the player's colourway
+# the qualified badge is the map's teal, and goes gold when the cut is full
+sub("  .badge.time{background:var(--red);} .badge.rank{background:var(--purple);}",
+    "  .badge.time{background:var(--red);} .badge.rank{background:var(--purple);}" + chr(10)
+    + "  .badge.qual{background:var(--teal);color:var(--line);}"
+    + " .badge.qual.full{background:var(--gold);color:var(--line);}",
+    "qualified badge style")
+
 sub("  function updateHud(){",
     "  function updateHud(){" + chr(10) + "    updateSpectator();",
     "spectator hud tick")
@@ -680,6 +672,25 @@ sub("    $('rankBadge').textContent=`Rank ${rank}/${racers.length}`;",
     + chr(10) + "      ? racers.filter(r=>!r.lavaOut).length+' LEFT'"
     + chr(10) + "      : `Rank ${rank}/${racers.length}`;",
     "knockout hud")
+
+# ------------------------------------------------------- QUALIFIED 9/16
+# The cut is the thing you are actually racing for, so the HUD says how many
+# places are left rather than leaving you to work it out from your rank. It
+# fills as racers cross and goes away in the final, which cuts nobody.
+sub('<div class="badge rank" id="rankBadge">Rank 1/12</div>',
+    '<div class="badge rank" id="rankBadge">Rank 1/12</div>' + chr(10)
+    + '    <div class="badge qual hidden" id="qualBadge">QUALIFIED 0/16</div>',
+    "qualified badge")
+sub("  function updateHud(){" + chr(10) + "    updateSpectator();",
+    "  function updateHud(){" + chr(10) + "    updateSpectator();" + chr(10)
+    + "    const qb__ = $('qualBadge'), cut__ = (round<ROUNDS) ? survivorsAfter(round, racers.length) : 0;" + chr(10)
+    + "    if(cut__ > 0 && !currentMap.knockout){" + chr(10)
+    + "      const done__ = racers.filter(r=>r.finished).length;" + chr(10)
+    + "      qb__.textContent = 'QUALIFIED ' + Math.min(done__, cut__) + '/' + cut__;" + chr(10)
+    + "      qb__.classList.toggle('full', done__ >= cut__);" + chr(10)
+    + "      qb__.classList.remove('hidden');" + chr(10)
+    + "    } else qb__.classList.add('hidden');",
+    "qualified count")
 
 # in a survival round the bar shows the arena, not an unreachable finish line
 sub("      const pct=clamp(r.y/trackLength,0,1); const d=document.createElement('div');",
