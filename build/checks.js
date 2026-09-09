@@ -464,12 +464,58 @@
       bad.push('camera sat behind the wall: boom '+boomClear.toFixed(0)+'->'+boomBlocked.toFixed(0)
                +' and nothing faded ('+blockedMin.toFixed(2)+')');
 
+    // (c) Cannon Climb's gate walls specifically, because they are what the
+    //     complaint was about: standing by one, the boom collapsed to its
+    //     58-unit floor and the bean filled the screen against a pale block.
+    //     A gate is something to see through, not something to shove the
+    //     camera past.
+    //
+    //     Asserted structurally rather than by standing somewhere and hoping.
+    //     Cannon Climb climbs, so a camera behind a racer on the slope looks
+    //     up over the top of a gate as often as through it, and a fade test
+    //     pinned to one spot measures the gradient rather than the camera.
+    let gateRep = '';
+    begin('cannonc');
+    {
+      const g2 = obstacles.filter(o=>o.type==='gate');
+      if(!g2.length) bad.push('cannon climb has no gate to test');
+      const segs = [];
+      for(const o of g2){
+        if(!o.mesh) continue;
+        o.mesh.traverse(m=>{ if(m.isMesh) segs.push(m); });
+      }
+      const fadeSet = new Set(fadeables), blockSet = new Set(camBlockers);
+      const faded = segs.filter(m=>fadeSet.has(m)).length;
+      const blocking = segs.filter(m=>blockSet.has(m));
+      if(!faded) bad.push('cannon climb gate walls are not fadeable at all');
+      if(blocking.length)
+        bad.push(blocking.length+' cannon climb gate walls still block the boom');
+
+      // and standing right at one, the boom keeps its length
+      const q = player();
+      for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.lavaOut = true; }
+      const gate = g2[0];
+      let worstBoom = 1e9;
+      for(const dy of [-40, 40, 120]){
+        for(let k=0;k<8;k++){
+          look.yaw = 0; look.pitch = 0; look.sinceInput = 0;
+          q.x = TRACK_W/2; q.y = gate.y + dy; q.h = 0; q.vx = 0; q.vy = 0;
+          q.falling = false; q.invuln = 9999;
+          window.__dbg.tick(10);
+        }
+        worstBoom = Math.min(worstBoom, camReach);
+      }
+      gateRep = segs.length+' gate meshes, '+faded+' fadeable, '+blocking.length
+              + ' blocking, boom at the gate '+worstBoom.toFixed(0);
+      if(worstBoom < 100) bad.push('the boom collapsed to '+worstBoom.toFixed(0)+' at a cannon climb gate');
+    }
+
     return { name:'P camera fades occluders and keeps out of walls',
              pass: bad.length===0,
              detail: bad.length? bad.join('; ')
-                   : fadeables.length+' fadeables, clear '+clearMin.toFixed(2)
+                   : fadeables.length+' fadeables, '+camBlockers.length+' blockers, clear '+clearMin.toFixed(2)
                      +', blocked: boom '+boomClear.toFixed(0)+'->'+boomBlocked.toFixed(0)
-                     +' and fade '+blockedMin.toFixed(2) };
+                     +' and fade '+blockedMin.toFixed(2)+'; '+gateRep };
   }
 
   // ---------- Q: the shortcut lane lifts you, speeds you up, and drops you ----------

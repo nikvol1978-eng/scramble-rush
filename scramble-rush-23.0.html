@@ -2913,16 +2913,30 @@ const QUALITY = {
   // ============================================================
   // Anything between the camera and the racer goes translucent. Materials are
   // cloned on registration, or fading one wall would fade every mesh sharing it.
-  let fadeables = [];
+  // Two lists, because they answer different questions. `fadeables` is what
+  // the camera may see through: anything in the way of the shot goes
+  // translucent. `camBlockers` is the much shorter list of things the camera
+  // boom must not pass through -- the outer walls of the corridor, which is
+  // the difference between looking through a gate and standing outside the
+  // course. Until v23 there was one list doing both, so every gate segment and
+  // pillar on Cannon Climb both faded AND hauled the boom in to its 58-unit
+  // minimum, which is the bean filling the screen against a pale wall.
+  let fadeables = [], camBlockers = [];
   const _occRay = new THREE.Raycaster();
   const _occDir = new THREE.Vector3();
-  function clearFadeables(){ fadeables = []; }
+  function clearFadeables(){ fadeables = []; camBlockers = []; }
   function registerFadeable(mesh){
     if(!mesh || !mesh.material) return mesh;
     mesh.material = mesh.material.clone();
     mesh.material.transparent = true;
     mesh.material.opacity = 1;
     fadeables.push(mesh);
+    return mesh;
+  }
+  // Fades like the rest, and stops the boom as well.
+  function registerBlocker(mesh){
+    registerFadeable(mesh);
+    if(mesh) camBlockers.push(mesh);
     return mesh;
   }
   function updateOcclusion(target){
@@ -3080,13 +3094,13 @@ const QUALITY = {
       const d=z1-z0; if(d<=0) return;
       if(!coursePath){
         const mesh=new THREE.Mesh(new THREE.BoxGeometry(8,30,d), wallMat);
-        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerFadeable(mesh);
+        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerBlocker(mesh);
         const top=new THREE.Mesh(new THREE.BoxGeometry(10,4,d), wallTopMat); top.position.set(toSceneX(xPos),31,(z0+z1)/2); courseGroup.add(top);
         return;
       }
       const face = ribbonStrip(z0, z1, s=>[toWorld(xPos,s,0), toWorld(xPos,s,30)]);
       const fm = new THREE.Mesh(face, wallMat); fm.material.side=THREE.DoubleSide;
-      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm); registerFadeable(fm);
+      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm); registerBlocker(fm);
       const cap = ribbonStrip(z0, z1, s=>[toWorld(xPos-5,s,31), toWorld(xPos+5,s,31)]);
       const cm = new THREE.Mesh(cap, wallTopMat); cm.material.side=THREE.DoubleSide; courseGroup.add(cm);
     }
@@ -3790,11 +3804,11 @@ const QUALITY = {
     // boom and stop short of whatever it meets. Coming in is instant, going back
     // out is gradual, or it pops the moment you clear a pillar.
     let reach = radius;
-    if(fadeables.length){
+    if(camBlockers.length){
       _camRay.set(new THREE.Vector3(camPos.x+ox*radius, camPos.y+oy*radius, camPos.z+oz*radius),
                   new THREE.Vector3(-ox, -oy, -oz));
       _camRay.far = radius;
-      const hitList = _camRay.intersectObjects(fadeables, false);
+      const hitList = _camRay.intersectObjects(camBlockers, false);
       if(hitList.length) reach = clamp(radius - hitList[0].distance - 16, 58, radius);
     }
     if(camReach === 0 || snap) camReach = reach;
@@ -4274,7 +4288,12 @@ const QUALITY = {
       // usually sits in the previous section, so asking what came before *it*
       // sent racers back two. That cost about five seconds a fall on Super
       // Slide and left three bots short of the line inside the round.
-      const prev = sectionStartBefore(hitObs.yStart);
+      let prev = sectionStartBefore(hitObs.yStart);
+      // Twice at the same hazard and the run-up is not the problem: something
+      // about the approach is. Another section back buys the room to arrive
+      // differently, and on ice it is the only way to be lined up in time.
+      const burned = (r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      if(burned >= 2 && prev !== null) prev = sectionStartBefore(prev - 1);
       const back = Math.min(ry - 400, prev === null ? Infinity : prev);
       if(isFinite(back)) ry = Math.max(-20, Math.min(ry, back));
     }
@@ -4291,7 +4310,15 @@ const QUALITY = {
     }
     // A beat on your feet before you have to do anything with them. The
     // invulnerability above covers it and a little more.
-    r.respawnFreeze = RESPAWN_FREEZE_S;
+    // Longer on ice, and longer again once you have failed here twice: on a
+    // surface you cannot correct on, being handed the controls back at the
+    // same instant is what turns a fall into a loop.
+    {
+      const burned = (hitObs && r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      r.respawnFreeze = RESPAWN_FREEZE_S
+                      * (currentMap.slippery ? 1.5 : 1)
+                      * (burned >= 2 ? 1.6 : 1);
+    }
   }
   function spawnBurst3D(simX,simY,colorHex,count){
     for(let i=0;i<(count||9);i++){
@@ -4618,6 +4645,8 @@ const QUALITY = {
             wall.position.set(w.x, w.y, w.z);
             wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
             courseGroup.add(wall);
+            registerFadeable(wall);      // see through the netting, do not shove the camera
+
           }
         }
 
@@ -6049,10 +6078,19 @@ const QUALITY = {
           }
         }
       }
-      if(hereFalls >= 3 && r.y < o.y1 + 120){
+      // On ice this has to start a fall earlier and approach slower. A bot
+      // arriving at a narrow channel on Super Slide at speed cannot steer into
+      // it -- that is the whole point of the surface -- so waiting until the
+      // third fall to slow down means the third fall is guaranteed, and a
+      // fourth inside twenty seconds follows. Dry ground keeps the old
+      // threshold; there is nothing to fix there.
+      const escalateAt = currentMap.slippery ? 2 : 3;
+      if(hereFalls >= escalateAt && r.y < o.y1 + (currentMap.slippery ? 320 : 120)){
         const lane = safeLaneFor(o, r);
         // five is the ceiling: past that it barely moves until it is through
-        return set(lane === null ? TRACK_W/2 : lane, hereFalls >= 5 ? 0.45 : 0.6);
+        const slow = currentMap.slippery ? (hereFalls >= 4 ? 0.30 : 0.42)
+                                         : (hereFalls >= 5 ? 0.45 : 0.6);
+        return set(lane === null ? TRACK_W/2 : lane, slow);
       }
       if(r.aiSafe && r.y < o.y1 + 260){
         const lane = safeLaneFor(o, r);

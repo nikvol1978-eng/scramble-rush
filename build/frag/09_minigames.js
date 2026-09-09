@@ -292,6 +292,8 @@
             wall.position.set(w.x, w.y, w.z);
             wall.rotation.y = pathAngle(sy) + Math.PI/2;   // placeAt would drop the quarter turn
             courseGroup.add(wall);
+            registerFadeable(wall);      // see through the netting, do not shove the camera
+
           }
         }
 

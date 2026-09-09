@@ -192,10 +192,19 @@
           }
         }
       }
-      if(hereFalls >= 3 && r.y < o.y1 + 120){
+      // On ice this has to start a fall earlier and approach slower. A bot
+      // arriving at a narrow channel on Super Slide at speed cannot steer into
+      // it -- that is the whole point of the surface -- so waiting until the
+      // third fall to slow down means the third fall is guaranteed, and a
+      // fourth inside twenty seconds follows. Dry ground keeps the old
+      // threshold; there is nothing to fix there.
+      const escalateAt = currentMap.slippery ? 2 : 3;
+      if(hereFalls >= escalateAt && r.y < o.y1 + (currentMap.slippery ? 320 : 120)){
         const lane = safeLaneFor(o, r);
         // five is the ceiling: past that it barely moves until it is through
-        return set(lane === null ? TRACK_W/2 : lane, hereFalls >= 5 ? 0.45 : 0.6);
+        const slow = currentMap.slippery ? (hereFalls >= 4 ? 0.30 : 0.42)
+                                         : (hereFalls >= 5 ? 0.45 : 0.6);
+        return set(lane === null ? TRACK_W/2 : lane, slow);
       }
       if(r.aiSafe && r.y < o.y1 + 260){
         const lane = safeLaneFor(o, r);

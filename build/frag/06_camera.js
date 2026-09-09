@@ -189,11 +189,11 @@
     // boom and stop short of whatever it meets. Coming in is instant, going back
     // out is gradual, or it pops the moment you clear a pillar.
     let reach = radius;
-    if(fadeables.length){
+    if(camBlockers.length){
       _camRay.set(new THREE.Vector3(camPos.x+ox*radius, camPos.y+oy*radius, camPos.z+oz*radius),
                   new THREE.Vector3(-ox, -oy, -oz));
       _camRay.far = radius;
-      const hitList = _camRay.intersectObjects(fadeables, false);
+      const hitList = _camRay.intersectObjects(camBlockers, false);
       if(hitList.length) reach = clamp(radius - hitList[0].distance - 16, 58, radius);
     }
     if(camReach === 0 || snap) camReach = reach;

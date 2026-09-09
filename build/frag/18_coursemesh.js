@@ -137,13 +137,13 @@
       const d=z1-z0; if(d<=0) return;
       if(!coursePath){
         const mesh=new THREE.Mesh(new THREE.BoxGeometry(8,30,d), wallMat);
-        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerFadeable(mesh);
+        mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerBlocker(mesh);
         const top=new THREE.Mesh(new THREE.BoxGeometry(10,4,d), wallTopMat); top.position.set(toSceneX(xPos),31,(z0+z1)/2); courseGroup.add(top);
         return;
       }
       const face = ribbonStrip(z0, z1, s=>[toWorld(xPos,s,0), toWorld(xPos,s,30)]);
       const fm = new THREE.Mesh(face, wallMat); fm.material.side=THREE.DoubleSide;
-      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm); registerFadeable(fm);
+      fm.castShadow=true; fm.receiveShadow=true; courseGroup.add(fm); registerBlocker(fm);
       const cap = ribbonStrip(z0, z1, s=>[toWorld(xPos-5,s,31), toWorld(xPos+5,s,31)]);
       const cm = new THREE.Mesh(cap, wallTopMat); cm.material.side=THREE.DoubleSide; courseGroup.add(cm);
     }

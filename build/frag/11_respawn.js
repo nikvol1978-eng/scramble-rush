@@ -97,7 +97,12 @@
       // usually sits in the previous section, so asking what came before *it*
       // sent racers back two. That cost about five seconds a fall on Super
       // Slide and left three bots short of the line inside the round.
-      const prev = sectionStartBefore(hitObs.yStart);
+      let prev = sectionStartBefore(hitObs.yStart);
+      // Twice at the same hazard and the run-up is not the problem: something
+      // about the approach is. Another section back buys the room to arrive
+      // differently, and on ice it is the only way to be lined up in time.
+      const burned = (r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      if(burned >= 2 && prev !== null) prev = sectionStartBefore(prev - 1);
       const back = Math.min(ry - 400, prev === null ? Infinity : prev);
       if(isFinite(back)) ry = Math.max(-20, Math.min(ry, back));
     }
@@ -114,5 +119,13 @@
     }
     // A beat on your feet before you have to do anything with them. The
     // invulnerability above covers it and a little more.
-    r.respawnFreeze = RESPAWN_FREEZE_S;
+    // Longer on ice, and longer again once you have failed here twice: on a
+    // surface you cannot correct on, being handed the controls back at the
+    // same instant is what turns a fall into a loop.
+    {
+      const burned = (hitObs && r.holeFalls && r.holeFalls[obsKey(hitObs)]) || 0;
+      r.respawnFreeze = RESPAWN_FREEZE_S
+                      * (currentMap.slippery ? 1.5 : 1)
+                      * (burned >= 2 ? 1.6 : 1);
+    }
   }

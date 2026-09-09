@@ -160,16 +160,30 @@
   // ============================================================
   // Anything between the camera and the racer goes translucent. Materials are
   // cloned on registration, or fading one wall would fade every mesh sharing it.
-  let fadeables = [];
+  // Two lists, because they answer different questions. `fadeables` is what
+  // the camera may see through: anything in the way of the shot goes
+  // translucent. `camBlockers` is the much shorter list of things the camera
+  // boom must not pass through -- the outer walls of the corridor, which is
+  // the difference between looking through a gate and standing outside the
+  // course. Until v23 there was one list doing both, so every gate segment and
+  // pillar on Cannon Climb both faded AND hauled the boom in to its 58-unit
+  // minimum, which is the bean filling the screen against a pale wall.
+  let fadeables = [], camBlockers = [];
   const _occRay = new THREE.Raycaster();
   const _occDir = new THREE.Vector3();
-  function clearFadeables(){ fadeables = []; }
+  function clearFadeables(){ fadeables = []; camBlockers = []; }
   function registerFadeable(mesh){
     if(!mesh || !mesh.material) return mesh;
     mesh.material = mesh.material.clone();
     mesh.material.transparent = true;
     mesh.material.opacity = 1;
     fadeables.push(mesh);
+    return mesh;
+  }
+  // Fades like the rest, and stops the boom as well.
+  function registerBlocker(mesh){
+    registerFadeable(mesh);
+    if(mesh) camBlockers.push(mesh);
     return mesh;
   }
   function updateOcclusion(target){
