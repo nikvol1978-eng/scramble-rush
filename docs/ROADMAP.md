@@ -144,8 +144,22 @@ Working through `docs/CLAUDE-CODE-BRIEF-v24.md` in order.
   walk still only shoves. Two new surfaces -- slime that carries you and bounce
   pads that reach the same height at any speed -- and checkpoint flags that
   replace "one section back".
-- **Closed:** check `h` held at 3 over twelve Splash Slide seeds after §2, and
-  the worst hazard moved onto the map's own steering test. Nothing was widened.
+- **§2 addendum: the courses use the dive.** The small-disc zigzag and the grid
+  disc field each run two lines down the same stretch -- a safe one in hops
+  under 80 that a plain jump clears, and a hard one at exactly 120 that needs
+  the jump chained into a dive. The hard line buys something real: fewer hops
+  and no sideways shuffling on the zigzag, and no sweeping arm on the grid. A
+  pit now carries a fixed island, two 120-unit hops against waiting for a
+  platform. Every race map has both kinds of gap and nothing over 140. Bots
+  pick a line before the first hop, hold it, chain the dive when the hop needs
+  one, and stop trying after two falls there.
+- **Closed:** check `h`. It held at 3 over twelve Splash Slide seeds, then
+  reopened when the pit changed that map's layout, and was closed properly by
+  the waiting rule: a bot that has fallen twice at a channel holds at its mouth
+  until the traffic in front has gone, for up to four seconds. Nothing was
+  widened. Both check `r` and the acceptance run had to be taught that a
+  deliberate wait is not a stall, the same lesson respawn walk-backs taught
+  them in v23.
 
 ## v24 candidates
 

@@ -161,25 +161,43 @@
         // rhythm-jump section. It is a disc field underneath -- same cells,
         // same collision, same respawn -- with no arms and real gaps, so the
         // only thing being asked of you is the timing of the hops.
-        const n = clamp(sec.count || 6, 5, 8);
+        // v24: two lines down the same stretch of nothing. The safe one
+        // zigzags in short hops a plain jump clears; the hard one runs straight
+        // in fewer, longer hops that need the jump chained into an air dive.
+        // Fewer landings and no sideways shuffling is what the risk buys, and
+        // both lines span exactly the same y, so the only thing being traded
+        // is difficulty for time.
+        const HARD_GAP = 120, SAFE_GAP = 66;
         // Sixteen racers land on the same disc at the same moment, so a disc
         // that only fits three abreast turns the section into a shoving match
         // and most of the field goes over the side. Wide enough for the pack,
         // still small against the 520-wide track.
         const dr = 86;
-        const step = dr*2 + 40;                      // a gap you must jump, not walk
         // The sideways step between discs has to be crossable in one hop. At
         // 0.10 of the track that was 104 units between consecutive discs, far
         // more sideways speed than a bean builds in the ~34 frames it is
         // airborne, so racers landed short every time and none of sixteen
         // finished. The grid disc field, which hops straight ahead, was fine
         // throughout -- so the zigzag is a lean, not a slalom.
-        const zig = TRACK_W*0.045;
+        const zig = TRACK_W*0.035;
         const yStart2 = cursor + gap + 90;
+        const hardSteps = clamp((sec.count||5) - 1, 3, 5);
+        const span = hardSteps*(dr*2 + HARD_GAP);
+        // The safe line takes as many hops as it needs to keep each one under
+        // the width a plain jump clears, over the same span.
+        const safeN = Math.max(2, Math.round(span/(dr*2 + SAFE_GAP)) + 1);
+        const safeStep = span/(safeN - 1);
+        const side = Math.random()<0.5 ? -1 : 1;
+        const safeX = cx - side*TRACK_W*0.185, hardX = cx + side*TRACK_W*0.185;
         const cells = [];
-        for(let i=0;i<n;i++){
-          cells.push({ row:i, col:0, x: cx + ((i%2)?1:-1)*zig, y: yStart2 + dr + i*step, r: dr,
+        for(let i=0;i<safeN;i++){
+          cells.push({ row:i, col:0, x: safeX + ((i%2)?1:-1)*zig, y: yStart2 + dr + i*safeStep, r: dr,
                        noArm:true, phase: rand(0,6.28), speed: ((i%2)?-1:1)*rand(0.35,0.60)*spd,
+                       armPhase:0, armSpeed:0 });
+        }
+        for(let i=0;i<=hardSteps;i++){
+          cells.push({ row:i, col:1, x: hardX, y: yStart2 + dr + i*(dr*2 + HARD_GAP), r: dr,
+                       noArm:true, phase: rand(0,6.28), speed: rand(0.35,0.60)*spd,
                        armPhase:0, armSpeed:0 });
         }
         // The drop starts at the FIRST disc's centre and ends at the last
@@ -188,9 +206,10 @@
         // line stepped into nothing the instant it entered -- and, respawning
         // to the same line, did it again every time. One bot in Sunny lost
         // twenty-five lives that way without ever leaving the ground.
-        const yA = cells[0].y, yB = cells[cells.length-1].y;
+        const yA = yStart2 + dr, yB = yA + span;
         obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
-                  cols:1, rows:n, r:dr, cells, small:true});
+                  cols:2, rows:Math.max(safeN, hardSteps+1), r:dr, cells, small:true,
+                  hardCol:1, airGaps:[Math.round(safeStep - dr*2), HARD_GAP]});
         cursor = yB + dr + 70;
     } else if(type==='chevron'){
         // A slope painted with chevrons, net walls down both sides, and a few
@@ -243,12 +262,28 @@
         const dr = spacing*0.44;
         const rowD = dr*2.30;
         const yStart2 = cursor + gap + Math.max(50, (len - rows*rowD)/2);
+        // v24: one column is the hard line. Its discs are smaller, so the hop
+        // between them is a jump-and-dive rather than a jump -- the radius is
+        // solved from the gap we want rather than picked, so a change to the
+        // row spacing cannot quietly take it out of the band. What the risk
+        // buys is the arm: the small discs have none sweeping across them, so
+        // the hard column is the one line up the field with nothing to dodge.
+        const HARD_GAP = 120;
+        // Solved, not clamped: a disc small enough to make the gap 120 but too
+        // small to land on is worse than no hard line at all, so a field whose
+        // rows are close together simply does not get one. The zigzag section
+        // carries the band on every map regardless.
+        const hardR = (rowD - HARD_GAP)/2;
+        const hardCol = (cols >= 2 && hardR >= Math.max(26, dr*0.34))
+                      ? Math.floor(Math.random()*cols) : -1;
         const cells = [];
         for(let ri=0; ri<rows; ri++) for(let ci=0; ci<cols; ci++){
           const flip = ((ri+ci) % 2) ? -1 : 1;
-          cells.push({ row:ri, col:ci, x: ci*spacing + spacing/2, y: yStart2 + ri*rowD + dr, r: dr,
+          const hard = ci === hardCol;
+          cells.push({ row:ri, col:ci, x: ci*spacing + spacing/2, y: yStart2 + ri*rowD + dr,
+                       r: hard ? hardR : dr, noArm: hard,
                        phase: rand(0,6.28),    speed: flip*rand(0.30,0.50)*spd,
-                       armPhase: rand(0,6.28), armSpeed: -flip*rand(0.55,0.85)*spd });
+                       armPhase: rand(0,6.28), armSpeed: hard ? 0 : -flip*rand(0.55,0.85)*spd });
         }
         // The drop runs between the first and last rows' CENTRES. Measured to
         // their outer edges instead, the entry and the exit are each a point
@@ -256,7 +291,10 @@
         // centre line walked straight into the gap.
         const yA = cells[0].y, yB = cells[cells.length-1].y;
         obs.push({type:'discField', yStart:yA, yEnd:yB, y0:yA-30, y1:yB+30,
-                  cols, rows, r:dr, cells});
+                  cols, rows, r:dr, cells,
+                  hardCol: hardCol >= 0 ? hardCol : undefined,
+                  airGaps: hardCol >= 0 ? [Math.round(rowD - dr*2), Math.round(rowD - hardR*2)]
+                                        : [Math.round(rowD - dr*2)]});
         cursor = yB + dr + 60;
     } else if(type==='pillars'){
         const count = hard? 3+Math.floor(rand(0,2)) : 2+Math.floor(rand(0,2));
@@ -302,8 +340,19 @@
         obs.push({type,y,cx,length,speed:rand(1.1,1.7)*spd*(Math.random()<0.5?-1:1), phase:rand(0,6.28), thickness:34, y0:y-length/2-20, y1:y+length/2+20});
         cursor = y+length/2+20;
       } else if(type==='pit'){
-        const plen = clamp(len-180, 220, 340);
+        // v24: a fixed island down the middle. Riding a platform is the safe
+        // way over and it costs you the wait; the island is two long hops with
+        // nothing to ride and nothing to time, and it is the quickest way
+        // across for anyone who can make them. The pit is sized from the hops
+        // rather than the hops from the pit, so the gaps land in the band.
+        const ISLAND_D = 90, ISLAND_GAP = 120;
+        const wantIsland = len - 180 >= ISLAND_D + ISLAND_GAP*2;
+        const plen = wantIsland ? ISLAND_D + ISLAND_GAP*2 : clamp(len-180, 220, 340);
         const yStart2 = cursor+gap+90, yEnd2=yStart2+plen;
+        const islands = wantIsland
+          ? [{ x: clamp(cx + rand(-130,130), 130, TRACK_W-130), w: rand(150,190),
+               y0: yStart2 + ISLAND_GAP, y1: yStart2 + ISLAND_GAP + ISLAND_D }]
+          : [];
         const count = hard? 2 : (Math.random()<0.5?2:3);
         const width = (hard? rand(85,105): rand(100,125));
         const platforms=[];
@@ -311,7 +360,11 @@
           const base = cx + (i-(count-1)/2)*(count===2?220:230);
           platforms.push({baseX:base, amp:rand(100,160), speed:rand(0.8,1.3)*spd, phase:rand(0,6.28), width});
         }
-        obs.push({type,yStart:yStart2,yEnd:yEnd2,y0:yStart2,y1:yEnd2,platforms});
+        obs.push({type,yStart:yStart2,yEnd:yEnd2,y0:yStart2,y1:yEnd2,platforms,islands,
+                  // Nought is the platform route: it asks you to clear nothing at
+                  // all, which is what makes it the safe one. The island's two
+                  // hops are the other entry.
+                  airGaps: wantIsland ? [0, ISLAND_GAP] : [0]});
         cursor = yEnd2+40;
       } else if(type==='narrow'){
         const nlen = clamp(len-140, 300, 520);

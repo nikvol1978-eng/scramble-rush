@@ -171,6 +171,16 @@
       if(o.type==='pit'){
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
+        // the island: solid, still, and obviously not a platform
+        for(const is of (o.islands||[])){
+          const slab = new THREE.Mesh(new THREE.BoxGeometry(is.w, 14, is.y1-is.y0),
+            new THREE.MeshFloorMaterial({color: accents[1]}));
+          slab.receiveShadow = true;
+          placeAt(slab, is.x, (is.y0+is.y1)/2, 7); courseGroup.add(slab);
+          const lip = new THREE.Mesh(new THREE.BoxGeometry(is.w+10, 5, is.y1-is.y0+10),
+            new THREE.MeshLambertMaterial({color:0xfff8ec}));
+          placeAt(lip, is.x, (is.y0+is.y1)/2, 1.5); courseGroup.add(lip);
+        }
         const platMat=new THREE.MeshPhongMaterial({color:0x23e6c9, shininess:30});
         o.platformMeshes=o.platforms.map(p=>{
           const g=new THREE.Group();

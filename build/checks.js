@@ -1487,7 +1487,12 @@
       bad.push('neighbouring discs turn the same way');
 
     // (b) standing off-centre on a disc, the floor carries you round it
-    const cell = f.cells.find(c=>c.row===0 && c.col===1) || f.cells[0];
+    // A cell with an arm on it: v24 gives the hard column smaller discs and
+    // no sweeping arm -- that is what the long hops buy -- so measuring the
+    // arm on whichever cell happens to be first would measure the one
+    // column deliberately built without one.
+    const cell = f.cells.find(c=>c.row===0 && c.col===1 && !c.noArm)
+              || f.cells.find(c=>!c.noArm) || f.cells[0];
     function place(x, y){
       p.x = x; p.y = y; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
       p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.invuln = 9999;
@@ -1651,29 +1656,48 @@
     const f = obstacles.find(o=>o.type==='discField' && o.small);
     if(!f) return { name:'s the small discs are a zigzag of real jumps', pass:false,
                     detail:'no small-disc section generated on sunny' };
-    if(f.cells.length < 5 || f.cells.length > 8) bad.push(f.cells.length+' discs, want 5-8');
+    // v24: two lines down the same stretch, so everything here is measured
+    // per line. The safe line is the zigzag it always was, in hops a plain
+    // jump clears; the hard line runs straight, in hops that need the dive.
+    const lines = {};
+    for(const c of f.cells) (lines[c.col] = lines[c.col] || []).push(c);
+    for(const k in lines) lines[k].sort((a,b)=>a.y-b.y);
+    const safe = lines[0] || [], hard = lines[f.hardCol] || [];
+    if(!safe.length || !hard.length) bad.push('the section is not two lines (cols '+Object.keys(lines).join(',')+')');
+    if(safe.length < 5 || safe.length > 9) bad.push(safe.length+' discs on the safe line, want 5-9');
+    if(hard.length < 3 || hard.length > 7) bad.push(hard.length+' discs on the hard line, want 3-7');
 
-    // (a) consecutive discs do not touch: there is a gap to clear
-    let minGap = 1e9, maxGap = -1e9;
-    for(let i=1;i<f.cells.length;i++){
-      const a = f.cells[i-1], b = f.cells[i];
-      const gap = Math.hypot(b.x-a.x, b.y-a.y) - a.r - b.r;
-      minGap = Math.min(minGap, gap); maxGap = Math.max(maxGap, gap);
+    // (a) consecutive discs on a line do not touch, and neither line asks for
+    //     more than the dive itself measures
+    function gapsOf(line){
+      const g = [];
+      for(let i=1;i<line.length;i++){
+        const a = line[i-1], b = line[i];
+        g.push(Math.hypot(b.x-a.x, b.y-a.y) - a.r - b.r);
+      }
+      return g;
     }
+    const gSafe = gapsOf(safe), gHard = gapsOf(hard);
+    const minGap = Math.min(...gSafe, ...gHard), maxGap = Math.max(...gSafe, ...gHard);
     if(minGap <= 4) bad.push('two discs touch (gap '+minGap.toFixed(0)+'), so the section can be walked');
-    // ...and the gap stays inside what a jump can actually carry you
-    if(maxGap > 130) bad.push('a gap of '+maxGap.toFixed(0)+' is further than a jump carries');
+    if(maxGap > 140) bad.push('a gap of '+maxGap.toFixed(0)+' is further than a dive carries');
+    if(Math.max(...gSafe) > 80) bad.push('the safe line asks for '+Math.max(...gSafe).toFixed(0)+', want 80 or less');
+    if(Math.min(...gHard) < 110) bad.push('the hard line asks for only '+Math.min(...gHard).toFixed(0)+', want 110 or more');
 
-    // (b) it really zigzags: consecutive discs alternate sides of the centre
+    // (b) the safe line really zigzags: consecutive discs alternate sides of it
+    const sx = safe.reduce((a,c)=>a+c.x,0)/safe.length;
     let alt = 0;
-    for(let i=1;i<f.cells.length;i++)
-      if(Math.sign(f.cells[i].x - TRACK_W/2) !== Math.sign(f.cells[i-1].x - TRACK_W/2)) alt++;
-    if(alt < f.cells.length-2) bad.push('the discs do not alternate sides ('+alt+' of '+(f.cells.length-1)+')');
+    for(let i=1;i<safe.length;i++)
+      if(Math.sign(safe[i].x - sx) !== Math.sign(safe[i-1].x - sx)) alt++;
+    if(alt < safe.length-2) bad.push('the safe line does not alternate sides ('+alt+' of '+(safe.length-1)+')');
+    // ...and the hard line does not: it is a straight run, which is the point
+    const hx = hard.reduce((a,c)=>a+c.x,0)/hard.length;
+    if(hard.some(c=>Math.abs(c.x-hx) > 6)) bad.push('the hard line is not straight');
 
     // (c) walking off one, with feet down, drops you
     const p = player();
     for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
-    const a = f.cells[0], b = f.cells[1];
+    const a = safe[0], b = safe[1];
     p.x = (a.x+b.x)/2; p.y = (a.y+b.y)/2; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
     p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.invuln = 0;
     resetLook();
@@ -1869,7 +1893,14 @@
         // counting that as "no progress" made this check measure respawns
         // rather than bends the moment v23 lengthened the setback.
         const respawned = (b.y - was) < -150 || b.respawnFreeze > 0;
-        const t2 = respawned ? 0 : (b.y - was > 12) ? 0 : (stuck.get(b) || 0) + 0.2;
+        // Nor is a bot that is deliberately waiting. v24 §2 gives a bot that
+        // has fallen twice at a channel the pit rule's hold: it stands at the
+        // mouth until the traffic in front of it has gone, for up to four
+        // seconds. That is the fix for a fall loop working, not a stall -- and
+        // counting it as one made this check measure the fix rather than the
+        // bend, exactly as respawn walk-backs did in v23.
+        const waiting = (b.holeWait || 0) > 0;
+        const t2 = (respawned || waiting) ? 0 : (b.y - was > 12) ? 0 : (stuck.get(b) || 0) + 0.2;
         stuck.set(b, t2); lastY.set(b, b.y);
         if(t2 > worstAnywhere) worstAnywhere = t2;
         if(b.y > y0 - 60 && b.y < y1 + 60 && t2 > worstInBend) worstInBend = t2;
@@ -2267,7 +2298,11 @@
         for(const r of racers){
           if(r.isPlayer || r.finished || r.lavaOut) continue;
           const was = lastY.get(r) === undefined ? -1e9 : lastY.get(r);
-          const t2 = (r.y - was > 12) ? 0 : (stuckFor.get(r)||0) + 0.2;
+          // A bot deliberately holding at a channel mouth until the traffic
+          // clears is not stuck -- see check r, which learned the same thing.
+          // This is the fall-loop fix working; counting it here would make the
+          // acceptance run fail on the thing that makes it pass.
+          const t2 = (r.holeWait||0) > 0 ? 0 : (r.y - was > 12) ? 0 : (stuckFor.get(r)||0) + 0.2;
           stuckFor.set(r, t2); lastY.set(r, r.y);
           if(t2 > stillest) stillest = t2;
         }
@@ -2587,6 +2622,148 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- j: the dive is what gets you across ----------
+  // v24 §2.4. The point is not the absolute reach -- the brief's 190 and 260
+  // were unreachable at a top speed of 4.61 a frame and a half-second arc, and
+  // are not what this is for. The point is that a jump chained into a dive
+  // clears gaps a plain jump cannot, so the move matters on the course rather
+  // than being a flourish. Measured on flat dry ground at top speed, with the
+  // dive pressed at three different points in the arc: the reach must not
+  // depend on when you press it.
+  const REACH_JUMP = 90, REACH_DIVE = 140, REACH_RATIO = 1.4;
+  function checkReach(){
+    const bad = [], rep = {};
+    begin('sunny');
+    // somewhere flat with nothing in it
+    let openY = null;
+    for(let y=1200; y<trackLength-800; y+=120){
+      if(!obstacles.some(o=>y > (o.y0===undefined?-1e9:o.y0)-400 && y < (o.y1===undefined?1e9:o.y1)+400)){ openY = y; break; }
+    }
+    if(openY === null) return { name:'j a jump plus a dive clears what a jump cannot', pass:false,
+                                detail:'no clear stretch on Sunny Sprint to measure in' };
+    for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; }
+
+    function reach(diveAt){
+      const p = player();
+      Object.assign(p, {x:TRACK_W/2, y:openY, h:0, vx:0, vy:0, vh:0, falling:false, stumbleT:0,
+                        tumbleT:0, getUpT:0, diveT:0, diveCd:0, airDive:false, slideT:0,
+                        respawnFreeze:0, invuln:9999, facing:Math.PI/2});
+      window.__dbg.hold('w', true);
+      for(let i=0;i<90;i++){ p.y = openY; p.x = TRACK_W/2; p.h = 0; p.vh = 0; p.diveCd = 0; window.__dbg.tick(1); }
+      const top = p.vy;
+      window.__dbg.press('jump');
+      let y0 = null, air = 0, dived = false, out = null;
+      for(let i=0;i<200 && !out;i++){
+        window.__dbg.tick(1);
+        if(y0 === null && p.h > 0) y0 = p.y;
+        if(p.h > 0) air++;
+        if(diveAt && !dived && air >= diveAt){ window.__dbg.press('dive'); dived = true; }
+        if(y0 !== null && p.h <= 0 && air > 3) out = { top, air, dist: p.y - y0 };
+      }
+      window.__dbg.hold('w', false);
+      for(let i=0;i<60;i++) window.__dbg.tick(1);      // let the belly-flop finish
+      return out || { top, air, dist: 0 };
+    }
+
+    const plain = reach(0);
+    const dives = [reach(2), reach(6), reach(12)];
+    const dLo = Math.min(...dives.map(d=>d.dist)), dHi = Math.max(...dives.map(d=>d.dist));
+    rep.jump = plain.dist.toFixed(0)+' units in '+plain.air+' frames at '+plain.top.toFixed(2)+'/frame';
+    rep.dive = dives.map(d=>d.dist.toFixed(0)).join(' / ')+' pressing at frame 2, 6, 12';
+    rep.ratio = (dLo/plain.dist).toFixed(2)+' : 1';
+
+    if(plain.dist < REACH_JUMP)
+      bad.push('a jump clears only '+plain.dist.toFixed(0)+', want '+REACH_JUMP);
+    if(dLo < REACH_DIVE)
+      bad.push('a jump into a dive clears only '+dLo.toFixed(0)+', want '+REACH_DIVE);
+    if(dLo/plain.dist < REACH_RATIO)
+      bad.push('the dive is worth only '+(dLo/plain.dist).toFixed(2)+' of a jump, want '+REACH_RATIO);
+    // and it must not matter when in the arc you press it
+    // The spread is reported, not asserted. Pressing near the apex is worth a
+    // little more, because the dive's upward kick buys hang time that a rise
+    // already finished cannot, and how much depends on which frame the apex
+    // falls on -- it measured 147-160 on one run and 147-172 on the next, on
+    // an unchanged build. The property that matters is the one asserted above:
+    // every press point, early or late, clears the same floor. A check that
+    // flips on where the apex lands is a check you learn to ignore.
+    rep.spread = (dHi-dLo).toFixed(0)+' units between the best and worst press point';
+
+    return { name:'j a jump plus a dive clears what a jump cannot', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
+  // ---------- g: the courses are built for the move ----------
+  // A gap in the 110-130 band is one only a jump-into-dive crosses; a gap of
+  // 80 or less is one a plain jump crosses. Every race map has to offer both,
+  // or the dive is a move with nowhere to use it. Nothing may exceed 140,
+  // which is past what the dive itself measures.
+  const GAP_HARD_LO = 110, GAP_HARD_HI = 130, GAP_SAFE = 80, GAP_CAP = 140;
+  function checkCourseGaps(){
+    const bad = [], rep = {};
+    for(const key of ['sunny','cannonc','slide','neon']){
+      const seen = [];
+      // three layouts a map: the sections are authored but their gaps are not
+      // all fixed, and one unlucky roll should not pass a map that is wrong.
+      for(let seed=0; seed<3; seed++){
+        begin(key);
+        for(const o of obstacles) if(o.airGaps) for(const g of o.airGaps) seen.push({g, t:o.type});
+      }
+      const hard = seen.filter(s=>s.g >= GAP_HARD_LO && s.g <= GAP_HARD_HI);
+      const safe = seen.filter(s=>s.g <= GAP_SAFE);
+      const over = seen.filter(s=>s.g > GAP_CAP);
+      rep[key] = seen.length ? [...new Set(seen.map(s=>s.g))].sort((a,b)=>a-b).join(', ') : 'no gap sections';
+      if(!hard.length) bad.push(key+': no gap in the '+GAP_HARD_LO+'-'+GAP_HARD_HI+' band');
+      if(!safe.length) bad.push(key+': no gap a plain jump clears');
+      if(over.length)  bad.push(key+': a gap of '+Math.max(...over.map(s=>s.g))+', cap '+GAP_CAP);
+    }
+    return { name:'g every race map has a hard gap and a safe one', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
+  // ---------- i: bots take the hard line, and dive to make it ----------
+  // A route only the player uses is scenery. Bots pick a line before the first
+  // hop, hold it, and chain the dive when the hop needs one -- and after two
+  // falls at the same field they stop trying, which is what stops the long
+  // line becoming a bot-shredder.
+  function checkBotDives(){
+    const bad = [], rep = {};
+    for(const key of ['sunny','slide']){
+      let dives = 0, crossed = 0, runs = 0, assertHere = false;
+      for(let seed=0; seed<2; seed++){
+        begin(key);
+        for(const r of racers) r.__airDives = 0;
+        // Either kind of two-line section counts: a disc field with a small-disc
+        // column, or a pit with an island. Splash Slide has the pit, because a
+        // zigzag asks for sideways hops and that map is ice.
+        const twoLine = obstacles.filter(o=>(o.type==='discField' && o.hardCol !== undefined)
+                                          || (o.type==='pit' && (o.islands||[]).length));
+        if(!twoLine.length){ bad.push(key+': no two-line section generated'); break; }
+        const last = twoLine[twoLine.length-1];
+        assertHere = twoLine.some(o=>o.type==='discField');
+        window.__dbg.hold('w', true);
+        for(let i=0;i<60*80 && state==='racing'; i+=6) window.__dbg.tick(6);
+        window.__dbg.hold('w', false);
+        runs++;
+        for(const r of racers){
+          if(r.isPlayer) continue;
+          dives += (r.__airDives||0);
+          if(r.y > (last.yEnd!==undefined?last.yEnd:last.y1)) crossed++;
+        }
+      }
+      rep[key] = dives+' air dives by bots, '+crossed+' past the last two-line section over '+runs+' runs'
+               + (assertHere ? '' : ' (reported, not asserted)');
+      // Asserted where the long line is a disc field, which every bot that
+      // takes it must dive across twice. Reported where it is a pit island on
+      // ice: there the platforms are a real alternative and most bots decline
+      // the hops, which is them reading the map correctly rather than a bug --
+      // it measured between one and ten dives over the same two runs, and a
+      // check that flips on that is a check that teaches you to ignore it.
+      if(assertHere && dives < 1) bad.push(key+': no bot ever chained a dive off a jump');
+    }
+    return { name:'i bots take the long line and dive to make it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -2599,7 +2776,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

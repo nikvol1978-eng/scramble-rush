@@ -954,6 +954,10 @@
       if(inPit){
         let onPlat=false;
         for(const p of inPit.platforms){ if(Math.abs(r.x-platX(p,t))<p.width/2+RADIUS-8){ onPlat=true; break; } }
+        // ...and the island, which does not move and does not need timing
+        if(!onPlat) for(const is of (inPit.islands||[])){
+          if(Math.abs(r.x-is.x) < is.w/2 + RADIUS - 8 && r.y > is.y0 - RADIUS && r.y < is.y1 + RADIUS){ onPlat=true; break; }
+        }
         if(!onPlat){ fallDown(r); return; }
       }
       if(inNarrow){

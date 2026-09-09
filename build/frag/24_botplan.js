@@ -16,6 +16,31 @@
   function obsMid(o){ return o.y !== undefined ? o.y : Math.round((o.yStart + o.yEnd)/2); }
   function obsKey(o){ return o.type + '@' + obsMid(o); }
 
+  // ---- the long hop (v24 §2.4) -------------------------------------------
+  // A gap wider than a plain jump clears needs the jump chained into an air
+  // dive. A bot that only ever jumps falls into every hard line; a bot that
+  // dives on every hop throws away half a second face-down on hops it could
+  // have walked. So the intent is formed at take-off, from the width of the
+  // gap actually being crossed, and spent once in the air.
+  const BOT_DIVE_GAP = 92;                    // a plain jump measures 94
+  function botLaunch(r, gapWidth){
+    if(!doJump(r)) return false;
+    r.aiDiveFor = gapWidth > BOT_DIVE_GAP ? 1 : 0;
+    return true;
+  }
+  // Spent at the top of the arc rather than off the ground: diving on the way
+  // up adds the kick to a rise that has not finished, and the bot sails over
+  // the disc it was aiming at.
+  function botAirDive(r){
+    if(!r.aiDiveFor) return;
+    if(r.h > 0 && r.vh < JUMP_V*0.45 && r.diveCd <= 0 && !r.airDive && r.tumbleT <= 0){
+      if(doDive(r)) r.__airDives = (r.__airDives||0) + 1;   // the check counts these
+      r.aiDiveFor = 0;
+    } else if(r.h <= 0){
+      r.aiDiveFor = 0;                        // landed without needing it
+    }
+  }
+
   // The lane through a particular hazard, right now.
   function safeLaneFor(o, r){
     if(o.type === 'narrow') return clamp(TRACK_W/2 + (o.offset||0), 40, TRACK_W-40);
@@ -143,6 +168,22 @@
       // commits at full throttle only when that platform is under its line
       // now, halfway across and at the far side -- the swing is a sine, so all
       // three are known -- and then holds that line until it is past.
+      // v24: the island. Two long hops and no waiting, for a bot that has not
+      // already proved it cannot make them. Taken before the wait rule below,
+      // because the wait rule is what the island exists to avoid.
+      if(o.type === 'pit' && (o.islands||[]).length && hereFalls < 2 && (r.aiRoute||0) < 0.22
+         && r.y < o.y1 + 40){
+        const is = o.islands[0];
+        if(r.y < is.y0 - RADIUS){
+          if(r.h <= 0 && (is.y0 - RADIUS) - r.y < 46) botLaunch(r, is.y0 - o.yStart);
+          return set(is.x, 1);
+        }
+        if(r.y < is.y1){
+          if(r.h <= 0 && (is.y1 + RADIUS) - r.y < 46) botLaunch(r, o.yEnd - is.y1);
+          return set(is.x, 1);
+        }
+        return set(is.x, 1);
+      }
       if(o.type === 'pit' && hereFalls >= 2 && o.platforms && o.platforms.length && r.y < o.y1 + 120){
         // Which end of a platform's swing to wait at: whichever is actually on
         // the track (an end clamped to the wall is a spot the platform never
@@ -201,10 +242,37 @@
       const escalateAt = currentMap.slippery ? 2 : 3;
       if(hereFalls >= escalateAt && r.y < o.y1 + (currentMap.slippery ? 320 : 120)){
         const lane = safeLaneFor(o, r);
+        const laneX = lane === null ? TRACK_W/2 : lane;
+
+        // v24: wait at the entrance until the channel ahead is clear.
+        //
+        // A bot that has fallen here twice is already crawling at 0.42
+        // throttle, which on a field of twenty-four makes it the slowest thing
+        // in a channel that twenty-three other racers are arriving into -- and
+        // the fall it takes next is usually somebody's shoulder rather than
+        // its own line. Crawling harder cannot fix that; standing still until
+        // the traffic has gone can. It is the pit rule's idea applied to a
+        // channel: hold at the edge, commit once, hold the line.
+        //
+        // Four seconds is the ceiling. Without one, a channel with a queue of
+        // burned bots in front of it is a channel nobody ever enters, and the
+        // round ends with the whole tail still standing at the mouth of it.
+        const entrance = o.y0 - RADIUS - 8;
+        if(r.y < entrance && r.y > entrance - 260){
+          const busy = racers.some(q => q !== r && !q.falling && !q.finished
+                                     && q.y > r.y && q.y < o.y1 + 40);
+          r.holeWait = busy ? (r.holeWait||0) + dt : 0;
+          if(busy && r.holeWait < 4){
+            r.vy *= 0.55;
+            if(r.y > entrance){ r.y = entrance; r.vy = Math.min(r.vy, 0); }
+            return set(laneX, 0);
+          }
+        } else if(r.holeWait) r.holeWait = 0;
+
         // five is the ceiling: past that it barely moves until it is through
         const slow = currentMap.slippery ? (hereFalls >= 4 ? 0.30 : 0.42)
                                          : (hereFalls >= 5 ? 0.45 : 0.6);
-        return set(lane === null ? TRACK_W/2 : lane, slow);
+        return set(laneX, slow);
       }
       if(r.aiSafe && r.y < o.y1 + 260){
         const lane = safeLaneFor(o, r);
@@ -355,11 +423,32 @@
         // the disc BEHIND it as nearest, turned back, and oscillated until the
         // clock ran out with none of sixteen home.
         if(r.aiObsFor !== o){ r.aiObsFor = o; r.aiDiscGoal = null; }
+        // Which line to take, chosen before the first hop and held. aiRoute is
+        // rerolled after a fall and pinned to the middle after two, so a bot
+        // that keeps missing the long hops stops attempting them.
+        if(o.hardCol !== undefined && r.y < o.yStart - 30){
+          const hereFalls2 = (r.holeFalls && r.holeFalls[obsKey(o)]) || 0;
+          // About a fifth of the pack, not a third. Sunny has two two-line
+          // sections, so a third meant a third of the field taking long hops
+          // twice a course, and the number coming home slid from seventeen to
+          // twelve of twenty-three. Enough of them use it that the line is
+          // clearly a line; not so many that the field thins out on it.
+          const wantHard = hereFalls2 < 2 && (r.aiRoute||0) < 0.22;
+          let lane = null, ld = 1e9;
+          for(const c of o.cells){
+            if(c.col !== (wantHard ? o.hardCol : (o.hardCol===0?1:0))) continue;
+            if(c.y < ld){ ld = c.y; lane = c; }
+          }
+          if(lane) return set(lane.x, 1);
+        }
         const cur = discCellAt(o, r.x, r.y);
         if(cur){
           let g = null, gd = 1e9;
           for(const c of o.cells){
-            if(c.row !== cur.row + 1) continue;
+            // Same line: with two lines down one stretch, the next row exists
+            // in both, and taking whichever is nearer in x sends a bot across
+            // the void between them.
+            if(c.col !== cur.col || c.row !== cur.row + 1) continue;
             const d = Math.abs(c.x - r.x);
             if(d < gd){ gd = d; g = c; }
           }
@@ -369,7 +458,7 @@
           if(!g){
             // last row: hop off its trailing edge rather than stepping over it
             const halfL = Math.sqrt(Math.max(0, cur.r*cur.r - (r.x-cur.x)*(r.x-cur.x)));
-            if(r.h <= 0 && (cur.y + halfL) - r.y < 26) doJump(r);
+            if(r.h <= 0 && (cur.y + halfL) - r.y < 26) botLaunch(r, 0);
             return set(r.x, 1);
           }
           // Line up on the deck when the next disc is within this deck's
@@ -393,7 +482,8 @@
           const px = r.x - cur.x, py = r.y - cur.y;
           const bq = px*ux + py*uy, cq = px*px + py*py - cur.r*cur.r;
           const toEdge = -bq + Math.sqrt(Math.max(0, bq*bq - cq));
-          if(r.h <= 0 && toEdge < 30) doJump(r);
+          const hop = gdist - cur.r - g.r;              // the air, edge to edge
+          if(r.h <= 0 && toEdge < (hop > BOT_DIVE_GAP ? 44 : 30)) botLaunch(r, hop);
           return set(g.x, 1);
         }
         // In the air over a gap: hold the line to the disc we committed to.

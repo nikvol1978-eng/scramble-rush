@@ -87,7 +87,7 @@
                         * ((r.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
-      } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
+      } else if(!r.isPlayer){ botAirDive(r); updateBotAI(r,dt,t,f); }
 
       // A tumble runs its course in the air and only settles once you land, or
        // racers finish their cartwheel hovering.

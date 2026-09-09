@@ -447,7 +447,10 @@
       { type:'cannon',  len:820, turn:+28, climb:200 },
       { type:'narrow',  len:760, climb:20 },
       { type:'cannon',  len:820, turn:-32, climb:200 },
-      { type:'pusher',  len:660, climb:20 },
+      // A pit rather than a zigzag: this map only ever goes up, and a
+      // sideways hop taken uphill lands short. The island is two hops
+      // straight ahead, which a climb allows.
+      { type:'pit',     len:800,  climb:40 },
       { type:'narrow',  len:760, turn:+26, climb:20 },
       { type:'cannon',  len:820, climb:200 },
       { type:'gate',    len:600, turn:-24, climb:20 },
@@ -478,6 +481,10 @@
       { type:'slime',   len:620,  drop:90 },
       { type:'crumble', len:1000, drop:160 },
       { type:'ramp',    len:1000, turn:-26, drop:140 },
+      // A pit rather than a disc zigzag: this map is ice, and a zigzag asks
+      // for sideways hops, which is the one thing you cannot do on it. The
+      // pit's island is two hops straight ahead, which ice allows.
+      { type:'pit',     len:800,  drop:120 },
       { type:'narrow',  len:1000, drop:150, bias:95 },
       { type:'crumble', len:1000, drop:150 },
       { type:'boost',   len:1100, drop:160 },
@@ -496,7 +503,10 @@
       { type:'plank',    len:900, planks:3 },
       { type:'fork',     len:1180 },
       { type:'spinbar',  len:820, turn:+28 },
-      { type:'pendulum', len:760 },
+      // Three long hops rather than four: Neon already asks for a plank bridge
+      // and two pendulums, and at five discs the field came home eleven of
+      // twenty-three, which is nearer the floor than a map should sit.
+      { type:'smallDiscs', len:1000, count:4 },
       { type:'beam',     len:760 },
       { type:'finish',   len:560 }
     ],
