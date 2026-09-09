@@ -135,10 +135,17 @@ Working through `docs/CLAUDE-CODE-BRIEF-v24.md` in order.
   on the survivors line, so every racer including the player was reskinned at
   the start of rounds two and three; and sixteen survivors would have lined up
   from x=-55 to x=815 on a 760-wide track.
-- **Open against §1:** check `h` (nobody falls more than three times at one
-  hazard in twenty seconds) now sits *on* its limit and tips to four in about
-  one run in three, always at Splash Slide's first ice channel. See the note
-  below.
+- **§2 movement (done).** Momentum carries, you slide where you land, the jump
+  is one tap and one arc, and a jump chained into a dive is the signature move
+  -- 94 units for a jump, 148 for a jump into a dive, and it measures the same
+  whenever in the arc you press it. Knockback is physical: the speed the hazard
+  closes on you at, resolved onto the direction it throws you, so a spin bar's
+  tip flings you and its hub barely moves you. A dive knocks people over and a
+  walk still only shoves. Two new surfaces -- slime that carries you and bounce
+  pads that reach the same height at any speed -- and checkpoint flags that
+  replace "one section back".
+- **Closed:** check `h` held at 3 over twelve Splash Slide seeds after §2, and
+  the worst hazard moved onto the map's own steering test. Nothing was widened.
 
 ## v24 candidates
 

@@ -30,27 +30,23 @@ respawn is at the last checkpoint.
 
 ## Open items
 
-**§1, check `h` at Splash Slide's first ice channel.** A field of twenty-four
-put check `h` -- no racer falls more than three times at one hazard inside
-twenty seconds -- exactly on its limit: it reads 3 on Sunny's disc field and
-3 on `narrow@2227`, and tips to 4 in about one run in three. In v23 the worst
-reading was 2. The cause is the field, not drift: twenty-three bots funnel
-into the same channel, and a bot that has already fallen there is crawling at
-0.42 throttle on ice with the pack arriving behind it. A third respawn rung
-(three sections back, longer freeze) was tried and measured no better, because
-that hazard is early enough that there is no third section to go back to.
+*(None. The §1 item below was closed after §2.)*
 
-The cap stays at 3 and the channel stays as it is. §2 rewrites the collision
-behaviour that causes this, so the decision waits for it:
+**Closed — §1, check `h` at Splash Slide's ice channels.** A field of
+twenty-four put check `h` -- no racer falls more than three times at one hazard
+inside twenty seconds -- on its limit: it read 3 and tipped to 4 in about one
+run in three, always on Splash Slide. The agreed plan was to leave the cap at
+3 and the channel as it was, re-measure after §2's collision model, and only
+then consider the pit rule's waiting logic or recording a miss.
 
-1. After §2, re-measure check `h` over **ten seeds at `narrow@2227`**. If it
-   holds at 3, close this.
-2. If it still tips to 4, do **not** widen the channel. Instead give a bot
-   that has fallen twice at a hazard the pit rule's waiting logic: hold at the
-   section entrance until the pack ahead has cleared, so a crawling bot is
-   never sitting in the lane with twenty racers arriving behind it.
-3. If that fails too, record it here as a known miss with the numbers, the way
-   v21's three misses are recorded, and move on.
+**Re-measured over twelve Splash Slide seeds after §2: 3 every time, never 4.**
+The worst hazard also moved off `narrow@2227` -- the channel v23 widened -- and
+onto `narrow@5113`, the bias-155 steering test the map is built around, which
+is where the map's hardest reading ought to be. §2.6's physical knockback is
+the likely reason: a glancing hit from a hazard no longer costs a full ragdoll,
+so a bot clipped on the way into a channel keeps its feet and its line.
+
+No waiting logic was needed and nothing was widened.
 
 ---
 
