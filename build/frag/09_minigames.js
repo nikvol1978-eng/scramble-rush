@@ -1089,9 +1089,12 @@
           if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
             const nx=dx/(d||1), ny=dy/(d||1);
             r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
-            // pinball: fling outward, harder the faster you hit it
-            const sp = Math.hypot(r.vx,r.vy);
-            const kick = 6.2 + sp*0.55;
+            // Pinball: fling outward, harder the faster you hit it -- but
+            // only the part of your speed that was actually going into it.
+            // Brushing past one at full tilt used to fling you as hard as
+            // running straight at it.
+            const closing = Math.max(0, -(r.vx*nx + r.vy*ny));
+            const kick = 6.2 + closing*0.75;
             r.vx = nx*kick; r.vy = ny*kick;
             r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
             spawnBurst3D(r.x,r.y,0xff4fa3,8);
@@ -1129,7 +1132,13 @@
           for(const it of o.items){
             const ang=hammerAngle(it,t); const hx=it.pivotX+Math.sin(ang)*it.armLen; const hy=96-76*Math.cos(ang)-RADIUS;
             const d=Math.hypot(r.x-hx, r.y-o.y);
-            if(d<34+RADIUS-8 && hy+24>r.h && hy-24<r.h+RADIUS*2){ knockback(r,hx,o.y,6); return; }
+            if(d<34+RADIUS-8 && hy+24>r.h && hy-24<r.h+RADIUS*2){
+              // the head's own sideways speed, in units a frame
+              const hv=Math.cos(ang)*it.armLen*1.15*it.speed*Math.cos(t*it.speed+it.phase)/60;
+              const nx=Math.sign(r.x-hx)||1;
+              hazardHit(r, hv, 0, nx, 0); r.invuln=700;
+              spawnBurst3D(r.x,r.y,0xffffff); return;
+            }
           }
         }
 
@@ -1143,7 +1152,12 @@
           if(d<o.thickness/2+RADIUS-6){
             const relx=r.x-o.cx, rely=r.y-o.y; const sw=Math.sign(o.speed);
             const tx=rely*sw, ty=-relx*sw; const tl=Math.hypot(tx,ty)||1;
-            sendTumbling(r, 8, tx/tl, ty/tl); r.invuln=650;
+            const nx=tx/tl, ny=ty/tl;
+            // The bar's own speed where it caught you: radians a second times
+            // how far out along the arm you were standing. Out at the tip it
+            // throws you across the lane; near the hub it barely moves you.
+            const tan = Math.abs(o.speed)*Math.hypot(relx,rely)/60;
+            hazardHit(r, nx*tan, ny*tan, nx, ny); r.invuln=650;
             spawnBurst3D(r.x,r.y,0xffffff); return;
           }
         }
@@ -1153,8 +1167,11 @@
           for(const it of o.items){
             const px=platX(it,t);
             if(Math.abs(r.x-px)<it.width/2+RADIUS-4){
-              const dir=Math.sign(Math.cos(t*it.speed+it.phase)*it.speed)||1;
-              r.vy-=2; sendTumbling(r, 7, dir, 0); r.invuln=600;
+              // d/dt of platX, in units a frame: a pusher at the end of its
+              // travel is nearly stopped and hardly a hazard at all.
+              const pv=it.amp*it.speed*Math.cos(t*it.speed+it.phase)/60;
+              const dir=Math.sign(pv)||1;
+              r.vy-=2; hazardHit(r, pv, 0, dir, 0); r.invuln=600;
               spawnBurst3D(r.x,r.y,0x60a5fa); return;
             }
           }

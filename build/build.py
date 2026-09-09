@@ -458,7 +458,7 @@ cut("""    const p=racers.find(r=>r.isPlayer);
 
 # racers carry the new timers
 sub("  function baseRacer(){ return {x:0,y:-60,",
-    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,jumpCut:false,floorH:0,x:0,y:-60,",
+    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,floorH:0,x:0,y:-60,",
     "baseRacer fields")
 
 # ---------------------------------------------------------------- bot AI must predict the same bar the collision uses
@@ -520,7 +520,9 @@ sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
 # two falls a layout on Splash Slide to eight, all of them at narrow channels
 # and crumbling bridges where the line has to be held.
 sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
-    "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055) - (currentMap.slippery?r.vx*0.55:0),-1.5,1.5)*iceSteerK()*f;",
+    "    const latK = currentMap.slippery ? 1 : DRY_LATERAL_K;" + chr(10)
+    + "    const latS = ((r.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);" + chr(10)
+    + "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055*latK) - (currentMap.slippery?r.vx*0.55:0),-1.5*latK,1.5*latK)*iceSteerK()*latS*f;",
     "bot steering keeps up with the new friction")
 
 # ------------------------------------------------------------ arena bot ai

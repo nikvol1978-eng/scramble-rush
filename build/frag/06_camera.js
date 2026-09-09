@@ -4,7 +4,10 @@
   const look = { yaw:0, pitch:0, sinceInput:99 };
   // A fixed frame: back and up, looking slightly down, with the racer in the
   // middle of it. Nothing here changes on its own except distance.
-  const CAM_BACK = 190, CAM_UP = 135, CAM_FOCUS = 20, CAM_LEAD = 60;
+  // v24 §2.10: twenty up and fifteen back on v23's framing. A field of
+  // twenty-four needs to be seen, and the extra height is what puts the
+  // pack ahead of you on screen instead of behind the bean's shoulders.
+  const CAM_BACK = 205, CAM_UP = 155, CAM_FOCUS = 20, CAM_LEAD = 60;
   // One warm key and a cool hemisphere fill. With ACES tone mapping on, the
   // v19 levels (1.0 / 0.9) blew the floor out to white; these keep the floor a
   // mid tone so the saturated hazards have something to be louder than.

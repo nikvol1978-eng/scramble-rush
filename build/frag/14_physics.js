@@ -8,7 +8,7 @@
       const {ix:ix0,iy:iy0}=computeInputVec();
       let ix=ix0, iy=iy0;
       const mag=Math.hypot(ix,iy);
-      if(mag>0.05){
+      if(mag>0.05 && !p.airDive){
         ix/=mag; iy/=mag;
         // Turn toward the stick rather than snapping to it. Snapping is what
         // made a change of direction read as a teleport plus a skid.
@@ -31,13 +31,11 @@
       }
       // v22: getting up gives you a little more of yourself back than it did.
       // At 0.30 the last quarter-second of every knock felt like a second knock.
-      const control = (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1;
+      const control = (p.airDive?0 : (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1)
+                    * ((p.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);
       let pax = ix*ACCEL*(1+p.draft)*WIND(p)*control, pay = iy*ACCEL*(1+p.draft)*WIND(p)*control;
       const iceK = iceBlend(p, pax, pay);
       p.vx+=pax*iceK*f; p.vy+=pay*iceK*f;
-      // let go of jump early and the hop is short — hold it and you clear more
-      if(p.h>0 && p.vh>2.6 && !keys[settings.keys.jump] && !p.jumpCut){ p.vh*=0.5; p.jumpCut=true; }
-      if(p.h<=0) p.jumpCut=false;
     }
 
     for(const r of racers){
@@ -85,7 +83,8 @@
             if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
             r.facing=want;
           }
-          const control = (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1;
+          const control = (r.airDive?0 : (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1)
+                        * ((r.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);
           r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer) updateBotAI(r,dt,t,f);
@@ -117,13 +116,22 @@
       if(r.invuln>0)   r.invuln-=dt*1000;
       if(r.getUpT>0)   r.getUpT-=dt*1000;
       if(r.landT>0)    r.landT-=dt*1000;
+      if(r.slideT>0)   r.slideT=Math.max(0, r.slideT-f);
       if(r.stretchT>0) r.stretchT-=dt*1000;
       if(r.squash>0)   r.squash=Math.max(0,r.squash-dt*4);
+      // An air dive stays a dive until it lands, however long it hangs: the
+      // prone timer running out in mid-flight used to drop the pose, the low
+      // friction and the belly-flop all at once, so a long dive quietly turned
+      // back into an ordinary fall.
+      if(r.airDive && r.h>0) r.diveT = Math.max(r.diveT, 60);
       if(r.diveT>0){
         r.diveT-=dt*1000;
         // land the dive flat, then push back up
         if(r.diveT<=0 && r.h<=0){ r.getUpT=diveGetUp(r); r.getUpTotal=r.getUpT; }
       }
+      // §2.5: untouchable through the air, and not for a moment after. The
+      // prone slide and the half-second on your face are both fair game.
+      if(r.diveT>0 && r.h>0.005) r.invuln = Math.max(r.invuln, 34);
 
       // ---- vertical: floaty on the way up, snappier on the way down
       if(r.h>0){
@@ -135,7 +143,9 @@
         if(r.h<=0){
           r.h=0; r.vh=0;
           r.landT = LAND_MS;                    // the landing squash keyframe
-          if(r.diveT>0){ const g=diveGetUp(r); r.getUpT=Math.max(r.getUpT, g); r.getUpTotal=g; }
+          r.slideT = LAND_SLIDE_F;              // and the slide it lands in
+          if(r.diveT>0 || r.airDive){ const g=diveGetUp(r); r.getUpT=Math.max(r.getUpT, g); r.getUpTotal=g; }
+          r.airDive = false;                    // the commit ends where it lands
         }
         r.coyote=0;
       } else {
@@ -157,7 +167,13 @@
       }
 
       // ---- horizontal: prone dives slide, ice holds your momentum
-      const slip = currentMap.slippery ? ICE_FR : ((r.turnGrip||0) > 0 ? 0.70 : GROUND_FR);
+      // Ice first, because a landing does not make ice grippier. Then the
+      // landing slide, which outranks the turn bite for the same reason: you
+      // cannot dig in with your feet while they are still sliding.
+      const slip = currentMap.slippery ? ICE_FR
+                 : (r.slideT||0) > 0    ? LAND_SLIDE_FR
+                 : (r.turnGrip||0) > 0  ? 0.70
+                 :                        GROUND_FR;
       if(r.turnGrip) r.turnGrip = Math.max(0, r.turnGrip - f);
       const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? AIR_FR : slip), f);
       r.vx*=fr; r.vy*=fr;

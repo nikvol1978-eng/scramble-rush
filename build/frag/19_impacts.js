@@ -31,9 +31,21 @@
         // it goes on top of the block so the pusher is not thrown off their line.
         // A dive is the one time contact is meant to move somebody: it still
         // does not knock them over, but it shoves them a body length.
-        const diving = (a.diveT>0 && !b.diveT) ? 1.6 : 1;
-        const shove = Math.min(force, 5) * 0.30 * diving;
+        const diveShove = (a.diveT>0 && !b.diveT) ? 1.6 : 1;
+        const shove = Math.min(force, 5) * 0.30 * diveShove;
         b.vx += nx*shove; b.vy += ny*shove;
+
+        // v24 §2.7: a dive is a weapon, and nothing else is. Running into
+        // someone still only shoves them -- that is what keeps a twenty-four
+        // bean scrum from being a floor of bodies -- but a racer who has
+        // committed to a dive and catches a standing one puts them down.
+        // Whoever is diving is the one doing it, whichever way round they
+        // arrived, and the push goes the way the dive was already going.
+        const diver = (a.diveT>0 && !(b.diveT>0)) ? a : (b.diveT>0 && !(a.diveT>0)) ? b : null;
+        if(diver && force > 2.2){
+          const victim = diver===a ? b : a, s = diver===a ? 1 : -1;
+          sendTumbling(victim, force*0.9, nx*s, ny*s);
+        }
 
         // a little give in both of them, so contact still reads
         const sq = clamp(force*0.10, 0, 0.55);

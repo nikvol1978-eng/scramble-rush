@@ -703,13 +703,16 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(seen) };
   }
 
-  // ---------- Y: bumping another racer separates you, it does not floor you ----------
+  // ---------- Y: a dive knocks over, a walk only shoves ----------
+  // Was "bumping never floors anyone". v24 §2.7 keeps that for a walk -- a
+  // field of twenty-four cannot be allowed to knock itself down by touching --
+  // and makes the dive the one contact that does put somebody on the floor.
   function checkY(){
     const bad = [];
     begin('sunny');
     const a = player();
     const b = racers.find(r=>!r.isPlayer && !r.falling);
-    if(!b) return { name:'Y racers block each other without knocking anyone over', pass:false, detail:'no other racer' };
+    if(!b) return { name:'Y a dive knocks over, a walk only shoves', pass:false, detail:'no other racer' };
 
     // (1) run straight into someone at full tilt
     // just inside contact range (RADIUS*2-2 = 32) and closing hard
@@ -723,29 +726,31 @@
     // the runner should not be flung backwards, just slowed and turned aside
     if(a.vx < -0.5) bad.push('the racer who ran in was bounced back ('+a.vx.toFixed(2)+')');
 
-    // (2) a dive is not a weapon either
-    a.x = 300; a.y = 1500; a.h=0; a.vx = 8; a.vy=0; a.diveT = 400; a.stumbleT=0; a.vh=0; a.invuln=0;
-    b.x = 328; b.y = 1500; b.h=0; b.vx = 0; b.vy=0; b.diveT = 0;   b.stumbleT=0; b.vh=0; b.invuln=0;
+    // (2) a dive is a weapon
+    a.x = 300; a.y = 1500; a.h=0; a.vx = 8; a.vy=0; a.diveT = 400; a.stumbleT=0; a.vh=0; a.invuln=0; a.tumbleT=0;
+    b.x = 328; b.y = 1500; b.h=0; b.vx = 0; b.vy=0; b.diveT = 0;   b.stumbleT=0; b.vh=0; b.invuln=0; b.tumbleT=0;
     racerCollisions();
-    if(b.stumbleT > 0) bad.push('a dive still knocked someone over ('+b.stumbleT+')');
+    if(!(b.tumbleT > 0)) bad.push('a dive did not knock the racer it caught over');
+    if(a.tumbleT > 0)    bad.push('the diving racer floored themselves');
 
     // (3) but you still cannot walk through them
-    a.x = 300; a.y = 1500; a.vx=0; a.vy=0; a.diveT=0;
-    b.x = 306; b.y = 1500; b.vx=0; b.vy=0;               // deeply overlapped
+    a.x = 300; a.y = 1500; a.vx=0; a.vy=0; a.diveT=0; a.tumbleT=0;
+    b.x = 306; b.y = 1500; b.vx=0; b.vy=0; b.tumbleT=0; // deeply overlapped
     racerCollisions();
     const gap = Math.hypot(b.x-a.x, b.y-a.y);
     if(gap < RADIUS*2 - 6) bad.push('overlapping racers were not pushed apart (gap '+gap.toFixed(1)+' of '+(RADIUS*2)+')');
 
     // (4) and they still shove each other around enough to matter
-    a.x = 300; a.y = 1500; a.vx = 6.5; a.vy = 0; a.stumbleT=0; a.vh=0;
-    b.x = 328; b.y = 1500; b.vx = 0;   b.vy = 0; b.stumbleT=0; b.vh=0;
+    a.x = 300; a.y = 1500; a.vx = 6.5; a.vy = 0; a.stumbleT=0; a.vh=0; a.tumbleT=0; a.diveT=0;
+    b.x = 328; b.y = 1500; b.vx = 0;   b.vy = 0; b.stumbleT=0; b.vh=0; b.tumbleT=0; b.diveT=0;
     const bx0 = b.x;
     for(let i=0;i<12;i++){ racerCollisions(); b.x += b.vx; a.x += a.vx*0.2; }
     if(Math.abs(b.x - bx0) < 3) bad.push('walking into someone did not push them at all ('+(b.x-bx0).toFixed(1)+')');
 
-    return { name:'Y racers block each other without knocking anyone over', pass: bad.length===0,
+    return { name:'Y a dive knocks over, a walk only shoves', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
-               : 'no stumble, no launch, separated to '+gap.toFixed(0)+', pushed '+(b.x-bx0).toFixed(1) };
+               : 'a walk: no stumble, no launch, separated to '+gap.toFixed(0)+', pushed '
+                 +(b.x-bx0).toFixed(1)+'; a dive: floored them' };
   }
 
   // ---------- Z: laser hitboxes match the beams you can see ----------
@@ -1336,7 +1341,16 @@
       if(Math.hypot(p.vx, p.vy) < topSpd*0.10) break;
     }
     if(topSpd < 3)      bad.push('never got up to speed ('+topSpd.toFixed(2)+'/frame)');
-    if(stopFrames > 10) bad.push('takes '+stopFrames+' frames to stop, want <= 10');
+    // v24 §2.1 raised ground friction from 0.78 to 0.84 so momentum carries.
+    // This measures the frames to fall to a tenth of top speed, which is
+    // log(0.1)/log(fr): 9.3 at 0.78, 13.2 at 0.84, and it reads 14 on the
+    // clock. The brief predicted 16-20 for the same change, which is what
+    // friction 0.88 would give -- see the §2 report. The window here is the
+    // one the friction the brief names actually produces, with a frame either
+    // side: a floor as well as a ceiling, because a stop that gets quick
+    // again means the momentum stopped carrying.
+    if(stopFrames < 12) bad.push('stops in '+stopFrames+' frames, want 12-16: momentum is not carrying');
+    if(stopFrames > 16) bad.push('takes '+stopFrames+' frames to stop, want 12-16');
 
     // (b) a 180 turn completes promptly
     p = reset();
@@ -1355,7 +1369,7 @@
 
     // (c) the jump hangs for the right length of time
     p = reset();
-    window.__dbg.hold(settings.keys.jump, true);   // or jumpCut halves the arc
+    window.__dbg.hold(settings.keys.jump, true);   // held out of habit; §2.3 removed the jump cut
     doJump(p);
     let air = 0;
     for(let i=0;i<120;i++){
