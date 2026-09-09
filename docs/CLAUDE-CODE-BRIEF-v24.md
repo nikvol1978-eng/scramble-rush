@@ -28,6 +28,32 @@ respawn is at the last checkpoint.
 
 ---
 
+## Open items
+
+**§1, check `h` at Splash Slide's first ice channel.** A field of twenty-four
+put check `h` -- no racer falls more than three times at one hazard inside
+twenty seconds -- exactly on its limit: it reads 3 on Sunny's disc field and
+3 on `narrow@2227`, and tips to 4 in about one run in three. In v23 the worst
+reading was 2. The cause is the field, not drift: twenty-three bots funnel
+into the same channel, and a bot that has already fallen there is crawling at
+0.42 throttle on ice with the pack arriving behind it. A third respawn rung
+(three sections back, longer freeze) was tried and measured no better, because
+that hazard is early enough that there is no third section to go back to.
+
+The cap stays at 3 and the channel stays as it is. §2 rewrites the collision
+behaviour that causes this, so the decision waits for it:
+
+1. After §2, re-measure check `h` over **ten seeds at `narrow@2227`**. If it
+   holds at 3, close this.
+2. If it still tips to 4, do **not** widen the channel. Instead give a bot
+   that has fallen twice at a hazard the pit rule's waiting logic: hold at the
+   section entrance until the pack ahead has cleared, so a crawling bot is
+   never sitting in the lane with twenty racers arriving behind it.
+3. If that fails too, record it here as a known miss with the numbers, the way
+   v21's three misses are recorded, and move on.
+
+---
+
 ## 1. Match structure — 24 players, 24 → 16 → 8
 
 - Field of **24** (player + 23 bots). Start pad widens to fit three rows of
