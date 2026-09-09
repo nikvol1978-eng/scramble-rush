@@ -2509,6 +2509,84 @@
                : 'velocity settled within 15 deg after '+settle+' frames, peak '+peak.toFixed(0)+' deg' };
   }
 
+  // ---------- k: slime carries you, a pad launches you, a flag brings you back ----------
+  // The three things v24 §2.8 and §2.9 added. Each is asserted by the property
+  // that makes it worth having rather than by the numbers it happens to carry:
+  // slime moves someone who is doing nothing, a bounce pad reaches the same
+  // height however fast you hit it, and a checkpoint is somewhere behind you.
+  function checkSurfaces(){
+    const bad = [], rep = {};
+
+    // ---- slime is a conveyor
+    begin('slide');
+    const sl = obstacles.find(o=>o.type==='slime');
+    if(!sl) bad.push('Splash Slide generated no slime');
+    else {
+      const p = player();
+      p.x = sl.cx; p.y = sl.y; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0;
+      p.falling=false; p.stumbleT=0; p.tumbleT=0; p.getUpT=0; p.diveT=0; p.invuln=9999;
+      const x0 = p.x;
+      // stand still on it: no input at all, and see where it takes you
+      for(let i=0;i<30;i++){ p.y = sl.y; p.vy = 0; window.__dbg.tick(1); }
+      const drift = (p.x - x0) * Math.sign(sl.flowX);
+      rep.slime = 'carried '+drift.toFixed(0)+' units downstream in half a second';
+      if(drift < 8) bad.push('slime carried a standing racer only '+drift.toFixed(1)+' units');
+      // and it is a floor, not a wall: it must not stop you crossing it
+      if(Math.abs(p.x - sl.cx) > sl.w/2) bad.push('slime pushed a racer clean off its own sheet');
+    }
+
+    // ---- a bounce pad reaches the same height however fast you arrive
+    begin('sunny');
+    const bp = obstacles.find(o=>o.type==='bounce');
+    if(!bp) bad.push('Sunny Sprint generated no bounce pads');
+    else {
+      const it = bp.items[0];
+      const peaks = [];
+      for(const speed of [0, 2.5, 4.6]){
+        const p = player();
+        p.x = it.x; p.y = it.y - 4; p.h = 0; p.vh = 0; p.vx = 0; p.vy = speed;
+        p.falling=false; p.stumbleT=0; p.tumbleT=0; p.getUpT=0; p.diveT=0; p.invuln=9999;
+        let top = 0;
+        for(let i=0;i<70;i++){
+          window.__dbg.tick(1);
+          const q = player();
+          if(q.h > top) top = q.h;
+          if(top > 0 && q.h <= 0 && i > 4) break;
+        }
+        peaks.push(top);
+      }
+      const lo = Math.min(...peaks), hi = Math.max(...peaks);
+      rep.bounce = 'peaks '+peaks.map(v=>v.toFixed(0)).join(' / ')+' from standing, half and full speed';
+      if(lo < 60) bad.push('a bounce pad launched only '+lo.toFixed(0)+' high');
+      if(hi - lo > Math.max(6, lo*0.12))
+        bad.push('the launch height depends on how fast you hit it ('+lo.toFixed(0)+' to '+hi.toFixed(0)+')');
+    }
+
+    // ---- checkpoints exist, are passed in order, and are always behind you
+    begin('sunny');
+    if(!checkpoints.length) bad.push('the course laid no checkpoints');
+    else {
+      let outOfOrder = 0;
+      for(let i=1;i<checkpoints.length;i++) if(checkpoints[i].y <= checkpoints[i-1].y) outOfOrder++;
+      if(outOfOrder) bad.push(outOfOrder+' checkpoints are not in course order');
+      const p = player();
+      p.y = checkpoints[Math.min(1, checkpoints.length-1)].y + 250;
+      window.__dbg.tick(2);
+      const cp = checkpointBefore(p.y);
+      rep.checkpoints = checkpoints.length+' flags, first at '+checkpoints[0].y.toFixed(0)
+                      + ', last at '+checkpoints[checkpoints.length-1].y.toFixed(0)
+                      + ' of '+trackLength;
+      if(!cp) bad.push('no checkpoint behind a racer standing past the second one');
+      else if(cp.y > p.y) bad.push('the checkpoint returned was in front of the racer');
+      if(checkpoints[checkpoints.length-1].y > trackLength - 400)
+        bad.push('a checkpoint sits inside the finish run');
+    }
+
+    return { name:'k slime carries, a pad launches, a flag brings you back',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -2521,7 +2599,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

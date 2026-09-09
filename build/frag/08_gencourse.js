@@ -461,6 +461,35 @@
         obs.push({type:'bumper', y, y0:y-100, y1:y+100,
                   items:lanes.map(l=>({x:cx+l+rand(-24,24), r:rand(30,40), hit:0}))});
         cursor = y+100;
+      } else if(type==='slime'){
+        // v24 §2.8. A wide sheet of the stuff with a direction and a speed: it
+        // carries whatever is standing on it, the way a conveyor does. The flow
+        // runs across the track rather than along it, so it is a thing to be
+        // crossed and not a moving walkway you ride to the finish -- it shoves
+        // you at the wall, and holding a line against it is the section.
+        const y = cursor + gap + 150;
+        const len = rand(300, 420);
+        obs.push({type:'slime', y, cx, w: TRACK_W-80, len,
+                  flowX: (Math.random()<0.5?-1:1), flowY: rand(-0.10, 0.10),
+                  // as a share of top speed, not as a push: see the collision
+                  speed: rand(0.38, 0.52) * spd,
+                  y0: y-len/2-30, y1: y+len/2+30});
+        cursor = y + len/2 + 90;
+      } else if(type==='bounce'){
+        // Trampolines. Three to five across the lane, each launching you to the
+        // same height however fast you arrived -- a fixed height is what makes
+        // them readable, and what stops a quick racer overshooting the one they
+        // were aiming for.
+        const y = cursor + gap + 130;
+        const n = 3 + Math.floor(Math.random()*3);
+        const items = [];
+        for(let i=0;i<n;i++){
+          items.push({ x: clamp(cx + (i-(n-1)/2)*rand(150,190) + rand(-20,20), 90, TRACK_W-90),
+                       y: y + rand(-70,70), r: rand(48,62), hit: 0 });
+        }
+        obs.push({type:'bounce', y, cx, items, power: rand(11.5,13.0),
+                  y0: y-170, y1: y+170});
+        cursor = y + 200;
       } else if(type==='boost'){
         const y = cursor+gap+100;
         obs.push({type:'boost', y, cx: cx+rand(-190,190), w: rand(140,210),

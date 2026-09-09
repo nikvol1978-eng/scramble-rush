@@ -1302,7 +1302,7 @@ const QUALITY = {
       { type:'gap',     len:820 },
       { type:'narrow',  len:760, turn:-27 },
       { type:'pit',     len:780 },
-      { type:'pad',     len:300 },
+      { type:'bounce',  len:420 },
       { type:'fork',    len:1180 },
       { type:'ramp',    len:820, turn:+24 },
       { type:'smallDiscs', len:1300, count:5 },
@@ -1346,6 +1346,7 @@ const QUALITY = {
       { type:'narrow',  len:900,  drop:130, bias:155 },   // the one you must steer for
       { type:'shortcut',len:1500, drop:200 },
       { type:'pillars', len:900,  turn:+20, drop:130 },
+      { type:'slime',   len:620,  drop:90 },
       { type:'crumble', len:1000, drop:160 },
       { type:'ramp',    len:1000, turn:-26, drop:140 },
       { type:'narrow',  len:1000, drop:150, bias:95 },
@@ -2866,6 +2867,35 @@ const QUALITY = {
         obs.push({type:'bumper', y, y0:y-100, y1:y+100,
                   items:lanes.map(l=>({x:cx+l+rand(-24,24), r:rand(30,40), hit:0}))});
         cursor = y+100;
+      } else if(type==='slime'){
+        // v24 §2.8. A wide sheet of the stuff with a direction and a speed: it
+        // carries whatever is standing on it, the way a conveyor does. The flow
+        // runs across the track rather than along it, so it is a thing to be
+        // crossed and not a moving walkway you ride to the finish -- it shoves
+        // you at the wall, and holding a line against it is the section.
+        const y = cursor + gap + 150;
+        const len = rand(300, 420);
+        obs.push({type:'slime', y, cx, w: TRACK_W-80, len,
+                  flowX: (Math.random()<0.5?-1:1), flowY: rand(-0.10, 0.10),
+                  // as a share of top speed, not as a push: see the collision
+                  speed: rand(0.38, 0.52) * spd,
+                  y0: y-len/2-30, y1: y+len/2+30});
+        cursor = y + len/2 + 90;
+      } else if(type==='bounce'){
+        // Trampolines. Three to five across the lane, each launching you to the
+        // same height however fast you arrived -- a fixed height is what makes
+        // them readable, and what stops a quick racer overshooting the one they
+        // were aiming for.
+        const y = cursor + gap + 130;
+        const n = 3 + Math.floor(Math.random()*3);
+        const items = [];
+        for(let i=0;i<n;i++){
+          items.push({ x: clamp(cx + (i-(n-1)/2)*rand(150,190) + rand(-20,20), 90, TRACK_W-90),
+                       y: y + rand(-70,70), r: rand(48,62), hit: 0 });
+        }
+        obs.push({type:'bounce', y, cx, items, power: rand(11.5,13.0),
+                  y0: y-170, y1: y+170});
+        cursor = y + 200;
       } else if(type==='boost'){
         const y = cursor+gap+100;
         obs.push({type:'boost', y, cx: cx+rand(-190,190), w: rand(140,210),
@@ -2908,6 +2938,37 @@ const QUALITY = {
   // only caller: putting a racer back on the lip of the hazard that just took
   // them is how one bad jump turns into ten, so they go back far enough to
   // arrive at it running rather than standing on its edge.
+  // ---- checkpoints (v24 §2.9) --------------------------------------------
+  // Falling used to put you back a section, worked out at the moment you fell.
+  // A checkpoint is the same idea said out loud: a flag on the course, in a
+  // place you can see before you need it, and the place you come back to. You
+  // can look ahead and know what a mistake will cost, which "one section back"
+  // never told you.
+  //
+  // Every third section, which on our courses is a flag about every 1400
+  // units. Never in the start pad and never inside the finish run: coming back
+  // to the line you have already crossed is not a checkpoint, it is a loop.
+  let checkpoints = [];
+  const CP_EVERY = 3;
+  function buildCheckpoints(){
+    checkpoints = [];
+    if(!courseScript || !courseScript.length) return;
+    let acc = 0, n = 0;
+    for(const sec of courseScript){
+      acc += sec.len; n++;
+      if(sec.type === 'finish') break;
+      if(n % CP_EVERY === 0 && acc > 400 && acc < trackLength - 500)
+        checkpoints.push({ y: acc, lit: false, mesh: null });
+    }
+  }
+  // The last flag at or behind y. Null before the first one, which means the
+  // start pad -- there is nowhere further back to go.
+  function checkpointBefore(y){
+    let best = null;
+    for(const c of checkpoints){ if(c.y <= y) best = c; else break; }
+    return best;
+  }
+
   function sectionStartBefore(y){
     if(!courseScript || !courseScript.length) return null;
     let acc = 0, prevStart = 0, thisStart = 0;
@@ -3326,6 +3387,27 @@ const QUALITY = {
         placeAt(bay, bx, -105, 2.2); courseGroup.add(bay);
       }
     }
+    // ---- the checkpoint flags. A post either side of the track with a
+    // banner across it, so it reads from a long way back and does not have to
+    // be run through to count.
+    buildCheckpoints();
+    for(const c of checkpoints){
+      const g = new THREE.Group();
+      const postMat = new THREE.MeshLambertMaterial({color:0x1a1033});
+      [-1,1].forEach(s=>{
+        const post = new THREE.Mesh(new THREE.BoxGeometry(9, 84, 9), postMat);
+        post.position.set(s*(TRACK_W/2-26), 42, 0); post.castShadow = true; g.add(post);
+      });
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-52, 26, 4),
+        new THREE.MeshLambertMaterial({color: accents[0]}));
+      banner.position.y = 74; g.add(banner);
+      placeAt(g, TRACK_W/2, c.y, 0); courseGroup.add(g);
+      c.mesh = g; c.banner = banner;
+      // dim until you pass it, the map's accent afterwards
+      c.litColor = new THREE.Color(accents[0]).getHex();
+      banner.material.color.set(new THREE.Color(accents[0]).multiplyScalar(0.42));
+    }
+
     // start line
     const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
@@ -3544,7 +3626,7 @@ const QUALITY = {
   // ============================================================
   // RACERS
   // ============================================================
-  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,floorH:0,x:0,y:-60,vx:0,vy:0,h:0,vh:0,finished:false,finishTime:0,falling:false,fallT:0,stumbleT:0,diveT:0,diveCd:0,invuln:0,renderFacing:0,facing:Math.PI/2,stuckT:0,aiObs:null,aiDecideT:0,aiRoute:0,aiPlat:null,targetX:0,squash:0,fallCount:0,lavaOut:false,lavaCatchY:0}; }
+  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,x:0,y:-60,vx:0,vy:0,h:0,vh:0,finished:false,finishTime:0,falling:false,fallT:0,stumbleT:0,diveT:0,diveCd:0,invuln:0,renderFacing:0,facing:Math.PI/2,stuckT:0,aiObs:null,aiDecideT:0,aiRoute:0,aiPlat:null,targetX:0,squash:0,fallCount:0,lavaOut:false,lavaCatchY:0}; }
   // ============================================================
   // THE FIELD  (v24 §1)
   // ============================================================
@@ -4557,12 +4639,17 @@ const QUALITY = {
     // falls at one hole. Whichever is further back: the start of the previous
     // section, or 400 units.
     if(hitObs){
-      // One section, measured from the hazard's own section -- not from ry,
-      // which has already been pulled back to the hazard's lip and therefore
-      // usually sits in the previous section, so asking what came before *it*
-      // sent racers back two. That cost about five seconds a fall on Super
-      // Slide and left three bots short of the line inside the round.
+      // v24 §2.9: back to the last flag you went past, not to a section
+      // boundary worked out at the moment you fell. Same idea, said out loud
+      // -- and you could see it coming.
+      //
+      // The old rule stays underneath as the floor. A checkpoint can sit close
+      // enough in front of a hazard that coming back to it is coming back to
+      // its lip, which is the loop this was written to break; whichever of the
+      // two is further back wins.
       let prev = sectionStartBefore(hitObs.yStart);
+      const cp = checkpointBefore(hitObs.yStart - 40);
+      if(cp && (prev === null || cp.y < prev)) prev = cp.y;
       // Twice at the same hazard and the run-up is not the problem: something
       // about the approach is. Another section back buys the room to arrive
       // differently, and on ice it is the only way to be lined up in time.
@@ -4698,6 +4785,10 @@ const QUALITY = {
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // checkObstacles is handed a racer and a clock, not the frame's step, and a
+  // surface that pushes every frame needs the step or it pushes harder on a
+  // slow machine. The physics loop leaves it here.
+  let frameK = 1;
   // Disc-field angles are derived from the clock, never accumulated, so the
   // same instant always gives the same disc -- which is what lets a check
   // assert where an arm is, and what keeps a multiplayer client in step.
@@ -5056,6 +5147,40 @@ const QUALITY = {
           ring.rotation.x=Math.PI/2; ring.position.y=31; g.add(ring);
           placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
+          return g;
+        });
+
+      } else if(o.type==='slime'){
+        const g=new THREE.Group();
+        // The sheet sits a whisker above the floor, so it reads as a coating
+        // rather than as a hole in the ground.
+        const sheet=new THREE.Mesh(new THREE.BoxGeometry(o.w, 4, o.len),
+          new THREE.MeshFloorMaterial({color:accent.getHex()}));
+        sheet.position.y=2.0; sheet.receiveShadow=true; g.add(sheet);
+        // Chevrons pointing the way it flows. This is the one thing a player
+        // has to read before stepping on, and the reason it is not a colour.
+        const arrowMat=new THREE.MeshBasicMaterial({color:0xfff8ec});
+        const rows=Math.max(2, Math.round(o.len/120));
+        for(let i=0;i<rows;i++){
+          for(let k=-2;k<=2;k++){
+            const bar=new THREE.Mesh(new THREE.BoxGeometry(46,3,11), arrowMat);
+            bar.position.set(k*118, 4.3, -o.len/2 + o.len*(i+0.5)/rows);
+            bar.rotation.y = o.flowX>0 ? -0.55 : 0.55;
+            g.add(bar);
+          }
+        }
+        placeAt(g, o.cx, o.y, 0); courseGroup.add(g); o.mesh=g;
+
+      } else if(o.type==='bounce'){
+        const padMat=look.softMat(1);
+        const rimMat=new THREE.MeshLambertMaterial({color:0xfff8ec});
+        o.meshes=o.items.map(it=>{
+          const g=new THREE.Group();
+          const pad=new THREE.Mesh(new THREE.CylinderGeometry(it.r, it.r*0.80, 14, 18), padMat);
+          pad.position.y=7; pad.receiveShadow=true; g.add(pad);
+          const rim=new THREE.Mesh(new THREE.TorusGeometry(it.r, 4.5, 8, 20), rimMat);
+          rim.rotation.x=Math.PI/2; rim.position.y=14; g.add(rim);
+          placeAt(g, it.x, it.y, 0); courseGroup.add(g);
           return g;
         });
 
@@ -5632,6 +5757,44 @@ const QUALITY = {
       }
     }
     if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr) r.floorH = 0;
+
+    // ---- terrain (v24 §2.8) ------------------------------------------------
+    // Slime and bounce pads are ground, not hazards, so they go above the
+    // invulnerability gate below. A racer who has just picked themselves up is
+    // briefly immune to being hit; they are not briefly immune to the floor,
+    // and a conveyor that stopped conveying for the eight hundred milliseconds
+    // after a knockdown would be a floor that lies about where it takes you.
+    for(const o of obstacles){
+      if(r.y<o.y0-40||r.y>o.y1+40) continue;
+      if(o.type==='slime'){
+        // A conveyor adds its own velocity to yours every frame you stand on
+        // it, which is what a surface that flows actually does -- standing
+        // still on it means going where it goes. In the air you are clear.
+        if(r.h < 6 && Math.abs(r.y-o.y) < o.len/2 && Math.abs(r.x-o.cx) < o.w/2){
+          // o.speed is the share of top speed the flow carries you at, and the
+          // push that reaches it is solved from the surface -- the impulse that
+          // gives 40% of top speed on dry ground gives three times that on ice,
+          // and Splash Slide would fire you into the wall.
+          const sfr = currentMap.slippery ? ICE_FR : GROUND_FR;
+          const push = o.speed*V_MAX*(1-sfr)/sfr;
+          r.vx += o.flowX*push*frameK;
+          r.vy += o.flowY*push*frameK;
+          if(r.isPlayer && Math.random()<0.10) spawnBurst3D(r.x,r.y,0x7ee87e,2);
+        }
+      } else if(o.type==='bounce'){
+        for(const it of o.items){
+          if(Math.hypot(r.x-it.x, r.y-it.y) < it.r + RADIUS - 6 && surfaceH(r) < 16 && r.vh <= 0.5){
+            // A fixed height, whatever you arrived with: that is what makes a
+            // trampoline readable. Your horizontal speed is yours to keep.
+            r.vh = o.power; r.h = Math.max(r.h, 0.01);
+            r.squash = 0.8; it.hit = 1;
+            spawnBurst3D(r.x, r.y, 0x23e6c9, 6);
+            if(r.isPlayer) SFX.jump();
+            break;
+          }
+        }
+      }
+    }
 
     if(r.invuln>0) return;
     for(const o of obstacles){
@@ -6595,6 +6758,25 @@ const QUALITY = {
         const clear = 55 + (currentMap.slippery ? 50 : 0);
         return set(r.x < o.cx ? o.cx - o.halfWidth - clear : o.cx + o.halfWidth + clear, 1);
 
+      case 'slime': {
+        // The flow shoves you sideways for as long as you are on it, so a bot
+        // that aims at where it wants to end up arrives well downstream of it.
+        // Aim upstream by what the crossing will carry you: the frames it takes
+        // to cross, times the flow, halved because the push builds rather than
+        // arriving all at once.
+        const crossFrames = (o.len + RADIUS*2) / Math.max(1.5, r.vy || 4);
+        const drift = o.flowX * o.speed * V_MAX * crossFrames * 0.6;
+        return set(clamp(o.cx - drift, 70, TRACK_W-70), 1);
+      }
+
+      case 'bounce': {
+        // Line up on the nearest pad and take it at speed: the launch is a
+        // fixed height, so arriving quickly costs nothing and saves time.
+        let best = o.items[0], bd = 1e9;
+        for(const it of o.items){ const d = Math.abs(it.x - r.x); if(d < bd){ bd = d; best = it; } }
+        return set(best.x, 1);
+      }
+
       case 'boost':
         return set(o.cx, 1);                          // free speed, line up on it
 
@@ -7370,7 +7552,22 @@ const QUALITY = {
       r.x = arenaMode() ? clamp(r.x, TRACK_W/2-1400, TRACK_W/2+1400) : clamp(r.x,4,TRACK_W-4);
       r.y = arenaMode() ? Math.max(r.y,-1400) : Math.max(r.y,-120);
       if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
-      checkObstacles(r, obsTime(t));
+      frameK = f; checkObstacles(r, obsTime(t));
+      // §2.9: the flag you last went past is where you come back to. Lighting
+      // it is the player's business only -- a bot passing one should not tell
+      // you that you have banked it.
+      for(let ci=checkpoints.length-1; ci>=0; ci--){
+        if(r.y >= checkpoints[ci].y){
+          if((r.cpIndex===undefined ? -1 : r.cpIndex) < ci){
+            r.cpIndex = ci;
+            if(r.isPlayer && !checkpoints[ci].lit){
+              checkpoints[ci].lit = true;
+              if(checkpoints[ci].banner) checkpoints[ci].banner.material.color.setHex(checkpoints[ci].litColor);
+            }
+          }
+          break;
+        }
+      }
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }
       if(r.y>=trackLength&&!r.finished){
         r.finished=true; r.finishTime=raceTime; r.vy*=0.4; r.diveT=0; r.getUpT=0;

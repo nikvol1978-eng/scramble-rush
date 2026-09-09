@@ -92,12 +92,17 @@
     // falls at one hole. Whichever is further back: the start of the previous
     // section, or 400 units.
     if(hitObs){
-      // One section, measured from the hazard's own section -- not from ry,
-      // which has already been pulled back to the hazard's lip and therefore
-      // usually sits in the previous section, so asking what came before *it*
-      // sent racers back two. That cost about five seconds a fall on Super
-      // Slide and left three bots short of the line inside the round.
+      // v24 §2.9: back to the last flag you went past, not to a section
+      // boundary worked out at the moment you fell. Same idea, said out loud
+      // -- and you could see it coming.
+      //
+      // The old rule stays underneath as the floor. A checkpoint can sit close
+      // enough in front of a hazard that coming back to it is coming back to
+      // its lip, which is the loop this was written to break; whichever of the
+      // two is further back wins.
       let prev = sectionStartBefore(hitObs.yStart);
+      const cp = checkpointBefore(hitObs.yStart - 40);
+      if(cp && (prev === null || cp.y < prev)) prev = cp.y;
       // Twice at the same hazard and the run-up is not the problem: something
       // about the approach is. Another section back buys the room to arrive
       // differently, and on ice it is the only way to be lined up in time.

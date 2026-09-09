@@ -185,7 +185,22 @@
       r.x = arenaMode() ? clamp(r.x, TRACK_W/2-1400, TRACK_W/2+1400) : clamp(r.x,4,TRACK_W-4);
       r.y = arenaMode() ? Math.max(r.y,-1400) : Math.max(r.y,-120);
       if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
-      checkObstacles(r, obsTime(t));
+      frameK = f; checkObstacles(r, obsTime(t));
+      // §2.9: the flag you last went past is where you come back to. Lighting
+      // it is the player's business only -- a bot passing one should not tell
+      // you that you have banked it.
+      for(let ci=checkpoints.length-1; ci>=0; ci--){
+        if(r.y >= checkpoints[ci].y){
+          if((r.cpIndex===undefined ? -1 : r.cpIndex) < ci){
+            r.cpIndex = ci;
+            if(r.isPlayer && !checkpoints[ci].lit){
+              checkpoints[ci].lit = true;
+              if(checkpoints[ci].banner) checkpoints[ci].banner.material.color.setHex(checkpoints[ci].litColor);
+            }
+          }
+          break;
+        }
+      }
       if(currentMap.mode==='lava' && !r.falling && r.y<lavaZ-40){ r.lavaOut=true; r.lavaCatchY=r.y; spawnBurst3D(r.x,lavaZ,0xff5a2e,16); continue; }
       if(r.y>=trackLength&&!r.finished){
         r.finished=true; r.finishTime=raceTime; r.vy*=0.4; r.diveT=0; r.getUpT=0;

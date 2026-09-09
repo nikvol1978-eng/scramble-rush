@@ -232,6 +232,27 @@
         placeAt(bay, bx, -105, 2.2); courseGroup.add(bay);
       }
     }
+    // ---- the checkpoint flags. A post either side of the track with a
+    // banner across it, so it reads from a long way back and does not have to
+    // be run through to count.
+    buildCheckpoints();
+    for(const c of checkpoints){
+      const g = new THREE.Group();
+      const postMat = new THREE.MeshLambertMaterial({color:0x1a1033});
+      [-1,1].forEach(s=>{
+        const post = new THREE.Mesh(new THREE.BoxGeometry(9, 84, 9), postMat);
+        post.position.set(s*(TRACK_W/2-26), 42, 0); post.castShadow = true; g.add(post);
+      });
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-52, 26, 4),
+        new THREE.MeshLambertMaterial({color: accents[0]}));
+      banner.position.y = 74; g.add(banner);
+      placeAt(g, TRACK_W/2, c.y, 0); courseGroup.add(g);
+      c.mesh = g; c.banner = banner;
+      // dim until you pass it, the map's accent afterwards
+      c.litColor = new THREE.Color(accents[0]).getHex();
+      banner.material.color.set(new THREE.Color(accents[0]).multiplyScalar(0.42));
+    }
+
     // start line
     const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);

@@ -458,7 +458,7 @@ cut("""    const p=racers.find(r=>r.isPlayer);
 
 # racers carry the new timers
 sub("  function baseRacer(){ return {x:0,y:-60,",
-    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,floorH:0,x:0,y:-60,",
+    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,x:0,y:-60,",
     "baseRacer fields")
 
 # ---------------------------------------------------------------- bot AI must predict the same bar the collision uses

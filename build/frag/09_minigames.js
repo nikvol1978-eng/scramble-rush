@@ -67,6 +67,10 @@
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // checkObstacles is handed a racer and a clock, not the frame's step, and a
+  // surface that pushes every frame needs the step or it pushes harder on a
+  // slow machine. The physics loop leaves it here.
+  let frameK = 1;
   // Disc-field angles are derived from the clock, never accumulated, so the
   // same instant always gives the same disc -- which is what lets a check
   // assert where an arm is, and what keeps a multiplayer client in step.
@@ -427,6 +431,40 @@
           ring.rotation.x=Math.PI/2; ring.position.y=31; g.add(ring);
           placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
+          return g;
+        });
+
+      } else if(o.type==='slime'){
+        const g=new THREE.Group();
+        // The sheet sits a whisker above the floor, so it reads as a coating
+        // rather than as a hole in the ground.
+        const sheet=new THREE.Mesh(new THREE.BoxGeometry(o.w, 4, o.len),
+          new THREE.MeshFloorMaterial({color:accent.getHex()}));
+        sheet.position.y=2.0; sheet.receiveShadow=true; g.add(sheet);
+        // Chevrons pointing the way it flows. This is the one thing a player
+        // has to read before stepping on, and the reason it is not a colour.
+        const arrowMat=new THREE.MeshBasicMaterial({color:0xfff8ec});
+        const rows=Math.max(2, Math.round(o.len/120));
+        for(let i=0;i<rows;i++){
+          for(let k=-2;k<=2;k++){
+            const bar=new THREE.Mesh(new THREE.BoxGeometry(46,3,11), arrowMat);
+            bar.position.set(k*118, 4.3, -o.len/2 + o.len*(i+0.5)/rows);
+            bar.rotation.y = o.flowX>0 ? -0.55 : 0.55;
+            g.add(bar);
+          }
+        }
+        placeAt(g, o.cx, o.y, 0); courseGroup.add(g); o.mesh=g;
+
+      } else if(o.type==='bounce'){
+        const padMat=look.softMat(1);
+        const rimMat=new THREE.MeshLambertMaterial({color:0xfff8ec});
+        o.meshes=o.items.map(it=>{
+          const g=new THREE.Group();
+          const pad=new THREE.Mesh(new THREE.CylinderGeometry(it.r, it.r*0.80, 14, 18), padMat);
+          pad.position.y=7; pad.receiveShadow=true; g.add(pad);
+          const rim=new THREE.Mesh(new THREE.TorusGeometry(it.r, 4.5, 8, 20), rimMat);
+          rim.rotation.x=Math.PI/2; rim.position.y=14; g.add(rim);
+          placeAt(g, it.x, it.y, 0); courseGroup.add(g);
           return g;
         });
 
@@ -1004,6 +1042,44 @@
       }
     }
     if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr) r.floorH = 0;
+
+    // ---- terrain (v24 §2.8) ------------------------------------------------
+    // Slime and bounce pads are ground, not hazards, so they go above the
+    // invulnerability gate below. A racer who has just picked themselves up is
+    // briefly immune to being hit; they are not briefly immune to the floor,
+    // and a conveyor that stopped conveying for the eight hundred milliseconds
+    // after a knockdown would be a floor that lies about where it takes you.
+    for(const o of obstacles){
+      if(r.y<o.y0-40||r.y>o.y1+40) continue;
+      if(o.type==='slime'){
+        // A conveyor adds its own velocity to yours every frame you stand on
+        // it, which is what a surface that flows actually does -- standing
+        // still on it means going where it goes. In the air you are clear.
+        if(r.h < 6 && Math.abs(r.y-o.y) < o.len/2 && Math.abs(r.x-o.cx) < o.w/2){
+          // o.speed is the share of top speed the flow carries you at, and the
+          // push that reaches it is solved from the surface -- the impulse that
+          // gives 40% of top speed on dry ground gives three times that on ice,
+          // and Splash Slide would fire you into the wall.
+          const sfr = currentMap.slippery ? ICE_FR : GROUND_FR;
+          const push = o.speed*V_MAX*(1-sfr)/sfr;
+          r.vx += o.flowX*push*frameK;
+          r.vy += o.flowY*push*frameK;
+          if(r.isPlayer && Math.random()<0.10) spawnBurst3D(r.x,r.y,0x7ee87e,2);
+        }
+      } else if(o.type==='bounce'){
+        for(const it of o.items){
+          if(Math.hypot(r.x-it.x, r.y-it.y) < it.r + RADIUS - 6 && surfaceH(r) < 16 && r.vh <= 0.5){
+            // A fixed height, whatever you arrived with: that is what makes a
+            // trampoline readable. Your horizontal speed is yours to keep.
+            r.vh = o.power; r.h = Math.max(r.h, 0.01);
+            r.squash = 0.8; it.hit = 1;
+            spawnBurst3D(r.x, r.y, 0x23e6c9, 6);
+            if(r.isPlayer) SFX.jump();
+            break;
+          }
+        }
+      }
+    }
 
     if(r.invuln>0) return;
     for(const o of obstacles){

@@ -414,6 +414,25 @@
         const clear = 55 + (currentMap.slippery ? 50 : 0);
         return set(r.x < o.cx ? o.cx - o.halfWidth - clear : o.cx + o.halfWidth + clear, 1);
 
+      case 'slime': {
+        // The flow shoves you sideways for as long as you are on it, so a bot
+        // that aims at where it wants to end up arrives well downstream of it.
+        // Aim upstream by what the crossing will carry you: the frames it takes
+        // to cross, times the flow, halved because the push builds rather than
+        // arriving all at once.
+        const crossFrames = (o.len + RADIUS*2) / Math.max(1.5, r.vy || 4);
+        const drift = o.flowX * o.speed * V_MAX * crossFrames * 0.6;
+        return set(clamp(o.cx - drift, 70, TRACK_W-70), 1);
+      }
+
+      case 'bounce': {
+        // Line up on the nearest pad and take it at speed: the launch is a
+        // fixed height, so arriving quickly costs nothing and saves time.
+        let best = o.items[0], bd = 1e9;
+        for(const it of o.items){ const d = Math.abs(it.x - r.x); if(d < bd){ bd = d; best = it; } }
+        return set(best.x, 1);
+      }
+
       case 'boost':
         return set(o.cx, 1);                          // free speed, line up on it
 

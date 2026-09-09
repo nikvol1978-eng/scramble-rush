@@ -431,7 +431,7 @@
       { type:'gap',     len:820 },
       { type:'narrow',  len:760, turn:-27 },
       { type:'pit',     len:780 },
-      { type:'pad',     len:300 },
+      { type:'bounce',  len:420 },
       { type:'fork',    len:1180 },
       { type:'ramp',    len:820, turn:+24 },
       { type:'smallDiscs', len:1300, count:5 },
@@ -475,6 +475,7 @@
       { type:'narrow',  len:900,  drop:130, bias:155 },   // the one you must steer for
       { type:'shortcut',len:1500, drop:200 },
       { type:'pillars', len:900,  turn:+20, drop:130 },
+      { type:'slime',   len:620,  drop:90 },
       { type:'crumble', len:1000, drop:160 },
       { type:'ramp',    len:1000, turn:-26, drop:140 },
       { type:'narrow',  len:1000, drop:150, bias:95 },

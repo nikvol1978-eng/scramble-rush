@@ -18,6 +18,37 @@
   // only caller: putting a racer back on the lip of the hazard that just took
   // them is how one bad jump turns into ten, so they go back far enough to
   // arrive at it running rather than standing on its edge.
+  // ---- checkpoints (v24 §2.9) --------------------------------------------
+  // Falling used to put you back a section, worked out at the moment you fell.
+  // A checkpoint is the same idea said out loud: a flag on the course, in a
+  // place you can see before you need it, and the place you come back to. You
+  // can look ahead and know what a mistake will cost, which "one section back"
+  // never told you.
+  //
+  // Every third section, which on our courses is a flag about every 1400
+  // units. Never in the start pad and never inside the finish run: coming back
+  // to the line you have already crossed is not a checkpoint, it is a loop.
+  let checkpoints = [];
+  const CP_EVERY = 3;
+  function buildCheckpoints(){
+    checkpoints = [];
+    if(!courseScript || !courseScript.length) return;
+    let acc = 0, n = 0;
+    for(const sec of courseScript){
+      acc += sec.len; n++;
+      if(sec.type === 'finish') break;
+      if(n % CP_EVERY === 0 && acc > 400 && acc < trackLength - 500)
+        checkpoints.push({ y: acc, lit: false, mesh: null });
+    }
+  }
+  // The last flag at or behind y. Null before the first one, which means the
+  // start pad -- there is nowhere further back to go.
+  function checkpointBefore(y){
+    let best = null;
+    for(const c of checkpoints){ if(c.y <= y) best = c; else break; }
+    return best;
+  }
+
   function sectionStartBefore(y){
     if(!courseScript || !courseScript.length) return null;
     let acc = 0, prevStart = 0, thisStart = 0;
