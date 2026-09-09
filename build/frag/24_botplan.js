@@ -11,7 +11,7 @@
   // counted while throttle > 0.5, so a bot in one of the cautious modes (0.45
   // at a hazard, 0.15 under a cannon) could brake to line up, lose its speed to
   // friction, and never accumulate a single frame of "stuck" -- which is how one
-  // stood still on Super Slide for 26.8 seconds.
+  // stood still on Splash Slide for 26.8 seconds.
   // A stable id for a hazard, since these spans have no o.y of their own.
   function obsMid(o){ return o.y !== undefined ? o.y : Math.round((o.yStart + o.yEnd)/2); }
   function obsKey(o){ return o.type + '@' + obsMid(o); }
@@ -78,11 +78,11 @@
     // The second is moving and getting nowhere: a bot wedged between a pillar
     // and the side wall keeps twitching at more than 0.3 a frame, so the speed
     // test reset itself every frame and the escape never fired. With courses
-    // authored, that corner is in the same place every run -- one Super Slide
+    // authored, that corner is in the same place every run -- one Splash Slide
     // bot stood in it for 24 seconds. So also watch net progress over a window.
     // ...but only on a course you run down. On a knockout arena a bot roaming
     // its floor makes no headway up the map on purpose, and treating that as
-    // stuck had them escaping every few seconds on Tile Tumble -- which made
+    // stuck had them escaping every few seconds on Panel Drop -- which made
     // them survive it, and dropped the round's eliminations below its floor.
     if(currentMap.knockout || arenaMode()){ r.markY = r.y; r.markT = 0; }
     else {
@@ -193,7 +193,7 @@
         }
       }
       // On ice this has to start a fall earlier and approach slower. A bot
-      // arriving at a narrow channel on Super Slide at speed cannot steer into
+      // arriving at a narrow channel on Splash Slide at speed cannot steer into
       // it -- that is the whole point of the surface -- so waiting until the
       // third fall to slow down means the third fall is guaranteed, and a
       // fourth inside twenty seconds follows. Dry ground keeps the old

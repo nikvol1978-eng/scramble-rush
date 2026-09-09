@@ -146,7 +146,7 @@
       if(r.jumpBuf>0){ r.jumpBuf-=dt*1000; if(r.h<=0 && r.stumbleT<=0 && !r.falling){ r.jumpBuf=0; doJump(r); } }
 
       // ---- the gradient underfoot ----
-      // Cannon Climb and Super Slide bent the world but cost and paid nothing:
+      // Boom Peak and Splash Slide bent the world but cost and paid nothing:
       // a hill was scenery. This is the component of gravity along the track,
       // so climbing bleeds speed and a descent hands it back. It stops at the
       // line, or racers milling about in the finish pen get shoved downhill.

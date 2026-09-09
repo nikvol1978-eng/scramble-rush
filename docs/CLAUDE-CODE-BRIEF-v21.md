@@ -1,3 +1,7 @@
+> **Note, v24:** the round names in this document were changed in v24 for
+> the reasons set out in `docs/CLAUDE-CODE-BRIEF-v24.md`. It has been updated
+> to use the current names, so what it describes still matches the code.
+
 > **Status: done in v21.** Everything below shipped in the §-commits
 > 62193b8 → 26f5636 (6 Sep 2026), plus 0bfb853 for the debug freeze flag used to
 > take the acceptance shots. Suite 43/43, five-seed acceptance green, and the
@@ -93,10 +97,10 @@ sunny: [
   in the script, not in a constant.
 
 Every map keeps its identity: Sunny is the friendly showcase course (the image
-is closest to this), Cannon Climb is a climb with cannons at the switchbacks,
-Super Slide is a downhill with boost pads and one big turn, Neon is tight and
-dark with spinners and lasers. Write all four scripts, plus Lava Rise (which
-uses the same sections with the lava behind), and leave Door Dash, Tile Tumble
+is closest to this), Boom Peak is a climb with cannons at the switchbacks,
+Splash Slide is a downhill with boost pads and one big turn, Neon is tight and
+dark with spinners and lasers. Write all four scripts, plus Magma Chase (which
+uses the same sections with the lava behind), and leave Paper Run, Panel Drop
 and Closing Circle as they are — they are arenas, not courses.
 
 The acceptance test's "five layouts" becomes "five seeds of the same script":
@@ -174,7 +178,7 @@ versions, everything from cdnjs or jsdelivr, nothing bundled:
    the plastic actually reflects something. One directional key with
    `VSMShadowMap`, radius 4, map 2048, bias tuned. `ACESFilmic`, exposure 1.0.
 4. **Sky.** `three/addons/objects/Sky.js` with a sun position per map (Neon is
-   dusk, Cannon Climb is noon, Super Slide is a bright cold morning), and a
+   dusk, Boom Peak is noon, Splash Slide is a bright cold morning), and a
    layer of **clouds below the course** — 40–60 large soft sprites on a plane
    200 units under the ribbon, drifting slowly, using a procedural canvas
    texture (no external images). Every course is in the sky now; the drop off

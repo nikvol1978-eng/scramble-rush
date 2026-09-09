@@ -10,7 +10,7 @@ eating a released file is how v7 got clobbered, twice.
 """
 import io, os, re, sys
 
-VERSION = 23                                  # single source of truth
+VERSION = 24                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(ROOT, "index.html")
@@ -247,7 +247,7 @@ sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt; if(lavaMesh){ lavaMesh.
     + chr(10) + "      if(lavaMesh){ lavaMesh.position.z=lavaZ; lavaGlow.position.z=lavaZ+30; } }",
     "lava chases the leader")
 
-# Tile Tumble can end on the clock with everyone still in, so survivors are
+# Panel Drop can end on the clock with everyone still in, so survivors are
 # separated by which floor they are on, then by how recently they dropped to it.
 sub("    if(a.finished&&b.finished) return a.finishTime-b.finishTime;",
     "    if(a.tileLayer !== undefined && b.tileLayer !== undefined){"
@@ -514,7 +514,7 @@ sub("  function fallDown(r){",
 # Bots drove at 0.52*speed(0.84-1.04) against the player's ACCEL. That is a
 # 20-35% handicap, which is why holding W won races.
 # v22: bots run on the same ice the player does. Without this they steered
-# normally down Super Slide while the player skidded, which is both unfair and
+# normally down Splash Slide while the player skidded, which is both unfair and
 # the reason the map never read as ice from behind a bot.
 sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
     "    r.vy+=ACCEL*iceDriveK()*(r.speed||1)*diffMult()*throttle*WIND(r)*f;",
@@ -525,7 +525,7 @@ sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
 # hardest push sideways is still exactly what it was; it just stops
 # overshooting. Bots correct errors they have already made, and on a surface
 # that takes a second to answer the helm that alone took them from a median of
-# two falls a layout on Super Slide to eight, all of them at narrow channels
+# two falls a layout on Splash Slide to eight, all of them at narrow channels
 # and crumbling bridges where the line has to be held.
 sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
     "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055) - (currentMap.slippery?r.vx*0.55:0),-1.5,1.5)*iceSteerK()*f;",

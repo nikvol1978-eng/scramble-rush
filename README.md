@@ -10,7 +10,7 @@ Each version is one self-contained HTML file.
 | File | Version | Notes |
 |---|---|---|
 | `scramble-rush-20.0.html` | **20.0 (current)** | Jumping and diving no longer beat running, a taller toon-shaded bean, courses that read like the reference, the lobby and the "NEXT UP IS…" reveal |
-| `scramble-rush-19.0.html` | 19.0 | Eight rounds that work, Fall Guys movement, bots that race you, layered Tile Tumble, per-map acceptance test |
+| `scramble-rush-19.0.html` | 19.0 | Eight rounds that work, Fall Guys movement, bots that race you, layered Panel Drop, per-map acceptance test |
 | `scramble-rush-18.0.html` | 18.0 | The last "everything" build: 13 race maps and 11 minigames, kept as the reference for the maps cut in v19 |
 | `index.html` | 5.0 | The original two-round build. The build system splices every release out of this file, so it is never modified |
 
@@ -64,12 +64,12 @@ section are still generated, so no two layouts are identical.
 | Round | Kind | Signature |
 |---|---|---|
 | Sunny Sprint | race | a chequered start pad, hammers and pillars, a field of turning discs with sweeping arms, a hole down the middle, then a zigzag of small discs and a crumbling bridge |
-| Cannon Climb | race | a stepped climb with cannons that fire on a rhythm, and a chevron-painted slope walled in netting with turnstiles across it |
-| Super Slide | race | a descent on real ice: your momentum carries, your boots do not bite sideways, and the bean banks into the skid. Boost pads, crumbling bridges, a shortcut lane |
+| Boom Peak | race | a stepped climb with cannons that fire on a rhythm, and a chevron-painted slope walled in netting with turnstiles across it |
+| Splash Slide | race | a descent on real ice: your momentum carries, your boots do not bite sideways, and the bean banks into the skid. Boost pads, crumbling bridges, a shortcut lane |
 | Neon Nightrun | race | spin bars and laser beams in the dark, and a plank bridge with a hammer swinging across it |
-| Lava Rise | minigame | the lava chases the pack and never lets a total wipe happen |
-| Door Dash | minigame | six doors a row, two are paper |
-| Tile Tumble | knockout | three floors of tiles; fall through one and you land on the next, fall through the bottom and you are out |
+| Magma Chase | minigame | the lava chases the pack and never lets a total wipe happen |
+| Paper Run | minigame | six doors a row, two are paper |
+| Panel Drop | knockout | three floors of tiles; fall through one and you land on the next, fall through the bottom and you are out |
 | Closing Circle | final | a shrinking disc, last six standing to start, one to win |
 
 Bots run at the player's speed, have a plan for every obstacle type on these
@@ -109,8 +109,8 @@ top-three in the final, 150 for a win. Crowns are wins.
 
 The generator and obstacle code for the maps cut in v19 (Honey Hive, Candy
 Canyon, Bumper Bash, Jungle Jam, Frostbite Peak, Cloud Nine, Cyber Grid, Orbit
-Drop, Beach Break, Boulder Barrage, Block Dash, Honey Drop, Gem Grab, Carousel,
-Laser Tracer, Laser Dodge) is still in the build. They were cut because the bots
+Drop, Beach Break, Boulder Barrage, Wall Rush, Comb Collapse, Gem Grab, Carousel,
+Beam Team, Laser Dodge) is still in the build. They were cut because the bots
 could not cross a `mover` gap, not because they were bad maps; restoring one is
 a one-line change to `MAPS`/`MINIGAMES` once the bots can.
 
@@ -174,10 +174,10 @@ They assert that things *happen* — cannonballs in flight, tiles crumbling, a
 climb gaining height, a held diagonal staying at 45°, a hopper covering no
 more ground than a runner (8), the bean's proportions and squash keyframes
 (5), hazards more saturated than the floor (b) — not merely that a round
-reaches state `racing`. Three are known to be noisy: N (Tile Tumble is a
+reaches state `racing`. Three are known to be noisy: N (Panel Drop is a
 cascade, so nine rounds can land either side of its window), Q (one Super
 Slide layout in many lands the shortcut's end on another obstacle) and the
-acceptance's Super Slide hurt-in-4-of-5 target (about one run in four). A state-only check is what let `updateMinigames()` sit
+acceptance's Splash Slide hurt-in-4-of-5 target (about one run in four). A state-only check is what let `updateMinigames()` sit
 uncalled for three versions while every regression pass went green.
 
 The acceptance test runs each race map on five layouts with a player that only

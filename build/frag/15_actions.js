@@ -73,14 +73,14 @@
   function speedCap(){ return (currentMap && currentMap.slippery) ? V_CAP_ICE : V_CAP; }
   const TURN_RATE_GROUND = 17, TURN_RATE_AIR = 9;   // radians per second
   // How hard a gradient pulls, per frame per unit of sin(slope). At the
-  // steepest point of Cannon Climb this is about a fifth of ACCEL.
+  // steepest point of Boom Peak this is about a fifth of ACCEL.
   // Scaled with ACCEL: at 0.50 against the old 0.68 a hill was worth 15%, and
   // against 1.47 it would be worth 7%.
   const SLOPE_PULL = 1.08;
   // A gradient's impulse arrives every frame and friction takes a share of it
   // back, so the speed a hill is worth is pull/(1-friction). Ice keeps sixteen
   // times what it is given where dry ground keeps four and a half, and left
-  // unscaled the same descent handed Super Slide 31% more top speed than v21.
+  // unscaled the same descent handed Splash Slide 31% more top speed than v21.
   // It is scaled by the same figure the drive is, not by the friction: that
   // keeps a hill worth the same share of your top speed as it is on dry
   // ground, which is what check L measures. Scaling it by the friction instead
@@ -109,7 +109,7 @@
   // ---- ice ----------------------------------------------------------------
   // A slippery map used to differ from dry ground in exactly one number: the
   // friction, 0.845 against 0.78. That is a higher top speed, not a slide --
-  // measured, Super Slide coasted for 0.32s where Sunny Sprint coasted for
+  // measured, Splash Slide coasted for 0.32s where Sunny Sprint coasted for
   // 0.60s, and you could reverse from full speed in five frames. Sliding is
   // not how fast you go, it is your boots not biting sideways. So on ice the
   // friction goes right up and the push you get is scaled by how much it

@@ -122,13 +122,13 @@
   }
 
   // ---- the two shaped courses -------------------------------------------------
-  // Cannon Climb rises in stepped pushes: steeper stretches with flatter landings
+  // Boom Peak rises in stepped pushes: steeper stretches with flatter landings
   // between them, so it reads as a climb rather than one long ramp.
   const PATH_CLIMB = {
     slope: u => 0.055 + 0.115*(1 - Math.cos(u*Math.PI*4))/2 + 0.075*Math.sin(u*Math.PI),
     turn:  u => Math.sin(u*Math.PI*2)*0.13
   };
-  // Super Slide drops away, steepest through the middle, easing out at the bottom.
+  // Splash Slide drops away, steepest through the middle, easing out at the bottom.
   const PATH_SLIDE = {
     slope: u => -(0.10 + 0.16*Math.sin(clamp(u,0,1)*Math.PI)),
     turn:  u => Math.sin(u*Math.PI*3)*0.17
@@ -166,7 +166,7 @@
   // boom must not pass through -- the outer walls of the corridor, which is
   // the difference between looking through a gate and standing outside the
   // course. Until v23 there was one list doing both, so every gate segment and
-  // pillar on Cannon Climb both faded AND hauled the boom in to its 58-unit
+  // pillar on Boom Peak both faded AND hauled the boom in to its 58-unit
   // minimum, which is the bean filling the screen against a pale wall.
   let fadeables = [], camBlockers = [];
   const _occRay = new THREE.Raycaster();

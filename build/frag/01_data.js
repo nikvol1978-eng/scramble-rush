@@ -300,7 +300,7 @@
     {id:'hundred_races',name:'Die Hard',        desc:'Play 100 matches',                icon:'\u{1F579}', coins:800, check:s=>s.races>=100},
     {id:'level5',       name:'Rising Star',     desc:'Reach level 5',                   icon:'\u{2B50}',  coins:200, check:s=>s.level>=5},
     {id:'level10',      name:'All Star',        desc:'Reach level 10',                  icon:'\u{1F31F}', coins:500, check:s=>s.level>=10},
-    {id:'lava',         name:'Hot Feet',        desc:'Survive a Lava Rise round',       icon:'\u{1F30B}', coins:250, check:s=>s.lavaSurvived>=1},
+    {id:'lava',         name:'Hot Feet',        desc:'Survive a Magma Chase round',       icon:'\u{1F30B}', coins:250, check:s=>s.lavaSurvived>=1},
     {id:'minigames',    name:'Party Trick',     desc:'Survive 5 minigame rounds',       icon:'\u{1F3B2}', coins:350, check:s=>s.minigamesWon>=5},
     {id:'noFalls',      name:'Sure-Footed',     desc:'Finish a round without falling',  icon:'\u{1F9B6}', coins:200, check:s=>s.noFallFinishes>=1},
     {id:'finalist',     name:'Finalist',        desc:'Reach the final round 10 times',  icon:'\u{1F3AF}', coins:300, check:s=>s.finals>=10},
@@ -344,10 +344,10 @@
     { key:'sunny', name:'Sunny Sprint', tip:'Ramps carry you further than a dive — take them at full speed.', ground:'#ffe17a', groundAlt:'#ffd24c', wall:'#3b2a7a', wallTop:'#ff4fa3', skyTop:'#8ecae6', skyMid:'#4a90c9', skyBot:'#ffd6a0', accent:'#ffcb3d',
       round1Total:10300, obstacles:['pillars','hammer','pit','ramp','fork','gate','narrow','bumper'] },
 
-    { key:'cannonc', name:'Cannon Climb', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
+    { key:'cannonc', name:'Boom Peak', tip:'Cannons fire on a rhythm. Watch one cycle, then walk straight through.', ground:'#c084fc', groundAlt:'#a855f7', wall:'#4c1d95', wallTop:'#ff4fa3', skyTop:'#7ee8fa', skyMid:'#22d3ee', skyBot:'#a5f3fc', accent:'#ff4fa3',
       path:'climb', forcedGap:false, obstacles:['cannon','ramp','narrow','pusher','gate','bumper'] },
 
-    { key:'slide', name:'Super Slide', tip:'Boost pads chain together. Hold your line and do not brake.', ground:'#4dd0e1', groundAlt:'#26c6da', wall:'#0e7490', wallTop:'#ffd54f', skyTop:'#7fd7ff', skyMid:'#38bdf8', skyBot:'#b9f0ff', accent:'#ffd54f', slippery:true,
+    { key:'slide', name:'Splash Slide', tip:'Boost pads chain together. Hold your line and do not brake.', ground:'#4dd0e1', groundAlt:'#26c6da', wall:'#0e7490', wallTop:'#ffd54f', skyTop:'#7fd7ff', skyMid:'#38bdf8', skyBot:'#b9f0ff', accent:'#ffd54f', slippery:true,
       path:'slide', lenScale:1.6, hazardScale:0.62, forcedGap:false, obstacles:['boost','narrow','ramp','pillars','shortcut','crumble'] },
 
     { key:'neon', name:'Neon Nightrun', tip:'Jump a beat early on spinning bars — it is harder to judge in the dark.', ground:'#2b2140', groundAlt:'#241a37', wall:'#1a1033', wallTop:'#23e6c9', skyTop:'#1a0b2e', skyMid:'#3d1a5b', skyBot:'#ff4fa3', accent:'#23e6c9',
@@ -373,7 +373,7 @@
   // In sRGB, explicitly. v21 turned three's colour management on, which made
   // the working space linear -- and every one of these helpers silently began
   // operating on linear values while still carrying numbers that had been
-  // tuned against sRGB ones. Super Slide's #4dd0e1 reads as lightness 0.59 to
+  // tuned against sRGB ones. Splash Slide's #4dd0e1 reads as lightness 0.59 to
   // the eye and 0.41 to a linear getHSL, so a rule about "light" floors was
   // deciding the opposite of what it was written to decide. The palette is
   // authored in sRGB hex, so the arithmetic belongs there too.
@@ -386,13 +386,13 @@
   }
   // The floor keeps the map's colour. v20 capped it at 0.42 saturation and 0.62
   // lightness to stop it competing with the hazards, and the cure was worse
-  // than the complaint: Sunny Sprint's #ffe17a came out khaki, Super Slide
-  // grey-teal, Cannon Climb a washed lavender. Every map read as the same
+  // than the complaint: Sunny Sprint's #ffe17a came out khaki, Splash Slide
+  // grey-teal, Boom Peak a washed lavender. Every map read as the same
   // dishwater. Floors are pastel now -- saturated and light -- and a hazard
   // earns its place by being darker and fully saturated instead.
   //
   // The lightness floor only applies to maps that were light to begin with.
-  // Neon Nightrun and Lava Rise are dark on purpose, and lifting their floors
+  // Neon Nightrun and Magma Chase are dark on purpose, and lifting their floors
   // to 0.72 would turn a night course into an afternoon one.
   function neutralFloor(hex){
     return withHSL(hex, h=>{
@@ -435,7 +435,7 @@
       { type:'crumble', len:760, turn:-20 },
       { type:'finish',  len:580 }
     ],
-    // Cannon Climb: switchbacks, and a cannon on each one. It only ever goes up.
+    // Boom Peak: switchbacks, and a cannon on each one. It only ever goes up.
     // Climbing in stepped pushes -- a steep stretch, then a flat landing --
     // rather than one even gradient. Spread evenly the whole map sat at 0.14
     // rad, which costs about 3% of top speed: a hill you cannot feel.
@@ -454,7 +454,7 @@
       { type:'bumper',  len:640, climb:20 },
       { type:'finish',  len:560, climb:30 }
     ],
-    // Super Slide: downhill all the way, boost pads chained down it, and one
+    // Splash Slide: downhill all the way, boost pads chained down it, and one
     // big sweeping turn in the middle. It only ever goes down.
     slide: [
       { type:'start',   len:800,  drop:60 },
@@ -496,7 +496,7 @@
       { type:'beam',     len:760 },
       { type:'finish',   len:560 }
     ],
-    // Lava Rise runs the same kind of sections with the lava behind you, so it
+    // Magma Chase runs the same kind of sections with the lava behind you, so it
     // is deliberately the most forgiving furniture on the roster.
     lava: [
       { type:'start',   len:700 },
@@ -527,11 +527,11 @@
 
   // Minigame rounds — picked instead of a normal course.
   const MINIGAMES = [
-    { key:'lava', name:'Lava Rise', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',
+    { key:'lava', name:'Magma Chase', tip:'The lava behind you never stops rising — keep pace, do not stop to look back.',
       ground:'#3a2a22', groundAlt:'#2c1f19', wall:'#4a1c12', wallTop:'#ffcb3d', skyTop:'#ff8a5c', skyMid:'#c0392b', skyBot:'#2c0a08', accent:'#ff5a4d', isMinigame:true, mode:'lava' },
-    { key:'doors', name:'Door Dash', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
+    { key:'doors', name:'Paper Run', tip:'Half of these doors are paper. Charge them — hesitating is what gets you caught.',
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
-    { key:'tiles', name:'Tile Tumble', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
+    { key:'tiles', name:'Panel Drop', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
       ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },

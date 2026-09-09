@@ -1,6 +1,10 @@
+> **Note, v24:** the round names in this document were changed in v24 for
+> the reasons set out in `docs/CLAUDE-CODE-BRIEF-v24.md`. It has been updated
+> to use the current names, so what it describes still matches the code.
+
 > **Status: done.** Everything below shipped in v19 (commits 74f4438 → b7c737e,
 > 3–4 Sep 2026), with Claude Code's corrections: the toast element is `#coinPops`,
-> bots already had a ring plan, Tile Trap became the layered **Tile Tumble**, the
+> bots already had a ring plan, Tile Trap became the layered **Panel Drop**, the
 > lava chases the pack instead of running on a cushion, and the acceptance test
 > is per-map over five seeds on medians. Kept as a record; the live plan is
 > `docs/ROADMAP.md`. Do not re-run this brief.
@@ -27,17 +31,17 @@ their obstacle branches in `genCourse` if nothing else uses them):
 | Keep | Type | Why |
 |---|---|---|
 | Sunny Sprint (`sunny`) | race | flagship course, most obstacle variety |
-| Cannon Climb (`cannonc`) | race | climbing path + cannons, distinct |
-| Super Slide (`slide`) | race | descending, slippery, boost pads, distinct |
+| Boom Peak (`cannonc`) | race | climbing path + cannons, distinct |
+| Splash Slide (`slide`) | race | descending, slippery, boost pads, distinct |
 | Neon Nightrun (`neon`) | race | spin bars + lasers, distinct look |
-| Lava Rise (`lava`) | minigame | the only minigame that eliminated the test player |
+| Magma Chase (`lava`) | minigame | the only minigame that eliminated the test player |
 | Tile Trap (`tiles`) | knockout | works, just too short |
-| Door Dash (`doors`) | minigame | classic, works once bots understand doors |
+| Paper Run (`doors`) | minigame | classic, works once bots understand doors |
 | Closing Circle (`shrink`) | final | the only arena round that reliably ends |
 
 Remove: Honey Hive, Candy Canyon, Bumper Bash, Jungle Jam, Frostbite Peak, Cloud Nine,
-Cyber Grid, Orbit Drop, Beach Break, Boulder Barrage, Block Dash, Honey Drop, Gem Grab,
-Carousel, Laser Tracer, Laser Dodge.
+Cyber Grid, Orbit Drop, Beach Break, Boulder Barrage, Wall Rush, Comb Collapse, Gem Grab,
+Carousel, Beam Team, Laser Dodge.
 
 Reasons, in case any get reconsidered later:
 - Cloud Nine / Cyber Grid / Orbit Drop / Beach Break all use the `mover` gap and every
@@ -45,9 +49,9 @@ Reasons, in case any get reconsidered later:
   round, best bot reaches 35–75% of the track).
 - Honey Hive / Candy Canyon / Bumper Bash / Jungle Jam: zero falls across 16 racers,
   nothing on them can hurt you, and Jungle Jam is a bare green plane.
-- Laser Dodge / Laser Tracer: zero eliminations.
+- Laser Dodge / Beam Team: zero eliminations.
 - Carousel (the current final): 78 s with 16 of 16 still standing — the final cannot end.
-- Honey Drop / Gem Grab finished in 18 s; Super Slide's `slide` path is fine but the
+- Comb Collapse / Gem Grab finished in 18 s; Splash Slide's `slide` path is fine but the
   round also finished in 18 s (see pacing).
 
 Set `ROUNDS = 3` flow to: round 1 = race, round 2 = race or minigame (50/50),
@@ -111,7 +115,7 @@ must be airborne 30–38 frames.
   `boost`, `beam/laserbar`, `pendulum`, `bumper`, `doors`, `tilefield`, `ring`.
   Observed results: five bots stood behind the Sunny Sprint gate at y≈504 for the
   entire round; 110 bot falls at one crumble bridge; nobody passed the first row on
-  Door Dash. Add a case for every obstacle type the kept maps use:
+  Paper Run. Add a case for every obstacle type the kept maps use:
   - `gate`: aim at the nearest open door slot, queue behind others, jump when stuck.
   - `fork` / `shortcut`: 35% take the raised lane, the rest the clear lane.
   - `crumble`: cross straight, prefer slabs that are not `touched`, jump the last row.
@@ -149,7 +153,7 @@ kept race map within the time limit, and no bot may exceed 5 falls per round.
 - Closing Circle final: `shrink 34 → 26`, add two `spinbar`s inside the ring after
   15 s, and end the round the moment one racer is left (currently it uses the round‑2
   cut count).
-- Door Dash: 3 rows, each with 2 fake doors out of 6 (currently 1), and make a broken
+- Paper Run: 3 rows, each with 2 fake doors out of 6 (currently 1), and make a broken
   door visibly explode (existing `spawnBurst3D`) so the crowd sees where to go.
 - Keep the `mover` obstacle code but don't use it on any kept map until the bots can
   cross it.
@@ -158,14 +162,14 @@ kept race map within the time limit, and no bot may exceed 5 falls per round.
 
 ## 5. Visual polish (cheap, high impact)
 
-- Ground checkerboard moirés badly at a distance (Cannon Climb, Sunny Sprint, Super
+- Ground checkerboard moirés badly at a distance (Boom Peak, Sunny Sprint, Super
   Slide). Enable mipmaps + `anisotropy = renderer.capabilities.getMaxAnisotropy()`
   on the ground texture, and double the check size.
 - Obstacles must contrast with the floor: give every obstacle mesh a saturated accent
   from `currentMap.accent` with a dark rim, never the ground colour.
 - Delete the floating spheres / rings in the sky. Replace with ground‑level props per
   map: crowd stands with waving beans on the side walls, flags at the finish, spotlights
-  on Neon, cannon towers on Cannon Climb.
+  on Neon, cannon towers on Boom Peak.
 - Finish line: a proper arch with a "FINISH" banner and confetti burst.
 - Bug: the "+25 ROUND 1 survived" toast stays visible into the next round's map intro
   — hide `rewardToast` in `startRound`.

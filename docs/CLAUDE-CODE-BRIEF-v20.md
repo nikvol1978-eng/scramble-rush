@@ -1,11 +1,15 @@
+> **Note, v24:** the round names in this document were changed in v24 for
+> the reasons set out in `docs/CLAUDE-CODE-BRIEF-v24.md`. It has been updated
+> to use the current names, so what it describes still matches the code.
+
 > **Status: done in v20.** Everything below shipped in the four §-commits
 > 2da4ad8 → 85c439b (5–6 Sep 2026) and the follow-ups 08fdb83, 13c0df6, 6018620
 > and after, with Claude Code's corrections: air friction is 0.84 not 0.86, the
-> speed cap follows the surface so ice keeps its own ceiling, Tile Tumble's grid
+> speed cap follows the surface so ice keeps its own ceiling, Panel Drop's grid
 > is 12% shorter with 16% starting holes and check N's window is 30–60 s / 2–7
 > out, check 3b reads the accent a hazard is painted with rather than pixels,
 > and round-1 courses are longer than the v19 lengths (Sunny and Neon 10,300,
-> Cannon Climb 8,800, Super Slide 8,800 × 1.6). Kept as a record; the live plan
+> Boom Peak 8,800, Splash Slide 8,800 × 1.6). Kept as a record; the live plan
 > is `docs/ROADMAP.md`. Do not re-run this brief.
 
 # Scramble Rush v20 — brief for Claude Code

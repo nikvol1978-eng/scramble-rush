@@ -1,7 +1,7 @@
 // Scramble Rush -- shelved code.
 //
-// The maps this belongs to were cut in v19: Gem Grab, Carousel, Honey Drop,
-// Laser Run, Tracer, Block Dash and Boulder Barrage. Nothing in the eight
+// The maps this belongs to were cut in v19: Gem Grab, Carousel, Comb Collapse,
+// Laser Run, Tracer, Wall Rush and Boulder Barrage. Nothing in the eight
 // shipping maps generates any of it, so the default build leaves it out, and
 // `python build/build.py --with-shelved` puts it back exactly where it was.
 //

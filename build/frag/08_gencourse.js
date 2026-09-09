@@ -9,7 +9,7 @@
     // field was home in 34-35 s against a 40 s target, and they scale with it.
     const total = Math.round((n===1?(currentMap.round1Total||8800) : n===2?6900 : 5200) * (currentMap.lenScale||1));
     const mode = currentMap.isMinigame ? currentMap.mode : null;
-    // A clear run-in. At 380, with gaps down to 60, Super Slide opened with a
+    // A clear run-in. At 380, with gaps down to 60, Splash Slide opened with a
     // crumbling bridge at y=560: anyone walking straight was stopped dead and
     // the camera clipped into the void wall behind them.
     const obs=[];
@@ -324,7 +324,7 @@
         // skill a slide is supposed to test.
         // 1.75 was too generous: it widened the channel past the bias, so the
         // centre line ran through every one of them and a player holding
-        // forward won Super Slide outright. A channel has to stay a thing you
+        // forward won Splash Slide outright. A channel has to stay a thing you
         // steer into, on ice as much as anywhere.
         const icy = currentMap.slippery ? 1.55 : 1;
         const halfWidth = (hard? rand(52,66): rand(60,78))*icy;
