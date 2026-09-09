@@ -35,7 +35,31 @@
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
     if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+    // The lobby advertised the gamepad face buttons A and Y whether or not a
+    // pad was plugged in, and neither had a keyboard equivalent bound -- so on
+    // a keyboard the two prompts on the screen were both wrong and both dead.
+    if(e.key==='Enter'){ const b=$('playBtn'); if(b){ b.click(); e.preventDefault(); } }
+    if(e.key==='f' || e.key==='F'){ const b=$('mpBtn'); if(b){ b.click(); e.preventDefault(); } }
   });
+
+  // Which prompts to show. A pad that is plugged in gets its own glyphs; with
+  // no pad the hints name keys that do something.
+  function padConnected(){
+    if(!navigator.getGamepads) return false;
+    const pads = navigator.getGamepads();
+    for(let i=0;i<pads.length;i++) if(pads[i] && pads[i].connected) return true;
+    return false;
+  }
+  function refreshInputHints(){
+    const pad = padConnected();
+    const play = $('playBtn') && $('playBtn').querySelector('.keyHint');
+    const inv  = $('mpBtn')   && $('mpBtn').querySelector('.keyHint');
+    if(play){ play.textContent = pad ? 'A' : 'ENTER'; play.classList.toggle('word', !pad); }
+    if(inv){  inv.textContent  = pad ? 'Y' : 'F';     inv.classList.toggle('word', false); }
+  }
+  window.addEventListener('gamepadconnected', refreshInputHints);
+  window.addEventListener('gamepaddisconnected', refreshInputHints);
+  refreshInputHints();
   function refreshLobby(){
     const lvl=$('seasonLevel'), fill=$('seasonFill'), txt=$('seasonText');
     if(lvl){ const need = xpForLevel(stats.level||1); lvl.textContent = stats.level||1;

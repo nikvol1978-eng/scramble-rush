@@ -459,7 +459,14 @@
     slide: [
       { type:'start',   len:800,  drop:60 },
       { type:'boost',   len:1100, drop:160 },
-      { type:'narrow',  len:1000, turn:+22, drop:150, bias:95 },
+      // Gentler than the other two on purpose. You arrive here off a boost
+      // pad, downhill, on ice, into a bend -- the hardest combination the game
+      // can make -- and it is the map's first real obstacle. At bias 95 it was
+      // the one hazard in the whole game that racers looped at: every failing
+      // run of check h named this channel and no other. Bias 155 further down,
+      // approached off a crumbling bridge rather than a boost, is still the
+      // steering test the map is built around.
+      { type:'narrow',  len:1000, turn:+22, drop:150, bias:55 },
       { type:'crumble', len:1000, drop:150 },
       { type:'boost',   len:1100, turn:-42, drop:170 },
       { type:'narrow',  len:900,  drop:130, bias:155 },   // the one you must steer for

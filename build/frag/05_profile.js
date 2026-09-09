@@ -42,22 +42,25 @@
 
     // ---- the lobby: a round podium in front of a slowly turning ring of
     //      warm colour. The locker keeps its dark stage and spotlight.
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(40,46,16,40),
+    // Half the radius it was. At 40/46 the podium was wider than the bean is
+    // tall and read as the subject of the shot; the character is what the
+    // lobby is for.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(20,23,16,40),
       new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
     ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
-    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(50,54,8,40),
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(25,27,8,40),
       new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
     pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
     lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
       new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
     lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
     previewGroup.add(lobbyBackdrop);
-    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(48,48,3,32),
+    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
 
     // pool of light on the floor
-    const pool=new THREE.Mesh(new THREE.CircleGeometry(150,40),
+    const pool=new THREE.Mesh(new THREE.CircleGeometry(90,40),
       new THREE.MeshBasicMaterial({color:0xfff0c0, transparent:true, opacity:0.13}));
     pool.rotation.x=-Math.PI/2; pool.position.y=-RADIUS-15.4; previewGroup.add(pool);
 
@@ -259,7 +262,8 @@
     // pull back when the card is beside them, so the offset stays in frame
     // Closer while the locker is open, not further away: the character is the
     // subject of this screen and was being framed like scenery.
-    const camZ = (profOpen && W>=861) ? -150 : -150;
+    // In close on the lobby: the bean should be the biggest thing on screen.
+    const camZ = (profOpen && W>=861) ? -150 : -104;
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);

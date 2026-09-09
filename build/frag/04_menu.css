@@ -359,6 +359,9 @@
   .inviteLink:hover{text-decoration:underline;}
   .keyHint{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--cream);font-size:0.78rem;display:inline-flex;align-items:center;justify-content:center;font-weight:700;}
   .keyHint.dark{background:var(--line);color:var(--cream);}
+  /* ENTER does not fit in a 22px circle. A word hint is a pill. */
+  .keyHint.word{width:auto;min-width:22px;padding:0 9px;border-radius:11px;
+                font-size:0.62rem;letter-spacing:0.6px;}
   .playBig{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(1.6rem,3.6vw,2.6rem);color:var(--cream);background:var(--pink);border:4px solid var(--line);
     border-radius:14px;padding:10px 44px 10px 30px;box-shadow:0 7px 0 var(--line);cursor:pointer;display:flex;align-items:center;gap:14px;
     transform:skewX(-8deg) rotate(-2deg);letter-spacing:1px;transition:transform .08s,filter .1s;}

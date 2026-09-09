@@ -105,6 +105,13 @@
   function hideMapLoader(){ const h=$('mapLoader'); if(h) h.classList.add('hidden'); }
 
   function startRound(n, survivors){
+    // The round reward toast ("+25 ROUND 1 survived") is a chip that belongs to
+    // the round that paid it, and it was still on screen over the next round's
+    // intro. v20 fixed this by patching index.html's startRound -- but the
+    // round-flow cut replaces that whole function with this one, so the patch
+    // was deleted at build time and had never actually run. It lives here now,
+    // in the startRound that ships.
+    coinPops.length = 0; renderCoinPops(0);
     round=n;
     if(mp.role!=='client'){
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;

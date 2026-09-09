@@ -70,6 +70,7 @@ hook = """
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
+    pops:()=>coinPops.map(p=>p.n+' '+p.why),
     // jump and dive fire on keydown, so holding the key does nothing. These are
     // what a playtest presses.
     press:(what)=>{ const p=racers.find(r=>r.isPlayer); if(!p) return false;

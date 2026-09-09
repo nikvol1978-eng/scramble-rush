@@ -229,10 +229,10 @@ sub("    const tex=new THREE.CanvasTexture(cv); tex.wrapS=tex.wrapT=THREE.Repeat
 sub("    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 2);",
     "    const mapGroundTex = checkerTexture(currentMap.ground, currentMap.groundAlt, 1);",
     "bigger checks")
-# the round-reward toast hung around into the next map intro
-sub("  function startRound(n, survivors){",
-    "  function startRound(n, survivors){" + chr(10) + "    coinPops.length = 0; renderCoinPops(0);",
-    "clear the reward toast")
+# The reward-toast clear used to be patched in here. It never survived: the
+# round-flow cut further down replaces index.html's startRound wholesale, so
+# this sub found its anchor, applied, and was then deleted. It lives in
+# 07_rounds.js now, which is the startRound that ships.
 
 # The lava chases the pack rather than running to a fixed schedule. On a
 # fixed schedule a few early falls cascade and it sweeps the whole field --

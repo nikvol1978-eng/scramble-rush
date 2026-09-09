@@ -483,6 +483,9 @@
   .inviteLink:hover{text-decoration:underline;}
   .keyHint{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--cream);font-size:0.78rem;display:inline-flex;align-items:center;justify-content:center;font-weight:700;}
   .keyHint.dark{background:var(--line);color:var(--cream);}
+  /* ENTER does not fit in a 22px circle. A word hint is a pill. */
+  .keyHint.word{width:auto;min-width:22px;padding:0 9px;border-radius:11px;
+                font-size:0.62rem;letter-spacing:0.6px;}
   .playBig{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(1.6rem,3.6vw,2.6rem);color:var(--cream);background:var(--pink);border:4px solid var(--line);
     border-radius:14px;padding:10px 44px 10px 30px;box-shadow:0 7px 0 var(--line);cursor:pointer;display:flex;align-items:center;gap:14px;
     transform:skewX(-8deg) rotate(-2deg);letter-spacing:1px;transition:transform .08s,filter .1s;}
@@ -1325,7 +1328,14 @@ const QUALITY = {
     slide: [
       { type:'start',   len:800,  drop:60 },
       { type:'boost',   len:1100, drop:160 },
-      { type:'narrow',  len:1000, turn:+22, drop:150, bias:95 },
+      // Gentler than the other two on purpose. You arrive here off a boost
+      // pad, downhill, on ice, into a bend -- the hardest combination the game
+      // can make -- and it is the map's first real obstacle. At bias 95 it was
+      // the one hazard in the whole game that racers looped at: every failing
+      // run of check h named this channel and no other. Bias 155 further down,
+      // approached off a crumbling bridge rather than a boost, is still the
+      // steering test the map is built around.
+      { type:'narrow',  len:1000, turn:+22, drop:150, bias:55 },
       { type:'crumble', len:1000, drop:150 },
       { type:'boost',   len:1100, turn:-42, drop:170 },
       { type:'narrow',  len:900,  drop:130, bias:155 },   // the one you must steer for
@@ -3936,6 +3946,13 @@ const QUALITY = {
   function hideMapLoader(){ const h=$('mapLoader'); if(h) h.classList.add('hidden'); }
 
   function startRound(n, survivors){
+    // The round reward toast ("+25 ROUND 1 survived") is a chip that belongs to
+    // the round that paid it, and it was still on screen over the next round's
+    // intro. v20 fixed this by patching index.html's startRound -- but the
+    // round-flow cut replaces that whole function with this one, so the patch
+    // was deleted at build time and had never actually run. It lives here now,
+    // in the startRound that ships.
+    coinPops.length = 0; renderCoinPops(0);
     round=n;
     if(mp.role!=='client'){
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
@@ -7290,22 +7307,25 @@ const QUALITY = {
 
     // ---- the lobby: a round podium in front of a slowly turning ring of
     //      warm colour. The locker keeps its dark stage and spotlight.
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(40,46,16,40),
+    // Half the radius it was. At 40/46 the podium was wider than the bean is
+    // tall and read as the subject of the shot; the character is what the
+    // lobby is for.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(20,23,16,40),
       new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
     ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
-    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(50,54,8,40),
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(25,27,8,40),
       new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
     pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
     lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
       new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
     lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
     previewGroup.add(lobbyBackdrop);
-    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(48,48,3,32),
+    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
 
     // pool of light on the floor
-    const pool=new THREE.Mesh(new THREE.CircleGeometry(150,40),
+    const pool=new THREE.Mesh(new THREE.CircleGeometry(90,40),
       new THREE.MeshBasicMaterial({color:0xfff0c0, transparent:true, opacity:0.13}));
     pool.rotation.x=-Math.PI/2; pool.position.y=-RADIUS-15.4; previewGroup.add(pool);
 
@@ -7507,7 +7527,8 @@ const QUALITY = {
     // pull back when the card is beside them, so the offset stays in frame
     // Closer while the locker is open, not further away: the character is the
     // subject of this screen and was being framed like scenery.
-    const camZ = (profOpen && W>=861) ? -150 : -150;
+    // In close on the lobby: the bean should be the biggest thing on screen.
+    const camZ = (profOpen && W>=861) ? -150 : -104;
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);
@@ -7965,7 +7986,31 @@ const QUALITY = {
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
     if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+    // The lobby advertised the gamepad face buttons A and Y whether or not a
+    // pad was plugged in, and neither had a keyboard equivalent bound -- so on
+    // a keyboard the two prompts on the screen were both wrong and both dead.
+    if(e.key==='Enter'){ const b=$('playBtn'); if(b){ b.click(); e.preventDefault(); } }
+    if(e.key==='f' || e.key==='F'){ const b=$('mpBtn'); if(b){ b.click(); e.preventDefault(); } }
   });
+
+  // Which prompts to show. A pad that is plugged in gets its own glyphs; with
+  // no pad the hints name keys that do something.
+  function padConnected(){
+    if(!navigator.getGamepads) return false;
+    const pads = navigator.getGamepads();
+    for(let i=0;i<pads.length;i++) if(pads[i] && pads[i].connected) return true;
+    return false;
+  }
+  function refreshInputHints(){
+    const pad = padConnected();
+    const play = $('playBtn') && $('playBtn').querySelector('.keyHint');
+    const inv  = $('mpBtn')   && $('mpBtn').querySelector('.keyHint');
+    if(play){ play.textContent = pad ? 'A' : 'ENTER'; play.classList.toggle('word', !pad); }
+    if(inv){  inv.textContent  = pad ? 'Y' : 'F';     inv.classList.toggle('word', false); }
+  }
+  window.addEventListener('gamepadconnected', refreshInputHints);
+  window.addEventListener('gamepaddisconnected', refreshInputHints);
+  refreshInputHints();
   function refreshLobby(){
     const lvl=$('seasonLevel'), fill=$('seasonFill'), txt=$('seasonText');
     if(lvl){ const need = xpForLevel(stats.level||1); lvl.textContent = stats.level||1;
