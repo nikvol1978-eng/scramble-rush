@@ -29,7 +29,7 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5.1 and §5.2 are committed. §5.3, the locker, is next.)*
+*(§5.1-§5.3 are committed. §5.4, the shop, is next -- it reuses the locker's tile and rarity-pill style.)*
 
 ## How "no gameplay number moved" is proved
 

@@ -106,7 +106,11 @@
     const faceFill=new THREE.DirectionalLight(0xfff2e2, 0.55);
     faceFill.position.set(-40, 60, -180); previewGroup.add(faceFill);
 
-    menuBlob=makeCharacter({skin:skinOf(previewSkin||custom.skin), pattern:patternOf(previewPattern||custom.pattern), hat:custom.hat, eyes:custom.eyes});
+    // v24 §5.3: the locker tries hats and eyes on the same way it tries
+    // colours and patterns on -- lkTryOn is what the grid is highlighting.
+    const _try = (typeof lkTryOn !== 'undefined' && lkTryOn) || null;
+    menuBlob=makeCharacter({skin:skinOf(previewSkin||custom.skin), pattern:patternOf(previewPattern||custom.pattern),
+                            hat:(_try && _try.hat) || custom.hat, eyes:(_try && _try.eyes) || custom.eyes});
     previewGroup.add(menuBlob.group);
     previewGroup.visible=true;
     idle = {act:'settle', t:0, dur:0.8, seed:0};
@@ -281,6 +285,25 @@
     // the reference gives its character a little over half the screen height,
     // and at -104 with the old wide dish ours was nearer a third.
     const camZ = (profOpen && W>=861) ? -150 : -86;
+    // v24 §5.3: the locker's panel takes the right half of the screen, so the
+    // character stands in the left half rather than behind it. Moving the
+    // group is the whole of it -- the podium, the lights and the backdrop all
+    // come with it, which a camera pan would not have done.
+    const lkOpen = !$('locker').classList.contains('hidden');
+    // Measured off the panel, not guessed. The panel is 56% of the width at
+    // full size and 64% below 1000px, so a fixed offset that centres the
+    // character in the strip at one size buries it behind the panel at the
+    // other -- which is what a hardcoded 22 did at 960.
+    //
+    // Positive, because the menu camera sits at negative z looking back at the
+    // origin: the view is mirrored, and world -x lands on the right of the
+    // screen, which is where the panel is.
+    if(lkOpen){
+      const panel = document.querySelector('#locker .lkPanel');
+      const free = panel ? panel.getBoundingClientRect().left : W*0.44;
+      const halfFrame = Math.abs(camZ) * Math.tan(camera.fov*Math.PI/360) * camera.aspect;
+      previewGroup.position.x = ((W/2 - free/2) / (W/2)) * halfFrame;
+    } else previewGroup.position.x = 0;
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);

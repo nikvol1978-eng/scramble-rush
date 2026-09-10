@@ -613,7 +613,7 @@ sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('set
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",
     "  function buildSettings(){",
-    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("10_wiring.js") + "\n",
+    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("31_locker.js") + "\n" + frag("10_wiring.js") + "\n",
     "preview + profile UI")
 
 # ---------------------------------------------------------------- settings additions

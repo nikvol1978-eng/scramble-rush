@@ -7,7 +7,7 @@
   // Whatever menu screen is up, they are up with it -- a strip that vanishes
   // when you open the locker is a strip you cannot navigate with.
   function menuScreenOpen(){
-    return state === 'menu' && ['home','profile','settings','daily','mpHome']
+    return state === 'menu' && ['home','locker','profile','settings','daily','mpHome']
       .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
   }
   function syncMenuChrome(){
@@ -25,6 +25,7 @@
   }
   function backToLobby(){
     if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
+    if(!$('locker').classList.contains('hidden')) closeLocker();
     ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
@@ -34,7 +35,7 @@
     selectLobbyTab(name);
     switch(name){
       case 'play':     backToLobby(); break;
-      case 'locker':   backToLobby(); openProfile('character'); break;
+      case 'locker':   backToLobby(); $('home').classList.add('hidden'); openLocker('skin'); break;
       case 'badges':   backToLobby(); openProfile('badges'); break;
       case 'shop':     backToLobby(); openProfile('shop'); break;
       case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
@@ -87,7 +88,11 @@
     const nm=$('homeName'); if(nm && document.activeElement!==nm) nm.value = custom.name==='YOU' ? '' : (custom.name||'');
   }
   $('tabPlay').onclick    = ()=>{ SFX.click(); openLobbyTab('play'); };
-  $('profileBtn').onclick = ()=>{ SFX.click(); selectLobbyTab('locker'); openProfile('character'); };
+  // The pill goes through openLobbyTab like every other one, or the strip's
+  // own routing is bypassed and the tab opens a screen the strip does not
+  // think is open. This one had its own handler and still opened the old
+  // profile pane after §5.3 replaced it.
+  $('profileBtn').onclick = ()=>{ SFX.click(); openLobbyTab('locker'); };
   $('shopBtn').onclick    = ()=>{ SFX.click(); selectLobbyTab('shop'); openProfile('shop'); };
   $('badgesBtn').onclick  = ()=>{ SFX.click(); selectLobbyTab('badges'); openProfile('badges'); };
   $('homeName').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12).trim()||'YOU'; $('profNameLbl').textContent=custom.name; saveProfile(); refreshLobby(); });

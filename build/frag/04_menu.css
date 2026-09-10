@@ -338,6 +338,110 @@
   .seasonText{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:0.72rem;color:var(--line);}
 
 
+
+  /* ---- v24 §5.3: the locker ---------------------------------------------- */
+  /* The left half is left empty on purpose: the 3D stumbler stands there and
+     shows through. The panel takes the right half and nothing else. */
+  #locker{ display:block; }
+  #locker .lkPanel{
+    position:absolute; right:22px; top:82px; bottom:22px; width:min(56%, 720px);
+    display:flex; flex-direction:column; padding:18px 20px 16px; overflow:hidden;
+  }
+  .lkHead{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex:0 0 auto; }
+  .lkName{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:clamp(1.3rem,2.4vw,1.9rem);
+    color:var(--line); letter-spacing:0.5px; text-transform:uppercase;
+  }
+  .rarityPill{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.66rem; letter-spacing:1px;
+    padding:4px 10px; border-radius:999px; border:2.5px solid var(--line); white-space:nowrap;
+    background:#9ca3af; color:var(--line);
+  }
+  .rarityPill.r-common{ background:#9ca3af; color:#1a1033; }
+  .rarityPill.r-rare{ background:#22c55e; color:#0b2e18; }
+  .rarityPill.r-superrare{ background:#3b82f6; color:#f8fbff; }
+  .rarityPill.r-epic{ background:#a855f7; color:#fdf6ff; }
+  .rarityPill.r-legendary{ background:#eab308; color:#241a00; }
+  .rarityPill.r-special{ background:#ffcb3d; color:#2a1c00; }
+
+  .lkSubTabs{ display:flex; gap:8px; margin:14px 0 12px; flex:0 0 auto; }
+  .lkTab{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.86rem; letter-spacing:0.6px;
+    padding:9px 16px; border-radius:14px; border:3px solid var(--line); cursor:pointer;
+    background:#fff; color:var(--line); box-shadow:0 3px 0 var(--line);
+  }
+  .lkTab.sel{ background:var(--teal); }
+
+  /* Four columns, and it scrolls under a header that stays. */
+  .lkGrid{
+    flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; padding:4px 6px 8px 2px;
+    align-content:start;
+  }
+  /* display:block, not flex. As a column flexbox with an absolutely positioned
+     child the tile had no content to get a height from, aspect-ratio had
+     nothing to work against, and the whole grid collapsed into thin bars. */
+  .lkTile{
+    position:relative; aspect-ratio:1; min-height:96px; padding:0; cursor:pointer; display:block;
+    background:var(--sw, #fff); border:3px solid var(--line); border-radius:18px;
+    box-shadow:0 4px 0 var(--line); overflow:hidden;
+    transition:transform .09s ease;
+  }
+  /* once the render has landed the swatch gets out of its way */
+  .lkTile.shot{ background:#fff; }
+  .lkTile.shot.locked{ background:#e8e4f0; }
+  .lkTile:hover{ transform:translateY(-2px); }
+  /* the highlighted tile takes a thick white border, as the reference does */
+  .lkTile.hi{ box-shadow:0 0 0 5px #fff, 0 4px 0 var(--line); transform:translateY(-2px); }
+  .lkTile.locked{ background:#e8e4f0; }
+  .lkTile.locked .lkShot{ filter:grayscale(0.7) opacity(0.55); }
+  /* A canvas, painted straight from the render target -- no PNG in between.
+     It fades up when it arrives so a row filling in reads as loading rather
+     than as flicker. */
+  .lkShot{
+    position:absolute; inset:0; width:100%; height:100%; pointer-events:none;
+    opacity:0; transition:opacity .18s ease;
+  }
+  .lkShot.done{ opacity:1; }
+  .lkTile .rarityPill{
+    position:absolute; top:6px; left:50%; transform:translateX(-50%);
+    font-size:0.55rem; padding:2px 7px; border-width:2px; z-index:2;
+  }
+  .lkCap{
+    position:absolute; bottom:0; left:0; right:0; z-index:2; padding:3px 4px;
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.68rem; color:var(--line);
+    background:rgba(255,255,255,0.88); border-top:2px solid var(--line);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .lkLock{
+    position:absolute; z-index:3; bottom:24px; left:50%; transform:translateX(-50%);
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.62rem; color:var(--cream);
+    background:rgba(26,16,51,0.85); border:2px solid var(--line); border-radius:999px; padding:2px 8px;
+    white-space:nowrap;
+  }
+  .lkTick{
+    position:absolute; z-index:3; top:5px; right:6px; width:20px; height:20px; border-radius:50%;
+    background:var(--teal); border:2.5px solid var(--line); color:var(--line);
+    font-size:0.7rem; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+
+  .lkFoot{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; flex:0 0 auto; }
+  .lkHint{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--line); opacity:0.72; }
+
+  .lkBuy{ position:absolute; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+          background:rgba(21,12,46,0.62); }
+  .lkBuyCard{ padding:22px 26px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .lkBuyTitle{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.1rem; color:var(--line); letter-spacing:1px; }
+  .lkBuyShot{ width:132px; height:132px; }
+  .lkBuyName{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.25rem; color:var(--line); }
+  .lkBuyCost{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1rem; color:var(--line); opacity:0.8; }
+  .lkBuyWarn{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--red); min-height:1em; }
+  .lkBuyRow{ display:flex; gap:10px; margin-top:6px; }
+
+  @media (max-width: 1000px){
+    #locker .lkPanel{ width:min(64%, 620px); }
+    .lkGrid{ grid-template-columns:repeat(3, 1fr); }
+  }
   /* ---- v24 §5.1: the shell every menu screen sits in -------------------- */
   /* Rings, not a picture: one repeating gradient turning very slowly behind
      everything. Slow enough that it never competes with the thing in front of

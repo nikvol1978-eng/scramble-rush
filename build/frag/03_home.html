@@ -94,6 +94,43 @@
   <p id="homeTip" class="hidden"></p>
 </div>
 
+<!-- ================= LOCKER (v24 §5.3) ================= -->
+<!-- Two panes: the stumbler stands in the left half of the 3D view, which
+     shows through, and everything else is this panel on the right. -->
+<div id="locker" class="screen hidden">
+  <div class="lkPanel panel">
+    <div class="lkHead">
+      <div class="lkName" id="lkName">&mdash;</div>
+      <span class="rarityPill r-common" id="lkRarity">COMMON</span>
+    </div>
+    <div class="lkSubTabs" role="tablist">
+      <button class="lkTab sel" data-lk="skin" role="tab">COLOUR</button>
+      <button class="lkTab" data-lk="pattern" role="tab">PATTERN</button>
+      <button class="lkTab" data-lk="hat" role="tab">HAT</button>
+      <button class="lkTab" data-lk="eyes" role="tab">EYES</button>
+    </div>
+    <div class="lkGrid" id="lkGrid"></div>
+    <div class="lkFoot">
+      <span class="lkHint" id="lkHint"></span>
+      <button class="btn small gold" id="lkAction">EQUIP</button>
+    </div>
+  </div>
+
+  <div id="lkBuy" class="lkBuy hidden">
+    <div class="panel lkBuyCard">
+      <div class="lkBuyTitle">BUY THIS?</div>
+      <canvas class="lkBuyShot" id="lkBuyShot" width="96" height="96"></canvas>
+      <div class="lkBuyName" id="lkBuyName"></div>
+      <div class="lkBuyCost" id="lkBuyCost"></div>
+      <div class="lkBuyWarn" id="lkBuyWarn"></div>
+      <div class="lkBuyRow">
+        <button class="btn small gold" id="lkBuyYes">BUY</button>
+        <button class="btn small blue" id="lkBuyNo">CANCEL</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ================= DAILY SPIN ================= -->
 <div id="daily" class="screen shade hidden">
   <h1 class="title" style="font-size:2.2rem;">DAILY SPIN</h1>
