@@ -173,6 +173,10 @@ hook = """
       return { ringR:Math.round(ring.r), inside:d.filter(x=>x<=ring.r).length, furthest:Math.round(d[d.length-1]) }; },
     arena:()=>({ arenaEnd, state, over: racers.filter(r=>r.y>arenaEnd+5).map(r=>({ n:r.isPlayer?'YOU':r.name, over:+(r.y-arenaEnd).toFixed(1), out:!!r.lavaOut, fin:!!r.finished, fall:!!r.falling, vy:+r.vy.toFixed(2) })) }),
     knockOut:()=>{ const p=racers.find(r=>r.isPlayer); p.lavaOut=true; p.lavaCatchY=p.y; updateHud(); return racers.filter(r=>!r.lavaOut).length; },
+    walls:()=>{ const p=obstacles.find(o=>o.type==='plate');
+      return { plate: p?{yNear:p.yNear, yFar:p.yFar, w:p.w}:null,
+               walls: obstacles.filter(o=>o.type==='blockwall').map(o=>({ wy:Math.round(o.wy), gapStart:o.gapStart, travel:Math.round(o.travel||0), xs:o.items.map(i=>Math.round(i.x)) })),
+               racers: racers.map(r=>({ n:r.isPlayer?'YOU':r.name, x:Math.round(r.x), y:Math.round(r.y), out:!!r.lavaOut, fall:!!r.falling })) }; },
     obsTypes:()=>{ const h={}; for(const o of obstacles) h[o.type]=(h[o.type]||0)+1; return h; },
     wipe:()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} return 'cleared'; },
     info:()=>{

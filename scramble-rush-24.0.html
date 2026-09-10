@@ -1991,6 +1991,9 @@ const QUALITY = {
     { key:'comb', name:'Comb Collapse', tip:'Every hexagon you touch drops a beat later. Keep moving and never stand still.',
       ground:'#ffd166', groundAlt:'#f2b73d', wall:'#7a4a12', wallTop:'#ff8a5c', skyTop:'#ffe9b0', skyMid:'#ffb84d', skyBot:'#fff3d0', accent:'#ff8a5c',
       objective:"DON'T FALL!", isMinigame:true, mode:'hex', knockout:true },
+    { key:'walls', name:'Wall Rush', tip:'The gap is the only way through. Never back away from a wall \u2014 there is nothing behind you.',
+      ground:'#93c5fd', groundAlt:'#60a5fa', wall:'#1e3a8a', wallTop:'#ff4fa3', skyTop:'#dbeafe', skyMid:'#3b82f6', skyBot:'#eff6ff', accent:'#ff4fa3',
+      objective:'FIND THE GAP!', isMinigame:true, mode:'walls', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];
@@ -3111,6 +3114,64 @@ const QUALITY = {
       return obs;
     }
 
+    // ---- WALL RUSH: walls with one gap, sweeping down a plate over nothing ----
+    // Our own plate, our own walls. The arena is fenced on three
+    // sides -- the track walls hold the sides, arenaEnd holds the far end --
+    // and open at the near one, so the only way off is backwards. That is the
+    // whole round: a wall you cannot jump is coming at you, the gap is
+    // somewhere else, and giving ground costs you the floor.
+    //
+    // The walls speed up for as long as the round lasts. Early on a wall is
+    // slower than a racer and threading it is a decision; by the end it is
+    // nearly as fast as one and it is a scramble.
+    if(mode==='walls'){
+      // Shallow on purpose. On a plate two thousand deep, being caught by a
+      // wall bought you four hundred units of nothing and you walked back:
+      // the whole field stood on the far fence for a minute and not one
+      // racer went off. The arena has to be short enough that the time a
+      // wall needs to cross it is less than the time you need to cross the
+      // width, once the walls are up to speed.
+      const yNear=-560, yFar=620;
+      // Wider than the track, because twenty-four beans are wider than the
+      // track. On a 520 plate with open sides the grid alone was shoulder to
+      // shoulder, and the first wall that funnelled them all at one gap put a
+      // third of the field over the edge before anyone had made a decision.
+      const PLATE_W=1000, x0=cx-PLATE_W/2;
+      obs.push({type:'plate', cx, y:(yNear+yFar)/2, w:PLATE_W, d:yFar-yNear,
+                x0, x1:x0+PLATE_W, yNear, yFar, y0:yNear-260, y1:yFar+260});
+      // Eight slots across, and the gap is whole slots of it, so a wall's
+      // blocks are always the same meshes in different places -- the gap moves
+      // on every lap and nothing is rebuilt.
+      const slots=10, slotW=PLATE_W/slots, gapSlots = hard?2:3, arenaEndFor=yFar-40;
+      // A wall laps from just past the near lip to just past the far fence,
+      // so there is no corner of the plate a wall never reaches. Wrapping at
+      // the plate's own depth left everyone who reached arenaEnd permanently
+      // safe -- the field simply stood on the back line for a minute.
+      const COUNT=3, wrapLo=yNear-90, wrapHi=arenaEndFor+150;
+      const cycle=wrapHi-wrapLo, spacing=cycle/COUNT;
+      for(let i=0;i<COUNT;i++){
+        const o={type:'blockwall', d:46, hi:96, slots, slotW, gapSlots, x0,
+                 gapStart: Math.floor(Math.random()*(slots-gapSlots+1)),
+                 // A travelling wall is never culled by y: it crosses the whole
+                 // plate, so its band is the plate.
+                 y:0, y0:yNear-260, y1:yFar+260,
+                 // Authored so every round opens the same way: the nearest
+                 // wall is a clear beat in front of the grid and the one
+                 // behind it is leaving. Left to the intro's own length, the
+                 // field sometimes met a wall on the gun and lost four racers
+                 // before it had moved -- 17s rounds against 38s ones.
+                 wy: 560 + i*spacing, wrapLo, cycle,
+                 // units a second. A racer does about 276 flat out, so the last
+                 // wall of a long round is one a clean runner only just beats.
+                 travel: 48, ramp: 2.0, travelMax: 232,
+                 amp:0, speed:0, phase:0};
+        o.items = wallItems(o);
+        obs.push(o);
+      }
+      arenaEnd = yFar-40; trackLength = yFar+4000;
+      return obs;
+    }
+
     // ---- DOOR DASH: rows of doors, half of them paper ----
     if(mode==='doors'){
       const span=Math.min(total, 9000);
@@ -3910,7 +3971,8 @@ const QUALITY = {
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
     // the usual corridor under them would just floor the whole arena.
-    const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin';
+    const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin'
+                   || currentMap.mode==='walls';   // Wall Rush is a plate over nothing too
     // ---- the v20 look: a neutral floor, pale walls, loud hazards ----
     // One warm key, a cool fill from the sky, and a haze that matches it.
     const accents = mapAccents();
@@ -4272,8 +4334,8 @@ const QUALITY = {
       }
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
-        const shift=blockShift(o,t);
-        if(o.meshes) o.meshes.forEach((m,i)=>{ placeAt(m, o.items[i].x+shift, o.y, 0); });
+        const shift=blockShift(o,t), wy=wallY(o,t);
+        if(o.meshes) o.meshes.forEach((m,i)=>{ placeAt(m, o.items[i].x+shift, wy, 0); });
       }
       else if(o.type==='laserbar'){ if(o.mesh) placeAt(o.mesh, TRACK_W/2, laserY(o,t), o.h); }
       else if(o.type==='pendulum'){
@@ -5469,9 +5531,29 @@ const QUALITY = {
   function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
+  // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
+  // the closing ring carries its own radius. Everything else that draws or hits
+  // a blockwall reads it through here, so a wall that does not travel is still
+  // the fixed one the race sections use.
+  function wallY(o,t){ return o.travel ? o.wy : o.y; }
+  // Blocks are whole slots, and the gap is a run of them. The count never
+  // changes, so the meshes built for a wall are the meshes it keeps -- moving
+  // the gap moves them, it does not rebuild them.
+  function wallItems(o){
+    const items=[];
+    for(let i=0;i<o.slots;i++){
+      if(i>=o.gapStart && i<o.gapStart+o.gapSlots) continue;
+      items.push({x:o.x0 + i*o.slotW + o.slotW/2, w:o.slotW-6});
+    }
+    return items;
+  }
+  function wallGapX(o){ return o.x0 + (o.gapStart + o.gapSlots/2)*o.slotW; }
   // Closing Circle and Carousel are a platform in the void: the track's side
   // walls do not exist there, and clamping to them made the edge unreachable.
-  function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'; }
+  // Rounds whose floor is a shape rather than a corridor: the track walls do
+  // not apply, because going off the side is the round.
+  function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'
+                            || currentMap.mode==='walls'; }
   // How high a racer's feet are above the COURSE surface, not above whatever
   // they happen to be standing on. A hazard bolted to the floor -- a pusher, a
   // spin bar, a bumper, a boost pad -- has to be measured against this: a racer
@@ -5571,13 +5653,37 @@ const QUALITY = {
           c.mesh=g; c.topMat=top.material; c.baseY=g.position.y;
         }
 
+      } else if(o.type==='plate'){
+        // The floor, and the two things a player has to be able to read at a
+        // glance: the sides are solid, and the near end is not.
+        const g=new THREE.Group();
+        const slab=new THREE.Mesh(new THREE.BoxGeometry(o.w, 26, o.d),
+          new THREE.MeshLambertMaterial({map:checkerTexture(currentMap.ground, currentMap.groundAlt, Math.round(o.w/95))}));
+        slab.position.y=-13; slab.receiveShadow=true; g.add(slab);
+        // Three of the four edges are edges, so all three are painted. The
+        // far one is a fence you cannot cross and is left plain.
+        const lipMat=new THREE.MeshBasicMaterial({color:currentMap.accent});
+        const near=new THREE.Mesh(new THREE.BoxGeometry(o.w+24, 11, 22), lipMat);
+        near.position.set(0, 3, -(o.d/2)-6); g.add(near);
+        [-1,1].forEach(s=>{
+          const side=new THREE.Mesh(new THREE.BoxGeometry(22, 11, o.d), lipMat);
+          side.position.set(s*(o.w/2+6), 3, 0); g.add(side);
+        });
+        const back=new THREE.Mesh(new THREE.BoxGeometry(o.w+24, 34, 20),
+          new THREE.MeshLambertMaterial({color:look.paleWall}));
+        back.position.set(0, 17, (o.d/2)-4); g.add(back); registerFadeable(back);
+        placeAt(g, o.cx, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g;
+
       } else if(o.type==='blockwall'){
         const blockMat=new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:24});
         const edgeMat=new THREE.MeshLambertMaterial({color:0x1a1033});
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
-          const b=new THREE.Mesh(THREE.RoundedBox(it.w,78,o.d), blockMat); b.position.y=39; b.castShadow=true; g.add(b); registerFadeable(b);
-          const cap=new THREE.Mesh(THREE.RoundedBox(it.w+6,8,o.d+6), edgeMat); cap.position.y=80; g.add(cap);
+          const bh = o.hi || 78;
+          const b=new THREE.Mesh(THREE.RoundedBox(it.w,bh,o.d), blockMat); b.position.y=bh/2; b.castShadow=true; g.add(b); registerFadeable(b);
+          const cap=new THREE.Mesh(THREE.RoundedBox(it.w+6,8,o.d+6), edgeMat); cap.position.y=bh+2; g.add(cap);
           placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
           return g;
@@ -6046,6 +6152,21 @@ const QUALITY = {
             m.position.y = m.userData.baseY + Math.sin(t*3+g.spin)*5;
           }
         });
+      } else if(o.type==='blockwall' && o.travel){
+        // Faster for as long as the round lasts, and a new gap every lap: a
+        // wall you have already read is not a wall you get to read twice.
+        // Only from the gun, position as well as speed. The reveal and the
+        // flyover are not a fixed length, so a wall that moved through them
+        // arrived at the grid in a different place every time.
+        if(state!=='racing') continue;
+        o.travel = Math.min(o.travelMax, o.travel + o.ramp*dt);
+        o.wy -= o.travel*dt;
+        if(o.wy < o.wrapLo){
+          o.wy += o.cycle;
+          o.gapStart = Math.floor(Math.random()*(o.slots-o.gapSlots+1));
+          const it = wallItems(o);
+          for(let i=0;i<o.items.length;i++) o.items[i].x = it[i].x;
+        }
       } else if(o.type==='ring'){
         // the ring waits a beat, then closes for the rest of the round
         if(o.wait > 0) o.wait -= dt;
@@ -6435,6 +6556,11 @@ const QUALITY = {
           break;
         }
       }
+      // Wall Rush: three sides are fenced, so this is the only way out --
+      // and being carried out by a wall is the point of the round, not a
+      // mistake to be forgiven, so it is not gated on having your feet down.
+      const plate = obstacles.find(o=>o.type==='plate');
+      if(plate && (r.y < plate.yNear || r.x < plate.x0-12 || r.x > plate.x1+12)){ fallDown(r); return; }
       const ring = obstacles.find(o=>o.type==='ring');
       if(ring && Math.hypot(r.x-ring.cx, r.y-ring.y) > ring.r){ fallDown(r); return; }
       const disc = obstacles.find(o=>o.type==='disc');
@@ -6539,18 +6665,38 @@ const QUALITY = {
         }
 
       } else if(o.type==='blockwall'){
-        if(Math.abs(r.y-o.y) < o.d/2 + RADIUS && r.h < 70){
+        const wy = wallY(o,t);
+        // A Wall Rush wall carries its own height, because 70 is not enough of
+        // one: a standing jump tops out within a unit or two of it, so the
+        // round's whole premise -- a wall you cannot jump -- came down to
+        // rounding. The race sections keep the 70 they were built against.
+        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < (o.hi || 70)){
           const shift=blockShift(o,t);
           for(const it of o.items){
             const bx=it.x+shift;
             if(Math.abs(r.x-bx) > it.w/2 + RADIUS - 6) continue;
-            const side = Math.sign(r.y-o.y)||-1;
-            r.y = o.y + side*(o.d/2 + RADIUS);
-            if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
-              sendTumbling(r, 6, 0, -1); r.invuln=520;
-              spawnBurst3D(r.x,o.y,0xff8a5c,8); }
-            // shove sideways toward the nearer edge so you slide off rather than stick
-            r.vx += (r.x < bx ? -1 : 1)*3.4;
+            const side = Math.sign(r.y-wy)||-1;
+            r.y = wy + side*(o.d/2 + RADIUS);
+            if(o.travel){
+              // A wall that is coming for you carries you. Knocking you down
+              // instead would be kinder than it looks: on the floor you stop
+              // steering, and the wall keeps going, so one clip at the far end
+              // would be a free ride to the near one.
+              if(side<0) r.vy = Math.min(r.vy, -o.travel/60);
+              else if(r.vy<0) r.vy = 0;
+              if(r.isPlayer && raceTime > (r.wallSfxT||0)){ SFX.bump(); camShake=Math.max(camShake,3); r.wallSfxT = raceTime + 0.5; }
+              // Enough along the face to break a dead stop on a block's centre
+              // line, and no more. At 1.6 it was an escape in itself: a racer
+              // pinned at the far side of the wall slid to the gap on its own
+              // in under two seconds, and nobody was ever swept off.
+              r.vx += (r.x < bx ? -1 : 1)*0.30;
+            } else {
+              if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
+                sendTumbling(r, 6, 0, -1); r.invuln=520;
+                spawnBurst3D(r.x,wy,0xff8a5c,8); }
+              // shove sideways toward the nearer edge so you slide off rather than stick
+              r.vx += (r.x < bx ? -1 : 1)*3.4;
+            }
           }
         }
 
@@ -7824,6 +7970,36 @@ const QUALITY = {
         if(d < bestD){ bestD = d; best = g; }
       }
       if(best) drive(best.x, best.y, 6);
+      return true;
+    }
+
+    // ---- Wall Rush: get through the gap, and never give ground to do it
+    // The plan is one sentence -- go to the gap in the wall that will reach you
+    // next, and go through it -- but the second half is what stops it being a
+    // queue. Aiming at a point past the wall means a bot presses into the face
+    // and slides along it, instead of parking in front of the gap and waiting
+    // to be pushed off by the wall behind.
+    const plate = obstacles.find(o=>o.type==='plate');
+    if(plate){
+      if(r.aiGapBias===undefined) r.aiGapBias = rand(-0.42, 0.42);
+      let next=null, bestD=1e9;
+      for(const o of obstacles){
+        if(o.type!=='blockwall' || !o.travel) continue;
+        const d = o.wy - r.y;
+        if(d < -o.d) continue;                       // already gone past me
+        if(d < bestD){ bestD=d; next=o; }
+      }
+      if(!next){ drive(r.x, Math.min(plate.yFar-140, r.y+420), 20); return true; }
+      // Twenty-four bots on one x is a wall of beans in front of the gap, which
+      // is the same problem as the wall: they shove each other off the sides in
+      // the first four seconds. Each takes its own lane of the gap and holds it.
+      const gx = wallGapX(next) + r.aiGapBias*next.gapSlots*next.slotW;
+      // And they queue in depth rather than all pressing on the face. Hold a
+      // stand-off, lined up, until the wall is close enough to commit to; then
+      // aim past it, which is what carries you through the gap instead of
+      // parking in front of it.
+      const dy = next.wy - r.y;
+      drive(gx, dy > 300 ? next.wy - 300 : next.wy + 300, 14);
       return true;
     }
 

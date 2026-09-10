@@ -2279,7 +2279,7 @@
   function checkAccept(){
     const bad = [], report = {};
     const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope'];
-    const SURVIVE = ['lava','doors','tiles','shrink','comb'];
+    const SURVIVE = ['lava','doors','tiles','shrink','comb','walls'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
     // Hop & Duck is bars and nothing else, so a racer who reads them is not
@@ -2975,6 +2975,174 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- w: Wall Rush sweeps a plate you can be pushed off ----------
+  // The round in six assertions: the walls span the plate but for one gap, they
+  // travel toward the near lip and lap round above the far fence, they speed up
+  // as the round runs, a block carries you and the gap does not, going off the
+  // near lip is out, and none of it can be jumped.
+  //
+  // The lap is in here because leaving it out is what the round shipped with
+  // first: the walls wrapped at the plate's own depth, everyone who reached the
+  // far fence was permanently out of reach, and twenty-four racers stood on the
+  // back line for a minute with nobody eliminated.
+  function checkWalls(){
+    const bad = [], rep = {};
+    begin('walls');
+    const plate = obstacles.find(o=>o.type==='plate');
+    const walls = obstacles.filter(o=>o.type==='blockwall' && o.travel);
+    if(!plate || walls.length < 2)
+      return { name:'w Wall Rush sweeps a plate you can be pushed off', pass:false,
+               detail: (plate?'a plate':'no plate') + ' and ' + walls.length + ' travelling walls' };
+
+    const w0 = walls[0];
+    rep.field = walls.length + ' walls, plate ' + Math.round(plate.w) + ' x ' + Math.round(plate.d)
+              + ', gap ' + Math.round(w0.gapSlots*w0.slotW) + ' of ' + Math.round(w0.slots*w0.slotW);
+
+    // (a) one gap a wall, and blocks to both plate edges either side of it
+    for(const o of walls){
+      if(o.items.length !== o.slots - o.gapSlots)
+        bad.push('a wall has ' + o.items.length + ' blocks, want ' + (o.slots-o.gapSlots));
+      // Blocks plus the gap have to cover the plate with nothing else open. The
+      // gap itself is allowed at either edge -- a lane hard against the drop is
+      // a fair place to put the only way through -- so this walks the coverage
+      // rather than asking where the outermost block is.
+      const gLo = o.x0 + o.gapStart*o.slotW, gHi = gLo + o.gapSlots*o.slotW;
+      const spans = o.items.map(i=>[i.x-i.w/2, i.x+i.w/2]).concat([[gLo,gHi]]).sort((a,b)=>a[0]-b[0]);
+      let cur = plate.x0;
+      for(const [lo,hi] of spans){
+        if(lo > cur + 10) bad.push('a wall has a ' + Math.round(lo-cur) + ' hole at x=' + Math.round(cur));
+        cur = Math.max(cur, hi);
+      }
+      if(cur < plate.x1 - 10) bad.push('a wall stops ' + Math.round(plate.x1-cur) + ' short of the right edge');
+      // and the gap is a gap: nothing standing in it
+      const gx = wallGapX(o);
+      for(const it of o.items)
+        if(Math.abs(gx-it.x) < it.w/2 + 4) bad.push('a block is standing in its own wall gap');
+    }
+
+    // (b) the lap reaches past the far fence, or the back line is a safe corner
+    if(w0.wrapLo + w0.cycle < arenaEnd + 40)
+      bad.push('walls lap to ' + Math.round(w0.wrapLo+w0.cycle) + ', short of the fence at ' + Math.round(arenaEnd));
+
+    // park the field out of the way, by position -- marking bots out ends a
+    // knockout round, and a round that has ended stops updating its obstacles
+    const bots = racers.filter(r=>!r.isPlayer);
+    const park = ()=>{ bots.forEach((r,i)=>{
+      r.x = plate.x0 + 30 + (i%6)*14; r.y = plate.yFar - 40 - Math.floor(i/6)*14;
+      r.vx = 0; r.vy = 0; r.h = 0; r.vh = 0; r.falling = false; r.invuln = 600; }); };
+    const p = player();
+    const put = (x,y)=>{ Object.assign(p, { x, y, h:0, vx:0, vy:0, vh:0, floorH:0, falling:false,
+      stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0, lavaOut:false }); resetLook(); };
+    const step = (n)=>{ for(let i=0;i<n;i++){ park(); window.__dbg.tick(1); } };
+
+    // the wall we will test against: the nearest one still in front of the plate's middle
+    const pick = ()=> walls.slice().sort((a,b)=>a.wy-b.wy).find(o=>o.wy > plate.yNear + 500) || walls[0];
+
+    // (c) a block carries you: stand in front of one and you go backwards with it
+    {
+      const o = pick();
+      const block = o.items.reduce((a,b)=>Math.abs(b.x-wallGapX(o)) > Math.abs(a.x-wallGapX(o)) ? b : a);
+      // Right on the face, and held on the block's centre line: started a gap
+      // back, most of the window was the wall closing rather than carrying, and
+      // left free in x the racer slides off toward the gap, which is the next
+      // assertion's business and not this one's.
+      put(block.x, o.wy - (o.d/2 + RADIUS) + 4);
+      const y0 = p.y, wasBehind = o.wy;
+      for(let i=0;i<60;i++){ park(); p.x = block.x; window.__dbg.tick(1); }
+      const moved = y0 - p.y, wallMoved = wasBehind - o.wy;
+      rep.carry = 'wall ' + Math.round(wallMoved) + ', racer ' + Math.round(moved);
+      if(p.y > o.wy) bad.push('a racer ended up through the wall rather than in front of it');
+      if(moved < wallMoved*0.6)
+        bad.push('a block did not carry: wall moved ' + Math.round(wallMoved) + ', racer ' + Math.round(moved));
+    }
+
+    // (d) and the gap does not
+    {
+      const o = pick();
+      put(wallGapX(o), o.wy - 70);
+      const y0 = p.y;
+      // hold still in the gap while the wall passes over
+      for(let i=0;i<70;i++){ park(); p.x = wallGapX(o); window.__dbg.tick(1); }
+      rep.gap = 'through the gap, moved ' + Math.round(p.y - y0);
+      if(y0 - p.y > 40) bad.push('standing in the gap still pushed the racer back ' + Math.round(y0-p.y));
+      if(p.falling || p.lavaOut) bad.push('standing in the gap put the racer out');
+    }
+
+    // (e) none of it can be jumped
+    {
+      put(plate.cx, plate.yNear + 600);
+      tryJump();
+      let apex = 0;
+      for(let i=0;i<70;i++){ park(); window.__dbg.tick(1); apex = Math.max(apex, p.h); if(p.h<=0 && i>4) break; }
+      const top = walls[0].hi || 70;
+      rep.jump = 'apex ' + Math.round(apex) + ' against a ' + top + ' wall';
+      // Clearance, not a photo finish. At the shared 70 this read "apex 70
+      // against a 70 block" and passed on the rounding, which is not a wall you
+      // cannot jump, it is a wall you happen not to.
+      if(apex > top - 18) bad.push('a jump reaches ' + Math.round(apex) + ' against a ' + top + ' wall');
+    }
+
+    // (f) the walls speed up
+    {
+      const before = walls.map(o=>o.travel);
+      step(60*25);
+      const after = walls.map(o=>o.travel);
+      rep.ramp = Math.round(before[0]) + ' to ' + Math.round(after[0]) + ' over 25s';
+      if(after[0] <= before[0] + 20) bad.push('walls barely sped up: ' + Math.round(before[0]) + ' to ' + Math.round(after[0]));
+      // and they lapped rather than running off the end
+      if(walls.some(o=>o.wy < o.wrapLo - 5)) bad.push('a wall ran past its lap point and kept going');
+    }
+
+    // (g) every open edge is an edge, and a wall can put you over one -- last,
+    // because it eliminates the probe.
+    //
+    // The wall is placed rather than waited for. Standing near the lip until
+    // one happened to arrive passed on its own and failed inside the suite,
+    // where the checks before it leave the walls at a different point of their
+    // lap: an assertion that depends on when a wall turns up is an assertion
+    // about the phase of the round, not about the lip.
+    {
+      const o = walls[0];
+      o.wy = plate.yNear + 190;
+      const block = o.items.reduce((a,b)=>Math.abs(b.x-wallGapX(o)) > Math.abs(a.x-wallGapX(o)) ? b : a);
+      put(block.x, o.wy - (o.d/2 + RADIUS) + 4);
+      let out = false;
+      for(let i=0;i<200 && !out; i++){ park(); p.x = block.x; window.__dbg.tick(1); out = !!p.lavaOut; }
+      rep.lip = out ? 'a wall put the racer over the near lip'
+                    : (p.falling ? 'falling but not out' : 'still standing at y=' + Math.round(p.y));
+      if(!out) bad.push('a wall carrying a racer past the near lip did not put them out');
+    }
+
+    // and the sides are edges too, which is the whole reason the plate is wider
+    // than the track: with them fenced the round was a corridor nobody left
+    {
+      // A fall is not an elimination for another 650ms -- fallDown starts the
+      // timer and respawnAfterFall is what marks a knockout racer out -- so the
+      // window has to be long enough to include it. And the probe is held off
+      // the edge: left alone a bot steers straight back on.
+      const p2 = player();
+      const off = plate.x0 - 30, mid = plate.yNear + plate.d/2;
+      const q = p2.lavaOut ? bots[0] : p2;      // the probe may be spent by now
+      Object.assign(q, {x:off, y:mid, h:0, vh:0, vx:0, vy:0, floorH:0,
+                        falling:false, lavaOut:false, stumbleT:0, tumbleT:0, invuln:0});
+      let outSide = false;
+      for(let i=0;i<90 && !outSide; i++){
+        // park() clears everyone's falling flag, which is exactly the flag this
+        // is waiting on -- so the field runs loose for the second and a half
+        // this takes. Only the probe is held.
+        q.x = off; q.y = mid; q.vx = 0; q.vy = 0;
+        window.__dbg.tick(1);
+        outSide = !!q.lavaOut;
+      }
+      rep.side = outSide ? 'over the side is out'
+               : (q.falling ? 'falling but not out' : 'still standing off the edge');
+      if(!outSide) bad.push('stepping off the left edge of the plate did not put a racer out');
+    }
+
+    return { name:'w Wall Rush sweeps a plate you can be pushed off', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -2987,7 +3155,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

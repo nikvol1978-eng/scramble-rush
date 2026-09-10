@@ -30,8 +30,15 @@ respawn is at the last checkpoint.
 ## Resume here
 
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
-control with `elementFromPoint`. §4: Hop & Duck, Slime Slope and Comb Collapse
-in. Wall Rush is next.)*
+control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse and
+Wall Rush in. Beam Team is next.)*
+
+**Wall Rush deviates from its row in §4.** "Shelved blockwall" turned out to be
+a *race* section -- walls at a fixed y sliding side to side down a corridor --
+and the row asks for a survival round, walls sweeping an arena. What shipped is
+the row: the `blockwall` piece given a travel speed and a lap, on a new `plate`
+arena that is open on three sides. The shelved `blockdash` generator is gone;
+Wall Rush replaces it.
 
 **Check `z` needs a viewport.** `elementFromPoint` returns null when the preview
 pane reports 0 x 0, which would make it pass by testing nothing, so it refuses to

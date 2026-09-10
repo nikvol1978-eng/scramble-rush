@@ -28,8 +28,8 @@
       //<<shelved:sync-log>>
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
-        const shift=blockShift(o,t);
-        if(o.meshes) o.meshes.forEach((m,i)=>{ placeAt(m, o.items[i].x+shift, o.y, 0); });
+        const shift=blockShift(o,t), wy=wallY(o,t);
+        if(o.meshes) o.meshes.forEach((m,i)=>{ placeAt(m, o.items[i].x+shift, wy, 0); });
       }
       else if(o.type==='laserbar'){ if(o.mesh) placeAt(o.mesh, TRACK_W/2, laserY(o,t), o.h); }
       else if(o.type==='pendulum'){

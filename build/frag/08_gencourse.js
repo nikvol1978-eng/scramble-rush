@@ -117,7 +117,65 @@
       return obs;
     }
 
-    //<<shelved:gencourse-spin-hex-laser-tracer-blockdash>>
+    // ---- WALL RUSH: walls with one gap, sweeping down a plate over nothing ----
+    // Our own plate, our own walls. The arena is fenced on three
+    // sides -- the track walls hold the sides, arenaEnd holds the far end --
+    // and open at the near one, so the only way off is backwards. That is the
+    // whole round: a wall you cannot jump is coming at you, the gap is
+    // somewhere else, and giving ground costs you the floor.
+    //
+    // The walls speed up for as long as the round lasts. Early on a wall is
+    // slower than a racer and threading it is a decision; by the end it is
+    // nearly as fast as one and it is a scramble.
+    if(mode==='walls'){
+      // Shallow on purpose. On a plate two thousand deep, being caught by a
+      // wall bought you four hundred units of nothing and you walked back:
+      // the whole field stood on the far fence for a minute and not one
+      // racer went off. The arena has to be short enough that the time a
+      // wall needs to cross it is less than the time you need to cross the
+      // width, once the walls are up to speed.
+      const yNear=-560, yFar=620;
+      // Wider than the track, because twenty-four beans are wider than the
+      // track. On a 520 plate with open sides the grid alone was shoulder to
+      // shoulder, and the first wall that funnelled them all at one gap put a
+      // third of the field over the edge before anyone had made a decision.
+      const PLATE_W=1000, x0=cx-PLATE_W/2;
+      obs.push({type:'plate', cx, y:(yNear+yFar)/2, w:PLATE_W, d:yFar-yNear,
+                x0, x1:x0+PLATE_W, yNear, yFar, y0:yNear-260, y1:yFar+260});
+      // Eight slots across, and the gap is whole slots of it, so a wall's
+      // blocks are always the same meshes in different places -- the gap moves
+      // on every lap and nothing is rebuilt.
+      const slots=10, slotW=PLATE_W/slots, gapSlots = hard?2:3, arenaEndFor=yFar-40;
+      // A wall laps from just past the near lip to just past the far fence,
+      // so there is no corner of the plate a wall never reaches. Wrapping at
+      // the plate's own depth left everyone who reached arenaEnd permanently
+      // safe -- the field simply stood on the back line for a minute.
+      const COUNT=3, wrapLo=yNear-90, wrapHi=arenaEndFor+150;
+      const cycle=wrapHi-wrapLo, spacing=cycle/COUNT;
+      for(let i=0;i<COUNT;i++){
+        const o={type:'blockwall', d:46, hi:96, slots, slotW, gapSlots, x0,
+                 gapStart: Math.floor(Math.random()*(slots-gapSlots+1)),
+                 // A travelling wall is never culled by y: it crosses the whole
+                 // plate, so its band is the plate.
+                 y:0, y0:yNear-260, y1:yFar+260,
+                 // Authored so every round opens the same way: the nearest
+                 // wall is a clear beat in front of the grid and the one
+                 // behind it is leaving. Left to the intro's own length, the
+                 // field sometimes met a wall on the gun and lost four racers
+                 // before it had moved -- 17s rounds against 38s ones.
+                 wy: 560 + i*spacing, wrapLo, cycle,
+                 // units a second. A racer does about 276 flat out, so the last
+                 // wall of a long round is one a clean runner only just beats.
+                 travel: 48, ramp: 2.0, travelMax: 232,
+                 amp:0, speed:0, phase:0};
+        o.items = wallItems(o);
+        obs.push(o);
+      }
+      arenaEnd = yFar-40; trackLength = yFar+4000;
+      return obs;
+    }
+
+    //<<shelved:gencourse-spin-laser-tracer>>
     // ---- DOOR DASH: rows of doors, half of them paper ----
     if(mode==='doors'){
       const span=Math.min(total, 9000);

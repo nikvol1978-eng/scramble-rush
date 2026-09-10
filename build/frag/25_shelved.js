@@ -37,7 +37,7 @@
     }
 
 
-// ===== shelved:gencourse-spin-hex-laser-tracer-blockdash =====
+// ===== shelved:gencourse-spin-laser-tracer =====
     // ---- CAROUSEL: one turning disc, and arms sweeping you toward the edge ----
     if(mode==='spin'){
       const yMid = 560, rad = 840;
@@ -95,29 +95,6 @@
       obs.sort((a,b)=>a.y0-b.y0);
       return obs;
     }
-
-    // ---- BLOCK DASH: sliding walls of blocks, one gap each ----
-    if(mode==='blockdash'){
-      const span=Math.min(total, 7400);
-      let z=520;
-      while(z < span-420){
-        const slots=6, slotW=TRACK_W/slots;
-        const gap=Math.floor(Math.random()*slots);
-        const gap2=hard?-1:((gap+2+Math.floor(Math.random()*2))%slots);
-        const items=[];
-        for(let i=0;i<slots;i++){
-          if(i===gap||i===gap2) continue;
-          items.push({x:i*slotW+slotW/2, w:slotW-8});
-        }
-        obs.push({type:'blockwall', y:z, d:54, y0:z-54/2-RADIUS, y1:z+54/2+RADIUS, items,
-                  amp: rand(60,150), speed: rand(0.5,0.95)*spd, phase: rand(0,6.28)});
-        z += rand(340,460);
-      }
-      trackLength = span+200;
-      obs.sort((a,b)=>a.y0-b.y0);
-      return obs;
-    }
-
 
 // ===== shelved:gencourse-boulder =====
     // ---- BOULDER BARRAGE: mostly open, boulders roll at you from ahead ----

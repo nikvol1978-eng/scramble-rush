@@ -78,7 +78,8 @@
     let cursor=-300; const endZ=trackLength+FINISH_ZONE+170;
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
     // the usual corridor under them would just floor the whole arena.
-    const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin';
+    const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin'
+                   || currentMap.mode==='walls';   // Wall Rush is a plate over nothing too
     // ---- the v20 look: a neutral floor, pale walls, loud hazards ----
     // One warm key, a cool fill from the sky, and a haze that matches it.
     const accents = mapAccents();

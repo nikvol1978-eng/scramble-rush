@@ -55,9 +55,29 @@
   function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
+  // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
+  // the closing ring carries its own radius. Everything else that draws or hits
+  // a blockwall reads it through here, so a wall that does not travel is still
+  // the fixed one the race sections use.
+  function wallY(o,t){ return o.travel ? o.wy : o.y; }
+  // Blocks are whole slots, and the gap is a run of them. The count never
+  // changes, so the meshes built for a wall are the meshes it keeps -- moving
+  // the gap moves them, it does not rebuild them.
+  function wallItems(o){
+    const items=[];
+    for(let i=0;i<o.slots;i++){
+      if(i>=o.gapStart && i<o.gapStart+o.gapSlots) continue;
+      items.push({x:o.x0 + i*o.slotW + o.slotW/2, w:o.slotW-6});
+    }
+    return items;
+  }
+  function wallGapX(o){ return o.x0 + (o.gapStart + o.gapSlots/2)*o.slotW; }
   // Closing Circle and Carousel are a platform in the void: the track's side
   // walls do not exist there, and clamping to them made the edge unreachable.
-  function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'; }
+  // Rounds whose floor is a shape rather than a corridor: the track walls do
+  // not apply, because going off the side is the round.
+  function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'
+                            || currentMap.mode==='walls'; }
   // How high a racer's feet are above the COURSE surface, not above whatever
   // they happen to be standing on. A hazard bolted to the floor -- a pusher, a
   // spin bar, a bumper, a boost pad -- has to be measured against this: a racer
@@ -157,13 +177,37 @@
           c.mesh=g; c.topMat=top.material; c.baseY=g.position.y;
         }
 
+      } else if(o.type==='plate'){
+        // The floor, and the two things a player has to be able to read at a
+        // glance: the sides are solid, and the near end is not.
+        const g=new THREE.Group();
+        const slab=new THREE.Mesh(new THREE.BoxGeometry(o.w, 26, o.d),
+          new THREE.MeshLambertMaterial({map:checkerTexture(currentMap.ground, currentMap.groundAlt, Math.round(o.w/95))}));
+        slab.position.y=-13; slab.receiveShadow=true; g.add(slab);
+        // Three of the four edges are edges, so all three are painted. The
+        // far one is a fence you cannot cross and is left plain.
+        const lipMat=new THREE.MeshBasicMaterial({color:currentMap.accent});
+        const near=new THREE.Mesh(new THREE.BoxGeometry(o.w+24, 11, 22), lipMat);
+        near.position.set(0, 3, -(o.d/2)-6); g.add(near);
+        [-1,1].forEach(s=>{
+          const side=new THREE.Mesh(new THREE.BoxGeometry(22, 11, o.d), lipMat);
+          side.position.set(s*(o.w/2+6), 3, 0); g.add(side);
+        });
+        const back=new THREE.Mesh(new THREE.BoxGeometry(o.w+24, 34, 20),
+          new THREE.MeshLambertMaterial({color:look.paleWall}));
+        back.position.set(0, 17, (o.d/2)-4); g.add(back); registerFadeable(back);
+        placeAt(g, o.cx, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g;
+
       } else if(o.type==='blockwall'){
         const blockMat=new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:24});
         const edgeMat=new THREE.MeshLambertMaterial({color:0x1a1033});
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
-          const b=new THREE.Mesh(THREE.RoundedBox(it.w,78,o.d), blockMat); b.position.y=39; b.castShadow=true; g.add(b); registerFadeable(b);
-          const cap=new THREE.Mesh(THREE.RoundedBox(it.w+6,8,o.d+6), edgeMat); cap.position.y=80; g.add(cap);
+          const bh = o.hi || 78;
+          const b=new THREE.Mesh(THREE.RoundedBox(it.w,bh,o.d), blockMat); b.position.y=bh/2; b.castShadow=true; g.add(b); registerFadeable(b);
+          const cap=new THREE.Mesh(THREE.RoundedBox(it.w+6,8,o.d+6), edgeMat); cap.position.y=bh+2; g.add(cap);
           placeAt(g, it.x, o.y, 0);
           courseGroup.add(g);
           return g;
@@ -635,6 +679,21 @@
             m.position.y = m.userData.baseY + Math.sin(t*3+g.spin)*5;
           }
         });
+      } else if(o.type==='blockwall' && o.travel){
+        // Faster for as long as the round lasts, and a new gap every lap: a
+        // wall you have already read is not a wall you get to read twice.
+        // Only from the gun, position as well as speed. The reveal and the
+        // flyover are not a fixed length, so a wall that moved through them
+        // arrived at the grid in a different place every time.
+        if(state!=='racing') continue;
+        o.travel = Math.min(o.travelMax, o.travel + o.ramp*dt);
+        o.wy -= o.travel*dt;
+        if(o.wy < o.wrapLo){
+          o.wy += o.cycle;
+          o.gapStart = Math.floor(Math.random()*(o.slots-o.gapSlots+1));
+          const it = wallItems(o);
+          for(let i=0;i<o.items.length;i++) o.items[i].x = it[i].x;
+        }
       } else if(o.type==='ring'){
         // the ring waits a beat, then closes for the rest of the round
         if(o.wait > 0) o.wait -= dt;
@@ -1024,6 +1083,11 @@
           break;
         }
       }
+      // Wall Rush: three sides are fenced, so this is the only way out --
+      // and being carried out by a wall is the point of the round, not a
+      // mistake to be forgiven, so it is not gated on having your feet down.
+      const plate = obstacles.find(o=>o.type==='plate');
+      if(plate && (r.y < plate.yNear || r.x < plate.x0-12 || r.x > plate.x1+12)){ fallDown(r); return; }
       const ring = obstacles.find(o=>o.type==='ring');
       if(ring && Math.hypot(r.x-ring.cx, r.y-ring.y) > ring.r){ fallDown(r); return; }
       const disc = obstacles.find(o=>o.type==='disc');
@@ -1128,18 +1192,38 @@
         }
 
       } else if(o.type==='blockwall'){
-        if(Math.abs(r.y-o.y) < o.d/2 + RADIUS && r.h < 70){
+        const wy = wallY(o,t);
+        // A Wall Rush wall carries its own height, because 70 is not enough of
+        // one: a standing jump tops out within a unit or two of it, so the
+        // round's whole premise -- a wall you cannot jump -- came down to
+        // rounding. The race sections keep the 70 they were built against.
+        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < (o.hi || 70)){
           const shift=blockShift(o,t);
           for(const it of o.items){
             const bx=it.x+shift;
             if(Math.abs(r.x-bx) > it.w/2 + RADIUS - 6) continue;
-            const side = Math.sign(r.y-o.y)||-1;
-            r.y = o.y + side*(o.d/2 + RADIUS);
-            if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
-              sendTumbling(r, 6, 0, -1); r.invuln=520;
-              spawnBurst3D(r.x,o.y,0xff8a5c,8); }
-            // shove sideways toward the nearer edge so you slide off rather than stick
-            r.vx += (r.x < bx ? -1 : 1)*3.4;
+            const side = Math.sign(r.y-wy)||-1;
+            r.y = wy + side*(o.d/2 + RADIUS);
+            if(o.travel){
+              // A wall that is coming for you carries you. Knocking you down
+              // instead would be kinder than it looks: on the floor you stop
+              // steering, and the wall keeps going, so one clip at the far end
+              // would be a free ride to the near one.
+              if(side<0) r.vy = Math.min(r.vy, -o.travel/60);
+              else if(r.vy<0) r.vy = 0;
+              if(r.isPlayer && raceTime > (r.wallSfxT||0)){ SFX.bump(); camShake=Math.max(camShake,3); r.wallSfxT = raceTime + 0.5; }
+              // Enough along the face to break a dead stop on a block's centre
+              // line, and no more. At 1.6 it was an escape in itself: a racer
+              // pinned at the far side of the wall slid to the gap on its own
+              // in under two seconds, and nobody was ever swept off.
+              r.vx += (r.x < bx ? -1 : 1)*0.30;
+            } else {
+              if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
+                sendTumbling(r, 6, 0, -1); r.invuln=520;
+                spawnBurst3D(r.x,wy,0xff8a5c,8); }
+              // shove sideways toward the nearer edge so you slide off rather than stick
+              r.vx += (r.x < bx ? -1 : 1)*3.4;
+            }
           }
         }
 
