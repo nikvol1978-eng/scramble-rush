@@ -333,6 +333,53 @@
   .seasonFill{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),#ff7ac0);transition:width .4s;}
   .seasonText{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:0.72rem;color:var(--line);}
 
+
+  /* ---- v24 §5.1: the shell every menu screen sits in -------------------- */
+  /* Rings, not a picture: one repeating gradient turning very slowly behind
+     everything. Slow enough that it never competes with the thing in front of
+     it, and present enough that a flat panel is not floating on nothing. */
+  #menuRings{
+    position:absolute; inset:-30%; z-index:1; pointer-events:none;
+    background:repeating-radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,0.085) 0 44px, rgba(255,255,255,0) 44px 120px);
+    animation:ringSpin 90s linear infinite;
+  }
+  @keyframes ringSpin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+  @media (prefers-reduced-motion: reduce){ #menuRings{animation:none;} }
+
+  #menuChrome{
+    position:absolute; top:0; left:0; right:0; z-index:12;
+    display:flex; align-items:center; justify-content:center;
+    /* Centred in what is left after the wordmark and the currency chips, not
+       in the whole width. Centred across everything, the first pill sat under
+       the tail of SCRAMBLE -- at 1280 with the names on, and at 960 without. */
+    padding:16px 210px 16px 340px; pointer-events:none;
+  }
+  #menuChrome .lobbyTabs, #menuChrome .lobbyCurrency{ pointer-events:auto; }
+  #menuChrome .lobbyCurrency{ position:absolute; right:22px; top:16px; display:flex; gap:10px; }
+  /* The pills carry their names now. An icon strip is a strip you have to
+     learn; a named one is a strip you can read. */
+  /* Written against #menuChrome so it beats the icon-only rules further down
+     this file rather than racing them on source order. */
+  #menuChrome .lobbyTabs{ gap:4px; padding:7px 10px; }
+  #menuChrome .tabPill{ width:auto; min-width:56px; height:42px; padding:0 16px; gap:9px; }
+  #menuChrome .tabName{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.94rem;
+    letter-spacing:0.7px; color:var(--cream);
+  }
+  /* the active pill is the accent, filled, and its contents go dark on it */
+  #menuChrome .tabPill.sel{ background:var(--teal); border-color:var(--line); box-shadow:0 3px 0 var(--line); }
+  #menuChrome .tabPill.sel .tabName{ color:var(--line); }
+  #menuChrome .tabPill.sel svg{ stroke:var(--line); fill:var(--line); }
+  /* The names come off well before the layout is actually narrow. The strip is
+     centred over a screen whose brand sits at the left and whose currency chips
+     sit at the right, and at 960 the named strip ran under both of them -- PLAY
+     and LOCKER disappeared behind the wordmark. 1150 is where the three stop
+     fitting side by side. */
+  @media (max-width: 1150px){
+    #menuChrome .tabName{ display:none; }
+    #menuChrome .tabPill{ padding:0; width:52px; min-width:52px; }
+  }
   .lobbyTabs{display:flex;align-items:center;gap:8px;justify-self:center;background:rgba(26,16,51,0.78);padding:6px 8px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}
   .tabWrap{position:relative;}
   .tabPill{width:52px;height:38px;border-radius:999px;border:3px solid transparent;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;transition:transform .08s,background .15s;}

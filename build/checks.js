@@ -1899,7 +1899,7 @@
         // seconds. That is the fix for a fall loop working, not a stall -- and
         // counting it as one made this check measure the fix rather than the
         // bend, exactly as respawn walk-backs did in v23.
-        const waiting = (b.holeWait || 0) > 0;
+        const waiting = (b.holeWait || 0) > 0 || (b.pitWait && !b.pitWait.committed);
         const t2 = (respawned || waiting) ? 0 : (b.y - was > 12) ? 0 : (stuck.get(b) || 0) + 0.2;
         stuck.set(b, t2); lastY.set(b, b.y);
         if(t2 > worstAnywhere) worstAnywhere = t2;
@@ -2302,11 +2302,14 @@
         for(const r of racers){
           if(r.isPlayer || r.finished || r.lavaOut) continue;
           const was = lastY.get(r) === undefined ? -1e9 : lastY.get(r);
-          // A bot deliberately holding at a channel mouth until the traffic
-          // clears is not stuck -- see check r, which learned the same thing.
-          // This is the fall-loop fix working; counting it here would make the
-          // acceptance run fail on the thing that makes it pass.
-          const t2 = (r.holeWait||0) > 0 ? 0 : (r.y - was > 12) ? 0 : (stuckFor.get(r)||0) + 0.2;
+          // A bot deliberately holding still is not stuck. There are two such
+          // holds now and both have to be excluded, or the acceptance fails on
+          // the very rules that make it pass: `holeWait` is a bot waiting at a
+          // channel mouth for the traffic to clear, and `pitWait` is the older
+          // rule waiting at a pit edge for its platform to come round. Boom
+          // Peak only started tripping this when v24 gave it a pit.
+          const waiting = (r.holeWait||0) > 0 || (r.pitWait && !r.pitWait.committed);
+          const t2 = waiting ? 0 : (r.y - was > 12) ? 0 : (stuckFor.get(r)||0) + 0.2;
           stuckFor.set(r, t2); lastY.set(r, r.y);
           if(t2 > stillest) stillest = t2;
         }

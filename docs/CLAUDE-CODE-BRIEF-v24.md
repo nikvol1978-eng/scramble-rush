@@ -26,6 +26,32 @@ by their speed and your contact angle; being knocked over is a short ragdoll
 with quick recovery; ice lowers friction and slime flows in a direction;
 respawn is at the last checkpoint.
 
+
+## Resume here
+
+*(§5.1 shared chrome is committed. §5.2, the lobby, is next.)*
+
+## How "no gameplay number moved" is proved
+
+A menu or look pass must not change how the game plays. Matching acceptance
+medians does **not** prove that and cannot: the medians are a sample over
+random layouts, and Sunny Sprint alone has read 17, 14, 12, 13 and 14 home
+across five runs of builds that differed only in seed. A run that happens to
+match is luck and a run that happens not to is a false alarm.
+
+The standard is structural instead. After the section, run
+
+    git diff HEAD -- build/ | grep '^[-+]' | grep -v '^[-+][-+]' | grep -Ei '<constants>'
+
+over the gameplay constants (ACCEL, GROUND_FR, AIR_FR, ICE_*, SLOPE_*, JUMP_V,
+DIVE_*, V_MAX, V_CAP, GRAV*, TURN_RATE*, HAZARD_*, TUMBLE_*, LAND_SLIDE*,
+RESPAWN*, COYOTE, BUFFER, halfWidth, HARD_GAP, ISLAND*, power:, speed:, bias,
+aiRoute, botCount, CUT_LADDER, FINAL_COUNT, throttle) and show that it is
+empty, and show that the changed lines in any gameplay file are only the ones
+the section was about. Quote both in the commit. The suite and the acceptance
+still have to be green -- they catch what a diff cannot -- but the diff is what
+carries the claim.
+
 ---
 
 ## Open items

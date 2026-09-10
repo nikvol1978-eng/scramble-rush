@@ -3,6 +3,19 @@
 
   // ---- the lobby: five tabs across the top, Q / E cycle them ----
   const LOBBY_TABS = ['play','locker','badges','shop','settings'];
+  // v24 §5.1: the strip and the chips belong to the menu, not to the lobby.
+  // Whatever menu screen is up, they are up with it -- a strip that vanishes
+  // when you open the locker is a strip you cannot navigate with.
+  function menuScreenOpen(){
+    return state === 'menu' && ['home','profile','settings','daily','mpHome']
+      .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
+  }
+  function syncMenuChrome(){
+    const on = menuScreenOpen();
+    $('menuChrome').classList.toggle('hidden', !on);
+    $('menuRings').classList.toggle('hidden', !on);
+  }
+
   function selectLobbyTab(name){
     document.querySelectorAll('.tabPill').forEach(b=>b.classList.toggle('sel', b.dataset.lobby===name));
   }
@@ -15,6 +28,7 @@
     ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
+    syncMenuChrome();
   }
   function openLobbyTab(name){
     selectLobbyTab(name);
@@ -25,6 +39,7 @@
       case 'shop':     backToLobby(); openProfile('shop'); break;
       case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
     }
+    syncMenuChrome();
   }
   function cycleLobbyTab(dir){
     const i = LOBBY_TABS.indexOf(lobbyTabSelected());
@@ -35,6 +50,10 @@
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
     if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+    // The bracket keys do the same thing. Q/E is the habit from the pad's
+    // shoulder buttons; [ and ] is the habit from everything else.
+    if(e.key==='['){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
+    if(e.key===']'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
     // The lobby advertised the gamepad face buttons A and Y whether or not a
     // pad was plugged in, and neither had a keyboard equivalent bound -- so on
     // a keyboard the two prompts on the screen were both wrong and both dead.

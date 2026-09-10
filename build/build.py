@@ -708,6 +708,11 @@ sub("  .badge.time{background:var(--red);} .badge.rank{background:var(--purple);
     + " .badge.qual.full{background:var(--gold);color:var(--line);}",
     "qualified badge style")
 
+# the chrome follows the state out of a race as well as into a tab
+sub("    state='menu'; $('hud').classList.add('hidden');",
+    "    state='menu'; if(typeof syncMenuChrome==='function') setTimeout(syncMenuChrome,0); $('hud').classList.add('hidden');",
+    "menu chrome follows the state")
+
 sub("  function updateHud(){",
     "  function updateHud(){" + chr(10) + "    updateSpectator();",
     "spectator hud tick")

@@ -464,6 +464,53 @@
   .seasonFill{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),#ff7ac0);transition:width .4s;}
   .seasonText{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:0.72rem;color:var(--line);}
 
+
+  /* ---- v24 §5.1: the shell every menu screen sits in -------------------- */
+  /* Rings, not a picture: one repeating gradient turning very slowly behind
+     everything. Slow enough that it never competes with the thing in front of
+     it, and present enough that a flat panel is not floating on nothing. */
+  #menuRings{
+    position:absolute; inset:-30%; z-index:1; pointer-events:none;
+    background:repeating-radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,0.085) 0 44px, rgba(255,255,255,0) 44px 120px);
+    animation:ringSpin 90s linear infinite;
+  }
+  @keyframes ringSpin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+  @media (prefers-reduced-motion: reduce){ #menuRings{animation:none;} }
+
+  #menuChrome{
+    position:absolute; top:0; left:0; right:0; z-index:12;
+    display:flex; align-items:center; justify-content:center;
+    /* Centred in what is left after the wordmark and the currency chips, not
+       in the whole width. Centred across everything, the first pill sat under
+       the tail of SCRAMBLE -- at 1280 with the names on, and at 960 without. */
+    padding:16px 210px 16px 340px; pointer-events:none;
+  }
+  #menuChrome .lobbyTabs, #menuChrome .lobbyCurrency{ pointer-events:auto; }
+  #menuChrome .lobbyCurrency{ position:absolute; right:22px; top:16px; display:flex; gap:10px; }
+  /* The pills carry their names now. An icon strip is a strip you have to
+     learn; a named one is a strip you can read. */
+  /* Written against #menuChrome so it beats the icon-only rules further down
+     this file rather than racing them on source order. */
+  #menuChrome .lobbyTabs{ gap:4px; padding:7px 10px; }
+  #menuChrome .tabPill{ width:auto; min-width:56px; height:42px; padding:0 16px; gap:9px; }
+  #menuChrome .tabName{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.94rem;
+    letter-spacing:0.7px; color:var(--cream);
+  }
+  /* the active pill is the accent, filled, and its contents go dark on it */
+  #menuChrome .tabPill.sel{ background:var(--teal); border-color:var(--line); box-shadow:0 3px 0 var(--line); }
+  #menuChrome .tabPill.sel .tabName{ color:var(--line); }
+  #menuChrome .tabPill.sel svg{ stroke:var(--line); fill:var(--line); }
+  /* The names come off well before the layout is actually narrow. The strip is
+     centred over a screen whose brand sits at the left and whose currency chips
+     sit at the right, and at 960 the named strip ran under both of them -- PLAY
+     and LOCKER disappeared behind the wordmark. 1150 is where the three stop
+     fitting side by side. */
+  @media (max-width: 1150px){
+    #menuChrome .tabName{ display:none; }
+    #menuChrome .tabPill{ padding:0; width:52px; min-width:52px; }
+  }
   .lobbyTabs{display:flex;align-items:center;gap:8px;justify-self:center;background:rgba(26,16,51,0.78);padding:6px 8px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}
   .tabWrap{position:relative;}
   .tabPill{width:52px;height:38px;border-radius:999px;border:3px solid transparent;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;transition:transform .08s,background .15s;}
@@ -588,6 +635,45 @@
   </div>
 </div>
 
+<!-- ============ MENU CHROME: the shell every menu screen sits in ============ -->
+<!-- Soft concentric rings in the map accent, turning slowly. It is one element
+     and one gradient rather than art, so it costs nothing and recolours with
+     the season. -->
+<div id="menuRings" class="hidden"></div>
+
+<div id="menuChrome" class="hidden">
+  <div class="lobbyTabs" role="tablist">
+    <div class="tabWrap">
+      <button class="tabPill sel" id="tabPlay" data-lobby="play" aria-label="Play" title="Play">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg><span class="tabName">PLAY</span>
+      </button>
+      <button class="dailyBadge" id="dailyBtn" aria-label="Daily spin" title="Daily spin">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/></svg>
+        <span class="pip hidden" id="dailyPip"></span>
+      </button>
+    </div>
+    <button class="tabPill" id="profileBtn" data-lobby="locker" aria-label="Locker" title="Locker">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l2 4-3 1v13H9V8L6 7z"/><path d="M12 3v5"/></svg><span class="tabName">LOCKER</span>
+    </button>
+    <button class="tabPill" id="badgesBtn" data-lobby="badges" aria-label="Badges" title="Badges">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5 5 2.5-1.5-7.5"/></svg><span class="tabName">BADGES</span>
+      <span class="pip hidden" id="badgePip"></span>
+    </button>
+    <button class="tabPill" id="shopBtn" data-lobby="shop" aria-label="Shop" title="Shop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg><span class="tabName">SHOP</span>
+      <span class="pip hidden" id="shopPip"></span>
+    </button>
+    <button class="tabPill" id="settingsBtn" data-lobby="settings" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg><span class="tabName">SETTINGS</span>
+    </button>
+  </div>
+
+  <div class="lobbyCurrency">
+    <div class="crownChip" id="homeCrowns"><span class="crownIcon"></span><span class="crownNum">0</span></div>
+    <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
+  </div>
+</div>
+
 <!-- ================= HOME (lobby) ================= -->
 <div id="home" class="screen lobby">
   <div class="lobbyTop">
@@ -601,36 +687,6 @@
       </div>
     </div>
 
-    <div class="lobbyTabs" role="tablist">
-      <div class="tabWrap">
-        <button class="tabPill sel" id="tabPlay" data-lobby="play" aria-label="Play" title="Play">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
-        </button>
-        <button class="dailyBadge" id="dailyBtn" aria-label="Daily spin" title="Daily spin">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v11H3z"/><path d="M2 5.5h20V9H2z"/><path d="M12 5.5V20"/></svg>
-          <span class="pip hidden" id="dailyPip"></span>
-        </button>
-      </div>
-      <button class="tabPill" id="profileBtn" data-lobby="locker" aria-label="Locker" title="Locker">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l2 4-3 1v13H9V8L6 7z"/><path d="M12 3v5"/></svg>
-      </button>
-      <button class="tabPill" id="badgesBtn" data-lobby="badges" aria-label="Badges" title="Badges">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5 7 21l5-2.5 5 2.5-1.5-7.5"/></svg>
-        <span class="pip hidden" id="badgePip"></span>
-      </button>
-      <button class="tabPill" id="shopBtn" data-lobby="shop" aria-label="Shop" title="Shop">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg>
-        <span class="pip hidden" id="shopPip"></span>
-      </button>
-      <button class="tabPill" id="settingsBtn" data-lobby="settings" aria-label="Settings" title="Settings">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg>
-      </button>
-    </div>
-
-    <div class="lobbyCurrency">
-      <div class="crownChip" id="homeCrowns"><span class="crownIcon"></span><span class="crownNum">0</span></div>
-      <div class="coinChip" id="homeCoins"><span class="coinIcon"></span><span class="coinNum">0</span></div>
-    </div>
   </div>
 
   <div class="lobbyBottom">
@@ -4454,7 +4510,7 @@ const QUALITY = {
 
   function goHome(){
     if(mp.role) leaveMultiplayer();
-    state='menu'; $('hud').classList.add('hidden'); $('hint').classList.add('hidden'); $('pauseBtn').classList.add('hidden'); $('touchControls').classList.add('hidden');
+    state='menu'; if(typeof syncMenuChrome==='function') setTimeout(syncMenuChrome,0); $('hud').classList.add('hidden'); $('hint').classList.add('hidden'); $('pauseBtn').classList.add('hidden'); $('touchControls').classList.add('hidden');
     ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro','daily'].forEach(id=>$(id).classList.add('hidden'));
     $('home').classList.remove('hidden');
     courseGroup.visible=false; racerGroup.visible=false; previewGroup.visible=true; clearParticles();
@@ -8842,6 +8898,19 @@ const QUALITY = {
 
   // ---- the lobby: five tabs across the top, Q / E cycle them ----
   const LOBBY_TABS = ['play','locker','badges','shop','settings'];
+  // v24 §5.1: the strip and the chips belong to the menu, not to the lobby.
+  // Whatever menu screen is up, they are up with it -- a strip that vanishes
+  // when you open the locker is a strip you cannot navigate with.
+  function menuScreenOpen(){
+    return state === 'menu' && ['home','profile','settings','daily','mpHome']
+      .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
+  }
+  function syncMenuChrome(){
+    const on = menuScreenOpen();
+    $('menuChrome').classList.toggle('hidden', !on);
+    $('menuRings').classList.toggle('hidden', !on);
+  }
+
   function selectLobbyTab(name){
     document.querySelectorAll('.tabPill').forEach(b=>b.classList.toggle('sel', b.dataset.lobby===name));
   }
@@ -8854,6 +8923,7 @@ const QUALITY = {
     ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
+    syncMenuChrome();
   }
   function openLobbyTab(name){
     selectLobbyTab(name);
@@ -8864,6 +8934,7 @@ const QUALITY = {
       case 'shop':     backToLobby(); openProfile('shop'); break;
       case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
     }
+    syncMenuChrome();
   }
   function cycleLobbyTab(dir){
     const i = LOBBY_TABS.indexOf(lobbyTabSelected());
@@ -8874,6 +8945,10 @@ const QUALITY = {
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
     if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
+    // The bracket keys do the same thing. Q/E is the habit from the pad's
+    // shoulder buttons; [ and ] is the habit from everything else.
+    if(e.key==='['){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
+    if(e.key===']'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
     // The lobby advertised the gamepad face buttons A and Y whether or not a
     // pad was plugged in, and neither had a keyboard equivalent bound -- so on
     // a keyboard the two prompts on the screen were both wrong and both dead.
