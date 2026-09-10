@@ -26,6 +26,14 @@
         });
       }
       //<<shelved:sync-log>>
+      else if(o.type==='tiltdeck'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const dk = o.decks[i];
+          // z is the course's y, so a lean along y is a rotation about x
+          m.rotation.z =  dk.tx*o.maxTilt;
+          m.rotation.x = -dk.ty*o.maxTilt;
+        });
+      }
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
       else if(o.type==='blockwall'){
         const shift=blockShift(o,t), wy=wallY(o,t);

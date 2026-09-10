@@ -122,7 +122,10 @@
         if(x<hexR*0.5 || x>TRACK_W-hexR*0.5 || y>yEnd) continue;
         const tiers=[];
         for(let ti=0; ti<TIERS.length; ti++){
-          const missing = ti>0 && Math.random() < 0.09*ti;
+          // Half what it was. A quarter of the bottom tier missing at the gun
+          // is a cascade already started: the round swung between fourteen
+          // seconds and the full minute depending on where those holes fell.
+          const missing = ti>0 && Math.random() < 0.045*ti;
           const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
                       // the bottom rung of the final is spent for good
                       noBack: isFinal && ti===TIERS.length-1,
@@ -147,12 +150,12 @@
                 // actually walking on it, that pair ate the field in six
                 // seconds. These are Panel Drop's shape -- a fuse you can beat
                 // and a rebuild that keeps up with twenty-four of them.
-                fuseTime: isFinal ? 1.6 : (hard?1.4:1.7),
+                fuseTime: isFinal ? 1.6 : (hard?1.6:1.9),
                 // The final's top rung comes back quicker than the survival
                 // round's, not slower: with only two rungs and the lower one
                 // spent for good, a slow rebuild on top of that took eight
                 // racers down to two in under six seconds.
-                respawnTime: isFinal ? 2.0 : 1.7});
+                respawnTime: isFinal ? 2.0 : 1.5});
       arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }
@@ -417,6 +420,45 @@
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
+    } else if(type==='tiltdeck'){
+      // Three big decks on a pivot with a step between them. A deck leans the
+      // way the weight on it leans, and what is standing on it slides downhill,
+      // which leans it further -- so a pack that all takes the same line tips
+      // itself off, and the way across is to spread out or to be quick.
+      //
+      // The step between decks is in the jump band from §2: you clear it on a
+      // plain jump, so the section is about the lean and not about the gap.
+      // Full width, touching, lined up. Anything narrower is a hazard the
+      // section cannot be entered past: racers arrive spread across the whole
+      // track, so a deck at 0.72 of it dropped everyone outside its edges the
+      // instant they reached it, respawned them in front of it at the same x,
+      // and did it again -- four hundred falls a round and a pack that never
+      // got through the first deck. The lean is the hazard here, and what it
+      // costs you is your line, not the floor: every set of decks is followed
+      // by something you have to be on a line for.
+      const n = 3, dw = TRACK_W, dd = 340;
+      const decks = [];
+      let dy = cursor + gap + 150;
+      for(let i=0;i<n;i++){
+        decks.push({ cx, y: dy + dd/2, w: dw, d: dd, tx: 0, ty: 0 });
+        dy += dd;
+      }
+      // Exactly the decks, with nothing either side of them. At plus and minus
+      // eight there was an eight-unit band at each end that counted as inside
+      // the section and stood on no deck, so every racer entering it fell
+      // through the doormat -- four hundred falls a round, and none of them
+      // anything to do with the lean.
+      const yStart2 = decks[0].y - dd/2, yEnd2 = decks[n-1].y + dd/2;
+      obs.push({type:'tiltdeck', yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+40,
+                decks, w:dw, d:dd,
+                // radians at full lean, and how much of one a crowd all on one
+                // side is worth
+                maxTilt: hard ? 0.23 : 0.19, lean: 2.4, spring: 2.4,
+                // how many on one side it takes to put a deck all the way over
+                hold: 5,
+                // per frame, downhill, at full lean
+                slide: hard ? 0.34 : 0.28});
+      cursor = yEnd2 + 90;
     } else if(type==='plank'){
         // Two or three narrow planks side by side over a drop, with a hammer
         // on a rope swinging across the middle of them. Pick a plank, time the

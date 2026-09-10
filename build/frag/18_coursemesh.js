@@ -295,6 +295,28 @@
           out.position.copy(mesh.position); courseGroup.add(out);
           return mesh;
         });
+      } else if(o.type==='tiltdeck'){
+        o.meshes = o.decks.map(dk=>{
+          const g = new THREE.Group();
+          const slab = new THREE.Mesh(THREE.RoundedBox(dk.w, 22, dk.d),
+            new FloorMat({map:checkerTexture(floorHex, floorAltHex, 4)}));
+          slab.position.y = -11; slab.receiveShadow = true; g.add(slab);
+          // A rim in the accent, because a deck you cannot see the edge of is a
+          // deck you walk off without knowing it was there.
+          const rimMat = new THREE.MeshLambertMaterial({color:accents[0]});
+          [[dk.w+10, 9, 14, 0, dk.d/2], [dk.w+10, 9, 14, 0, -dk.d/2],
+           [14, 9, dk.d+10, dk.w/2, 0], [14, 9, dk.d+10, -dk.w/2, 0]].forEach(b=>{
+            const m = new THREE.Mesh(new THREE.BoxGeometry(b[0], b[1], b[2]), rimMat);
+            m.position.set(b[3], 3, b[4]); g.add(m);
+          });
+          placeAt(g, dk.cx, dk.y, 0);
+          courseGroup.add(g);
+          // the pivot, drawn separately so it does not tilt with the deck
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(26, 34, 120, 12),
+            new THREE.MeshLambertMaterial({color:paleWall}));
+          placeAt(post, dk.cx, dk.y, -60); courseGroup.add(post);
+          return g;
+        });
       } else if(o.type==='hammer'){
         const xs=o.items.map(i=>i.pivotX);
         const beam=new THREE.Mesh(THREE.RoundedBox(Math.max(...xs)-Math.min(...xs)+40,8,8), poleMat);

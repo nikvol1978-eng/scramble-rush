@@ -745,6 +745,27 @@
         const dir = Math.sign(o.speed) || 1;
         if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
         o.ang += o.speed*dt;
+      } else if(o.type==='tiltdeck'){
+        for(const dk of o.decks){
+          let sx = 0, sy = 0, n = 0;
+          for(const r of racers){
+            if(r.lavaOut || r.falling || r.h > 40) continue;
+            if(Math.abs(r.x-dk.cx) > dk.w/2 || Math.abs(r.y-dk.y) > dk.d/2) continue;
+            sx += (r.x-dk.cx)/(dk.w/2); sy += (r.y-dk.y)/(dk.d/2); n++;
+          }
+          // Weight, not position. Divided by the count alone this was the mean
+          // offset, so one racer standing at the edge tipped the deck as hard as
+          // twenty did -- which is not what a deck on a pivot does and not what
+          // the round is called. Dividing by at least `hold` racers instead
+          // makes the first few of them count for what they weigh: one at the
+          // edge is a lean you can feel, five is the deck going over.
+          const w = Math.max(o.hold, n);
+          const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
+          const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
+          const k = Math.min(1, o.spring*dt);
+          dk.tx += (tX - dk.tx)*k;
+          dk.ty += (tY - dk.ty)*k;
+        }
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
         if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
@@ -1097,6 +1118,25 @@
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
+      const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
+      if(td){
+        // A little tolerance at the seams: the decks touch, and a racer exactly
+        // on the join between two of them is on both, not on neither.
+        const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
+        // Between two decks is a step you jump, so only a racer with their feet
+        // down is over nothing.
+        if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+          const ox = r.x-dk.cx, oy = r.y-dk.y;
+          // the surface, so the camera and the feet agree about where the floor is
+          r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
+          r.onDeck = dk;
+          if(r.h <= 0.5 && r.tumbleT <= 0){
+            r.vx += dk.tx*td.slide;
+            r.vy += dk.ty*td.slide;
+          }
+        }
+      } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
@@ -1159,7 +1199,7 @@
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck) r.floorH = 0;
 
     // ---- terrain (v24 §2.8) ------------------------------------------------
     // Slime and bounce pads are ground, not hazards, so they go above the

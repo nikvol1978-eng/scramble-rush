@@ -2278,7 +2278,7 @@
 
   function checkAccept(){
     const bad = [], report = {};
-    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope'];
+    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope','tiltdeck'];
     const SURVIVE = ['lava','doors','tiles','shrink','comb','walls','beam'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
@@ -2286,8 +2286,12 @@
     // hurt much and never falls at all -- there is nowhere to fall to. Slime
     // Slope shoves rather than hits, and the falling it does cause is over the
     // edges of its gaps.
-    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2 };
-    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8 };
+    // Tilt Deck has no holes in it at all -- what it does is shove you off
+    // your line, and what that costs you is the narrow section that follows
+    // every set of decks. So: hurt like the others, and falls only where
+    // being off-line put you.
+    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2, tiltdeck:1 };
+    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8, tiltdeck:5 };
 
     function playThrough(key){
       begin(key);
@@ -3340,6 +3344,114 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- t: Tilt Deck leans toward the weight on it ----------
+  // Four things: the section is floor all the way across and all the way
+  // through, weight on one side leans it that way, an empty one comes back to
+  // level, and standing on a leaning one takes you downhill.
+  //
+  // The first of those is here because of what it cost. The section's bounds
+  // sat eight units outside the decks at each end, so there was a band that
+  // counted as inside the section and stood on no deck: every racer entering
+  // fell through it, respawned in front of it, and walked into it again. Four
+  // hundred falls a round, none of them anything to do with the lean, and the
+  // pack never reached the second deck. A section whose floor has a hole in it
+  // where the section begins is not something you find by watching it.
+  function checkTiltDeck(){
+    const bad = [], rep = {};
+    begin('tiltdeck');
+    const secs = obstacles.filter(o=>o.type==='tiltdeck');
+    if(!secs.length) return { name:'t Tilt Deck leans toward the weight on it', pass:false,
+                              detail:'no tilting decks generated' };
+    const o = secs[0];
+    rep.field = secs.length + ' sections of ' + o.decks.length + ' decks, '
+              + Math.round(o.w) + ' x ' + Math.round(o.d) + ', tilt ' + o.maxTilt;
+
+    // (a) floor everywhere inside it -- every y through the section and every x
+    // across it stands on some deck
+    const deckAt = (x,y)=> o.decks.find(d=>Math.abs(x-d.cx)<=d.w/2+4 && Math.abs(y-d.y)<=d.d/2+4);
+    let holes = 0;
+    for(let i=0;i<=40;i++){
+      const y = o.yStart + (o.yEnd-o.yStart)*i/40;
+      for(const x of [6, TRACK_W/2, TRACK_W-6]) if(!deckAt(x,y)) holes++;
+    }
+    rep.cover = holes ? holes + ' sampled spots inside the section stand on nothing' : 'floor all the way through';
+    if(holes) bad.push(rep.cover);
+    if(o.w < TRACK_W - 2)
+      bad.push('the decks are ' + Math.round(o.w) + ' of a ' + TRACK_W + ' track, so its edges cannot be entered past');
+
+    const bots = racers.filter(r=>!r.isPlayer);
+    const park = ()=>{ bots.forEach((r,i)=>{ r.x = 20 + (i%3)*6; r.y = o.yStart - 700 - i*8;
+                                             r.vx = 0; r.vy = 0; r.h = 0; r.falling = false; }); };
+    const p = player();
+    const dk = o.decks[0];
+    const put = (x,y)=>{ Object.assign(p, { x, y, h:0, vx:0, vy:0, vh:0, floorH:0, falling:false,
+      stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0, lavaOut:false }); resetLook(); };
+
+    // (b) weight on one side leans it that way -- and it is weight, not
+    // position: one racer at the edge tips it a little and a crowd tips it over
+    const settle = (n)=>{
+      dk.tx = 0; dk.ty = 0;
+      const edge = dk.cx + dk.w*0.40;
+      for(let i=0;i<90;i++){
+        park();
+        for(let k=0;k<n-1;k++){ const b = bots[k]; if(!b) break;
+          b.x = edge; b.y = dk.y + (k-1)*22; b.vx = 0; b.vy = 0; b.h = 0; b.falling = false; }
+        p.x = edge; p.y = dk.y; p.vx = 0; p.vy = 0; p.h = 0;
+        window.__dbg.tick(1);
+      }
+      return dk.tx;
+    };
+    {
+      const one = settle(1);
+      const crowd = settle(o.hold + 1);
+      rep.lean = 'one racer leans it ' + one.toFixed(2) + ', ' + (o.hold+1) + ' lean it ' + crowd.toFixed(2);
+      if(crowd < 0.7)      bad.push('a crowd on one side only leaned the deck ' + crowd.toFixed(2));
+      if(one > crowd*0.55) bad.push('one racer leaned it ' + one.toFixed(2)
+                                  + ' against a crowd of ' + (o.hold+1) + ' at ' + crowd.toFixed(2) + ' -- it is reading position, not weight');
+      if(one < 0.05)       bad.push('one racer moved the deck ' + one.toFixed(2) + ', which is not a deck on a pivot');
+      // and the surface under them dropped with it
+      rep.surface = 'floor under them ' + Math.round(p.floorH);
+      if(p.floorH > -6) bad.push('the deck leaned but the floor under the racer did not drop');
+    }
+
+    // (c) and it comes back to level once nobody is on it
+    {
+      const leaned = dk.tx;
+      put(dk.cx, o.yStart - 500);
+      for(let i=0;i<150;i++){ park(); p.x = dk.cx; p.y = o.yStart - 500; window.__dbg.tick(1); }
+      rep.level = 'from ' + leaned.toFixed(2) + ' back to ' + dk.tx.toFixed(2);
+      if(Math.abs(dk.tx) > 0.12) bad.push('an empty deck stayed leaning at ' + dk.tx.toFixed(2));
+    }
+
+    // (d) and a leaning deck takes you downhill
+    {
+      dk.tx = 1; dk.ty = 0;                     // hold it over, and see where it puts you
+      put(dk.cx, dk.y);
+      const x0 = p.x;
+      for(let i=0;i<45;i++){ dk.tx = 1; park(); p.y = dk.y; window.__dbg.tick(1); }
+      const moved = p.x - x0;
+      rep.slide = 'held at full lean, carried ' + Math.round(moved) + ' downhill';
+      if(moved < 40) bad.push('a full lean only moved the racer ' + Math.round(moved) + ' downhill');
+    }
+
+    // (e) and the pack gets through it, which is the assertion that matters
+    {
+      begin('tiltdeck');
+      window.__dbg.hold('w', true);
+      window.__dbg.tick(60*16);
+      window.__dbg.hold('w', false);
+      const sec = obstacles.filter(x=>x.type==='tiltdeck')[0];
+      const past = racers.filter(r=>r.y > sec.yEnd).length;
+      const falls = racers.reduce((a,r)=>a+(r.fallCount||0), 0);
+      rep.through = past + ' of ' + racers.length + ' past the first set after 16s, ' + falls + ' falls';
+      if(past < 8)    bad.push('only ' + past + ' racers got past the first set of decks in sixteen seconds');
+      if(falls > 30)  bad.push(falls + ' falls in sixteen seconds -- the section is eating the field');
+    }
+
+    return { name:'t Tilt Deck leans toward the weight on it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3352,7 +3464,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

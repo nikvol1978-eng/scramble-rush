@@ -31,7 +31,15 @@ respawn is at the last checkpoint.
 
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
-Wall Rush, Beam Team and Last Rung in. Tilt Deck is next.)*
+Wall Rush, Beam Team, Last Rung and Tilt Deck in. Log Jam is next.)*
+
+**Comb Collapse is bimodal and wants a play-test.** Once the pack was
+actually on the field, its fuse turned out to be a cliff rather than a dial:
+1.7s gives a median of 29s with the cut reached, 1.9s gives a full minute
+with one or two out, and there is very little in between -- the cascade
+either catches or it does not. It is set to 1.9 because that is the side
+that passes the acceptance, but which side is the better round is a
+judgement to make by playing it.
 
 **A round can pass its own section check and never happen.** Comb Collapse
 shipped with a check that dropped a hex under a teleported probe, a generator

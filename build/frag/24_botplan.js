@@ -396,6 +396,27 @@
         return best === null ? false : set(best, 0.5);
       }
 
+      case 'tiltdeck': {
+        // Cross on the high side. A bot that walks the middle is fine on its
+        // own and is a disaster in a pack of twenty-four, because the middle is
+        // where everyone else is and the deck goes wherever they all are.
+        let dk = null, best = 1e9;
+        for(const d of o.decks){
+          const gap = d.y + d.d/2 - r.y;             // the near edge we are heading for
+          if(gap < -d.d) continue;
+          if(gap < best){ best = gap; dk = d; }
+        }
+        if(!dk) return set(r.x, 1);
+        const on = Math.abs(r.x-dk.cx) <= dk.w/2 && Math.abs(r.y-dk.y) <= dk.d/2;
+        // Uphill of the lean, by a third of the deck. Not the far edge -- the
+        // far edge is off it.
+        const want = clamp(dk.cx - dk.tx*dk.w*0.34, dk.cx - dk.w*0.40, dk.cx + dk.w*0.40);
+        // and hop the step between decks
+        if(!on && r.h <= 0 && r.stumbleT <= 0 && best > 0 && best - dk.d < 130 && best - dk.d > 0)
+          doJump(r);
+        return set(want, 1);
+      }
+
       case 'plank': {
         // Pick a plank and stay on it; time the hammer the way the hammer plan
         // does. The pendulum sits inside the bridge's own span, so it is never

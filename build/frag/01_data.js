@@ -366,6 +366,11 @@
       objective:'JUMP THE LOW ONES, DIVE THE HIGH ONES!',
       round1Total:9200, forcedGap:false, obstacles:['beam','laserbar','narrow','gate'] },
 
+    { key:'tiltdeck', name:'Tilt Deck', tip:'The decks lean toward whoever is standing on them. Cross on the high side, or cross fast.',
+      ground:'#fcd34d', groundAlt:'#f59e0b', wall:'#78350f', wallTop:'#38bdf8', skyTop:'#fef3c7', skyMid:'#fbbf24', skyBot:'#fff7ed', accent:'#38bdf8',
+      objective:'RACE TO THE FINISH!',
+      round1Total:9000, forcedGap:false, obstacles:['tiltdeck','narrow','ramp','pillars','gate'] },
+
     { key:'slimeslope', name:'Slime Slope', tip:'The floor flows sideways. Aim upstream of where you want to land.',
       ground:'#a7f3a0', groundAlt:'#6ee76a', wall:'#14532d', wallTop:'#ffcb3d', skyTop:'#d9fbd6', skyMid:'#5ec95a', skyBot:'#fdf6c0', accent:'#ffcb3d',
       objective:'RACE TO THE FINISH!',
@@ -496,6 +501,22 @@
     // only thing it asks is whether you read a bar's height in time, so
     // nothing else is allowed on the course to muddy the answer -- one gate
     // near the middle to break the rhythm up, and that is all.
+    // Tilt Deck: three decks on a pivot, three times, with something that
+    // wants you on a line in between each set -- being shoved off the middle of
+    // a deck has to cost you on the next thing, or leaning is just scenery.
+    tiltdeck: [
+      { type:'start',    len:700 },
+      { type:'tiltdeck', len:1300 },
+      { type:'narrow',   len:720, turn:+20 },
+      { type:'hammer',   len:760 },
+      { type:'tiltdeck', len:1300, turn:-24 },
+      { type:'spinbar',  len:700 },
+      { type:'gate',     len:640, turn:+18 },
+      { type:'tiltdeck', len:1300 },
+      { type:'narrow',   len:700, bias:120 },
+      { type:'finish',   len:580 }
+    ],
+
     hopduck: [
       { type:'start',   len:700 },
       { type:'beam',    len:760 },

@@ -1736,6 +1736,11 @@ const QUALITY = {
       objective:'JUMP THE LOW ONES, DIVE THE HIGH ONES!',
       round1Total:9200, forcedGap:false, obstacles:['beam','laserbar','narrow','gate'] },
 
+    { key:'tiltdeck', name:'Tilt Deck', tip:'The decks lean toward whoever is standing on them. Cross on the high side, or cross fast.',
+      ground:'#fcd34d', groundAlt:'#f59e0b', wall:'#78350f', wallTop:'#38bdf8', skyTop:'#fef3c7', skyMid:'#fbbf24', skyBot:'#fff7ed', accent:'#38bdf8',
+      objective:'RACE TO THE FINISH!',
+      round1Total:9000, forcedGap:false, obstacles:['tiltdeck','narrow','ramp','pillars','gate'] },
+
     { key:'slimeslope', name:'Slime Slope', tip:'The floor flows sideways. Aim upstream of where you want to land.',
       ground:'#a7f3a0', groundAlt:'#6ee76a', wall:'#14532d', wallTop:'#ffcb3d', skyTop:'#d9fbd6', skyMid:'#5ec95a', skyBot:'#fdf6c0', accent:'#ffcb3d',
       objective:'RACE TO THE FINISH!',
@@ -1866,6 +1871,22 @@ const QUALITY = {
     // only thing it asks is whether you read a bar's height in time, so
     // nothing else is allowed on the course to muddy the answer -- one gate
     // near the middle to break the rhythm up, and that is all.
+    // Tilt Deck: three decks on a pivot, three times, with something that
+    // wants you on a line in between each set -- being shoved off the middle of
+    // a deck has to cost you on the next thing, or leaning is just scenery.
+    tiltdeck: [
+      { type:'start',    len:700 },
+      { type:'tiltdeck', len:1300 },
+      { type:'narrow',   len:720, turn:+20 },
+      { type:'hammer',   len:760 },
+      { type:'tiltdeck', len:1300, turn:-24 },
+      { type:'spinbar',  len:700 },
+      { type:'gate',     len:640, turn:+18 },
+      { type:'tiltdeck', len:1300 },
+      { type:'narrow',   len:700, bias:120 },
+      { type:'finish',   len:580 }
+    ],
+
     hopduck: [
       { type:'start',   len:700 },
       { type:'beam',    len:760 },
@@ -3125,7 +3146,10 @@ const QUALITY = {
         if(x<hexR*0.5 || x>TRACK_W-hexR*0.5 || y>yEnd) continue;
         const tiers=[];
         for(let ti=0; ti<TIERS.length; ti++){
-          const missing = ti>0 && Math.random() < 0.09*ti;
+          // Half what it was. A quarter of the bottom tier missing at the gun
+          // is a cascade already started: the round swung between fourteen
+          // seconds and the full minute depending on where those holes fell.
+          const missing = ti>0 && Math.random() < 0.045*ti;
           const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
                       // the bottom rung of the final is spent for good
                       noBack: isFinal && ti===TIERS.length-1,
@@ -3150,12 +3174,12 @@ const QUALITY = {
                 // actually walking on it, that pair ate the field in six
                 // seconds. These are Panel Drop's shape -- a fuse you can beat
                 // and a rebuild that keeps up with twenty-four of them.
-                fuseTime: isFinal ? 1.6 : (hard?1.4:1.7),
+                fuseTime: isFinal ? 1.6 : (hard?1.6:1.9),
                 // The final's top rung comes back quicker than the survival
                 // round's, not slower: with only two rungs and the lower one
                 // spent for good, a slow rebuild on top of that took eight
                 // racers down to two in under six seconds.
-                respawnTime: isFinal ? 2.0 : 1.7});
+                respawnTime: isFinal ? 2.0 : 1.5});
       arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }
@@ -3418,6 +3442,45 @@ const QUALITY = {
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
+    } else if(type==='tiltdeck'){
+      // Three big decks on a pivot with a step between them. A deck leans the
+      // way the weight on it leans, and what is standing on it slides downhill,
+      // which leans it further -- so a pack that all takes the same line tips
+      // itself off, and the way across is to spread out or to be quick.
+      //
+      // The step between decks is in the jump band from §2: you clear it on a
+      // plain jump, so the section is about the lean and not about the gap.
+      // Full width, touching, lined up. Anything narrower is a hazard the
+      // section cannot be entered past: racers arrive spread across the whole
+      // track, so a deck at 0.72 of it dropped everyone outside its edges the
+      // instant they reached it, respawned them in front of it at the same x,
+      // and did it again -- four hundred falls a round and a pack that never
+      // got through the first deck. The lean is the hazard here, and what it
+      // costs you is your line, not the floor: every set of decks is followed
+      // by something you have to be on a line for.
+      const n = 3, dw = TRACK_W, dd = 340;
+      const decks = [];
+      let dy = cursor + gap + 150;
+      for(let i=0;i<n;i++){
+        decks.push({ cx, y: dy + dd/2, w: dw, d: dd, tx: 0, ty: 0 });
+        dy += dd;
+      }
+      // Exactly the decks, with nothing either side of them. At plus and minus
+      // eight there was an eight-unit band at each end that counted as inside
+      // the section and stood on no deck, so every racer entering it fell
+      // through the doormat -- four hundred falls a round, and none of them
+      // anything to do with the lean.
+      const yStart2 = decks[0].y - dd/2, yEnd2 = decks[n-1].y + dd/2;
+      obs.push({type:'tiltdeck', yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+40,
+                decks, w:dw, d:dd,
+                // radians at full lean, and how much of one a crowd all on one
+                // side is worth
+                maxTilt: hard ? 0.23 : 0.19, lean: 2.4, spring: 2.4,
+                // how many on one side it takes to put a deck all the way over
+                hold: 5,
+                // per frame, downhill, at full lean
+                slide: hard ? 0.34 : 0.28});
+      cursor = yEnd2 + 90;
     } else if(type==='plank'){
         // Two or three narrow planks side by side over a drop, with a hammer
         // on a rope swinging across the middle of them. Pick a plank, time the
@@ -4280,6 +4343,28 @@ const QUALITY = {
           out.position.copy(mesh.position); courseGroup.add(out);
           return mesh;
         });
+      } else if(o.type==='tiltdeck'){
+        o.meshes = o.decks.map(dk=>{
+          const g = new THREE.Group();
+          const slab = new THREE.Mesh(THREE.RoundedBox(dk.w, 22, dk.d),
+            new FloorMat({map:checkerTexture(floorHex, floorAltHex, 4)}));
+          slab.position.y = -11; slab.receiveShadow = true; g.add(slab);
+          // A rim in the accent, because a deck you cannot see the edge of is a
+          // deck you walk off without knowing it was there.
+          const rimMat = new THREE.MeshLambertMaterial({color:accents[0]});
+          [[dk.w+10, 9, 14, 0, dk.d/2], [dk.w+10, 9, 14, 0, -dk.d/2],
+           [14, 9, dk.d+10, dk.w/2, 0], [14, 9, dk.d+10, -dk.w/2, 0]].forEach(b=>{
+            const m = new THREE.Mesh(new THREE.BoxGeometry(b[0], b[1], b[2]), rimMat);
+            m.position.set(b[3], 3, b[4]); g.add(m);
+          });
+          placeAt(g, dk.cx, dk.y, 0);
+          courseGroup.add(g);
+          // the pivot, drawn separately so it does not tilt with the deck
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(26, 34, 120, 12),
+            new THREE.MeshLambertMaterial({color:paleWall}));
+          placeAt(post, dk.cx, dk.y, -60); courseGroup.add(post);
+          return g;
+        });
       } else if(o.type==='hammer'){
         const xs=o.items.map(i=>i.pivotX);
         const beam=new THREE.Mesh(THREE.RoundedBox(Math.max(...xs)-Math.min(...xs)+40,8,8), poleMat);
@@ -4423,6 +4508,14 @@ const QUALITY = {
           // fallen slabs sink and fade rather than blinking out
           placeAt(m, sl.x, sl.y, o.h - sl.drop*150);
           m.visible = sl.drop < 0.99;
+        });
+      }
+      else if(o.type==='tiltdeck'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const dk = o.decks[i];
+          // z is the course's y, so a lean along y is a rotation about x
+          m.rotation.z =  dk.tx*o.maxTilt;
+          m.rotation.x = -dk.ty*o.maxTilt;
         });
       }
       else if(o.type==='pusher'){ o.meshes.forEach((m,i)=>{ placeAt(m, platX(o.items[i],t), o.y, 17); }); }
@@ -6312,6 +6405,27 @@ const QUALITY = {
         const dir = Math.sign(o.speed) || 1;
         if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
         o.ang += o.speed*dt;
+      } else if(o.type==='tiltdeck'){
+        for(const dk of o.decks){
+          let sx = 0, sy = 0, n = 0;
+          for(const r of racers){
+            if(r.lavaOut || r.falling || r.h > 40) continue;
+            if(Math.abs(r.x-dk.cx) > dk.w/2 || Math.abs(r.y-dk.y) > dk.d/2) continue;
+            sx += (r.x-dk.cx)/(dk.w/2); sy += (r.y-dk.y)/(dk.d/2); n++;
+          }
+          // Weight, not position. Divided by the count alone this was the mean
+          // offset, so one racer standing at the edge tipped the deck as hard as
+          // twenty did -- which is not what a deck on a pivot does and not what
+          // the round is called. Dividing by at least `hold` racers instead
+          // makes the first few of them count for what they weigh: one at the
+          // edge is a lean you can feel, five is the deck going over.
+          const w = Math.max(o.hold, n);
+          const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
+          const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
+          const k = Math.min(1, o.spring*dt);
+          dk.tx += (tX - dk.tx)*k;
+          dk.ty += (tY - dk.ty)*k;
+        }
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
         if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
@@ -6664,6 +6778,25 @@ const QUALITY = {
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
+      const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
+      if(td){
+        // A little tolerance at the seams: the decks touch, and a racer exactly
+        // on the join between two of them is on both, not on neither.
+        const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
+        // Between two decks is a step you jump, so only a racer with their feet
+        // down is over nothing.
+        if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+          const ox = r.x-dk.cx, oy = r.y-dk.y;
+          // the surface, so the camera and the feet agree about where the floor is
+          r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
+          r.onDeck = dk;
+          if(r.h <= 0.5 && r.tumbleT <= 0){
+            r.vx += dk.tx*td.slide;
+            r.vy += dk.ty*td.slide;
+          }
+        }
+      } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
@@ -6726,7 +6859,7 @@ const QUALITY = {
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck) r.floorH = 0;
 
     // ---- terrain (v24 §2.8) ------------------------------------------------
     // Slime and bounce pads are ground, not hazards, so they go above the
@@ -7882,6 +8015,27 @@ const QUALITY = {
           if(d < bestD){ bestD = d; best = px; }
         }
         return best === null ? false : set(best, 0.5);
+      }
+
+      case 'tiltdeck': {
+        // Cross on the high side. A bot that walks the middle is fine on its
+        // own and is a disaster in a pack of twenty-four, because the middle is
+        // where everyone else is and the deck goes wherever they all are.
+        let dk = null, best = 1e9;
+        for(const d of o.decks){
+          const gap = d.y + d.d/2 - r.y;             // the near edge we are heading for
+          if(gap < -d.d) continue;
+          if(gap < best){ best = gap; dk = d; }
+        }
+        if(!dk) return set(r.x, 1);
+        const on = Math.abs(r.x-dk.cx) <= dk.w/2 && Math.abs(r.y-dk.y) <= dk.d/2;
+        // Uphill of the lean, by a third of the deck. Not the far edge -- the
+        // far edge is off it.
+        const want = clamp(dk.cx - dk.tx*dk.w*0.34, dk.cx - dk.w*0.40, dk.cx + dk.w*0.40);
+        // and hop the step between decks
+        if(!on && r.h <= 0 && r.stumbleT <= 0 && best > 0 && best - dk.d < 130 && best - dk.d > 0)
+          doJump(r);
+        return set(want, 1);
       }
 
       case 'plank': {
