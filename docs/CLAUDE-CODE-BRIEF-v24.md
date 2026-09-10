@@ -113,6 +113,32 @@ Wall Rush replaces it.
 pane reports 0 x 0, which would make it pass by testing nothing, so it refuses to
 run instead. Size the tab (1280x720) before running the suite.
 
+**Sunny Sprint is under the home floor, and the cause is the course.** On the
+"would finish" metric over ten seeds it reads 15.5 of 23 against a floor of 18.
+Everything else clears it. What the bots are failing at, measured:
+
+    discField@8332-9500   essentially every fall on the map
+    safe line (col0)      6 discs, gaps of 62, a 36-unit zig each hop
+    hard line (col1)      5 discs, gaps of 120, straight
+    where they land       24 of 31 falls are 0-8 units past the rim,
+                          feet down, still going forward at vy 4.6-6.9
+
+They are missing by single digits, on the safe line, at the end of the longest
+race on the roster. One real bot-plan bug was found and fixed -- the hop
+launched up to thirty units before the rim, so a sixty-two unit gap was flown as
+ninety-odd of air against a jump that reaches about ninety. Three further
+attempts made it worse or made no difference:
+
+    freeze the disc rotation      no change (36-42 falls vs 41-46)
+    line up within 12, not 26     worse: 18 home -> 15
+    full throttle inside 58       no better, and noisier
+
+That is the signature of a course at the edge of what the movement model can do,
+not of a plan that can be taught. Sunny is also the longest map (10,300 against
+8,600-9,600) and carries that field in its last twelve per cent, so a fall there
+costs a respawn, a section of push-back from the repeat-fall rule, and the round.
+Left alone pending a decision.
+
 ## How "no gameplay number moved" is proved
 
 A menu or look pass must not change how the game plays. Matching acceptance

@@ -38,6 +38,36 @@ new = ("  function loop(now){" + chr(10)
 assert s.count(old) == 1, "loop anchor: %d" % s.count(old)
 s = s.replace(old, new)
 
+# ---- __fullTime: let the clock run -------------------------------------
+# The acceptance asks how many bots would get home, which is a question about
+# the course. The three rules below end a round early on purpose -- twenty
+# seconds after the first finisher once enough are home -- which is a good thing
+# in play and a measurement of itself rather than of the course. Test build
+# only: with __fullTime set, the round runs to its time limit and the harness
+# derives what the early-end rule would have counted from the finish times.
+old = """    if(isFinal && fin.length && raceTime-firstFinish>6) allDone=true;                      // winner crowned, short grace
+    if(!isFinal && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;      // one straggler left
+    if(!isFinal && fin.length>=keepN && raceTime-firstFinish>20) allDone=true;              // cut-off after the leaders"""
+new = """    if(!window.__fullTime){
+    if(isFinal && fin.length && raceTime-firstFinish>6) allDone=true;                      // winner crowned, short grace
+    if(!isFinal && fin.length>=racers.length-1 && raceTime-lastFinish>4) allDone=true;      // one straggler left
+    if(!isFinal && fin.length>=keepN && raceTime-firstFinish>20) allDone=true;              // cut-off after the leaders
+    }"""
+assert s.count(old) == 1, "early-end anchor: %d" % s.count(old)
+s = s.replace(old, new)
+
+
+# ---- where every fall happens (test build only)
+old = "  function fallDown(r){" + chr(10) + "    if(!r.isPlayer){"
+new = ("  function fallDown(r){" + chr(10)
+       + "    (window.__fallLog=window.__fallLog||[]).push((function(){ const e={x:Math.round(r.x), y:Math.round(r.y), h:+r.h.toFixed(1), vy:+r.vy.toFixed(1), n:r.isPlayer?'YOU':r.name};"
+       + " for(const o of obstacles){ if(o.type!=='discField') continue; if(r.y<o.y0-40||r.y>o.y1+40) continue;"
+       + " let bc=null,bd=1e9; for(const c of o.cells){ const d=Math.hypot(r.x-c.x, r.y-c.y); if(d<bd){bd=d;bc=c;} }"
+       + " if(bc){ e.near=Math.round(bd); e.rim=Math.round(bd-bc.r); e.col=bc.col; e.row=bc.row; } } return e; })());" + chr(10)
+       + "    if(!r.isPlayer){")
+assert s.count(old) == 1, "fallDown anchor: %d" % s.count(old)
+s = s.replace(old, new)
+
 CHECKS = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "checks.js"),
                  encoding="utf-8").read()
 
@@ -163,7 +193,7 @@ hook = """
     me:()=>{ const p=racers.find(r=>r.isPlayer); return {x:Math.round(p.x), y:Math.round(p.y), h:+p.h.toFixed(2), vh:+p.vh.toFixed(2), vx:+p.vx.toFixed(2), vy:+p.vy.toFixed(2), tum:Math.round(p.tumbleT||0), stum:Math.round(p.stumbleT||0), inv:Math.round(p.invuln||0), getUp:Math.round(p.getUpT||0), falling:!!p.falling, floor:Math.round(p.floorH||0), spin:+(p.tumbleSpin||0).toFixed(2), tumbles:p.__tumbles||0}; },
     setMe:(o)=>{ const p=racers.find(r=>r.isPlayer); Object.assign(p,o); return window.__dbg.me(); },
     obsDump:(ty)=>obstacles.filter(o=>!ty||o.type===ty).map(o=>({t:o.type, y:Math.round(o.y!==undefined?o.y:o.yStart), y0:Math.round(o.y0), y1:Math.round(o.y1), cx:o.cx===undefined?null:Math.round(o.cx), hw:o.halfWidth===undefined?null:Math.round(o.halfWidth), xs:o.xs?o.xs.map(Math.round):null, items:(o.items||[]).map(i=>Math.round(i.x===undefined?(i.pivotX||0):i.x))})),
-    bots:()=>racers.filter(r=>!r.isPlayer).map(r=>({n:r.name, x:Math.round(r.x), y:Math.round(r.y), h:+r.h.toFixed(1), vh:+r.vh.toFixed(1), vy:+r.vy.toFixed(2), tx:Math.round(r.targetX||0), thr:r.aiThrottle, falls:r.fallCount, hf:r.holeFalls||{}, falling:!!r.falling, esc:+(r.escapeT||0).toFixed(1), pw:r.pitWait?{xw:Math.round(r.pitWait.xWait), c:r.pitWait.committed, w:+r.pitWait.waited.toFixed(1), f:r.pitWait.falls}:null})),
+    bots:()=>racers.filter(r=>!r.isPlayer).map(r=>({n:r.name, x:Math.round(r.x), y:Math.round(r.y), h:+r.h.toFixed(1), vh:+r.vh.toFixed(1), vy:+r.vy.toFixed(2), tx:Math.round(r.targetX||0), thr:r.aiThrottle, falls:r.fallCount, ad:r.__airDives||0, route:+(r.aiRoute||0).toFixed(2), hf:r.holeFalls||{}, falling:!!r.falling, esc:+(r.escapeT||0).toFixed(1), pw:r.pitWait?{xw:Math.round(r.pitWait.xWait), c:r.pitWait.committed, w:+r.pitWait.waited.toFixed(1), f:r.pitWait.falls}:null})),
     pits:()=>obstacles.filter(o=>o.type==='pit').map(o=>({y0:Math.round(o.y0), y1:Math.round(o.y1), plats:o.platforms.map(p=>({b:Math.round(p.baseX), a:Math.round(p.amp), s:+p.speed.toFixed(2), w:Math.round(p.width)}))})),
     holeFalls:()=>{ const t={}; for(const r of racers){ if(r.isPlayer) continue; for(const k in (r.holeFalls||{})) t[k]=(t[k]||0)+r.holeFalls[k]; } return t; },
     obsKeys:()=>obstacles.filter(o=>o.yStart!==undefined).map(o=>obsKey(o)+':'+o.type+'@'+Math.round(o.yStart)),
@@ -181,6 +211,17 @@ hook = """
       return { plate: p?{yNear:p.yNear, yFar:p.yFar, w:p.w}:null,
                walls: obstacles.filter(o=>o.type==='blockwall').map(o=>({ wy:Math.round(o.wy), gapStart:o.gapStart, travel:Math.round(o.travel||0), xs:o.items.map(i=>Math.round(i.x)) })),
                racers: racers.map(r=>({ n:r.isPlayer?'YOU':r.name, x:Math.round(r.x), y:Math.round(r.y), out:!!r.lavaOut, fall:!!r.falling })) }; },
+    fallLog:()=>{ const l=window.__fallLog||[]; window.__fallLog=[]; return l; },
+    freezeDiscs:()=>{ let n=0; for(const o of obstacles) if(o.type==='discField') for(const c of o.cells){ c.speed=0; n++; } return n; },
+    discGaps:()=>obstacles.filter(o=>o.type==='discField').map(o=>{
+      const g={};
+      for(const col of [0,1]){
+        const cs=o.cells.filter(c=>c.col===col).sort((a,b)=>a.row-b.row);
+        g['col'+col]={ n:cs.length, gaps:cs.slice(1).map((c,i)=>Math.round(c.y-cs[i].y-o.r*2)),
+                       dx:cs.slice(1).map((c,i)=>Math.round(Math.abs(c.x-cs[i].x))) };
+      }
+      return { y0:Math.round(o.yStart), y1:Math.round(o.yEnd), r:o.r, airGaps:o.airGaps, cols:g };
+    }),
     obsTypes:()=>{ const h={}; for(const o of obstacles) h[o.type]=(h[o.type]||0)+1; return h; },
     wipe:()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} return 'cleared'; },
     info:()=>{

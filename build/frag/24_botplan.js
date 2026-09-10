@@ -533,7 +533,18 @@
           const bq = px*ux + py*uy, cq = px*px + py*py - cur.r*cur.r;
           const toEdge = -bq + Math.sqrt(Math.max(0, bq*bq - cq));
           const hop = gdist - cur.r - g.r;              // the air, edge to edge
-          if(r.h <= 0 && toEdge < (hop > BOT_DIVE_GAP ? 44 : 30)) botLaunch(r, hop);
+          // As late as the deck allows. A fixed thirty-unit window meant a bot
+          // left the ground up to thirty units before the rim, so Sunny's
+          // sixty-two unit gaps were flown as ninety-odd of air against a jump
+          // that reaches about ninety -- and it landed a couple of units short
+          // of the next disc, with its feet down and still going forward.
+          // Measured before: twenty-two of twenty-nine falls in that field, at
+          // a median of two units past the rim.
+          //
+          // The window is what the racer covers in the next frame or so
+          // instead, which is the last moment it can still push off ground.
+          const step = Math.hypot(r.vx, r.vy);
+          if(r.h <= 0 && toEdge < Math.max(7, step*1.25 + 3)) botLaunch(r, hop);
           return set(g.x, 1);
         }
         // In the air over a gap: hold the line to the disc we committed to.

@@ -2270,7 +2270,10 @@
   // to finish first or top-three on 8 of 13 race maps. Judged over five layouts
   // per map and on medians, because a single unlucky course should not fail a
   // build -- and a single lucky one should not pass it.
-  const ACCEPT_SEEDS = 5;
+  // Ten, not five. At five, "hurt in four of five" and "hurt in three of five"
+  // are one seed apart, and a map was being judged -- and nearly tuned -- on a
+  // single run's luck.
+  const ACCEPT_SEEDS = 10;
   function median(xs){
     const a = [...xs].sort((p,q)=>p-q);
     return a.length % 2 ? a[(a.length-1)/2] : (a[a.length/2 - 1] + a[a.length/2])/2;
@@ -2290,10 +2293,21 @@
     // your line, and what that costs you is the narrow section that follows
     // every set of decks. So: hurt like the others, and falls only where
     // being off-line put you.
+    // How many of the twenty-three bots have to get down the course inside the
+    // time limit. Measured with the early-end rules off, so this is the course
+    // and not the twenty-second cut-off after the leaders.
+    const HOME_MIN = 18;
     const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2, tiltdeck:1, logjam:2 };
     const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8, tiltdeck:5, logjam:6 };
 
-    function playThrough(key){
+    // `fullTime` switches off the early-end rules for the run. It is how the
+    // "would finish" count is measured: how many bots get down the course
+    // inside the round's own time limit, which is a question about the course.
+    // The old count -- how many were home at the moment the round actually
+    // ended -- is derived from the same run's finish times rather than played
+    // again, so both numbers cost one run.
+    function playThrough(key, fullTime){
+      window.__fullTime = !!fullTime;
       begin(key);
       const L = trackLength, limit = timeLimit;
       window.__dbg.hold('w', true);
@@ -2327,11 +2341,30 @@
       window.__dbg.hold(settings.keys.jump, false);
       window.__dbg.hold('w', false);
       const sorted = [...racers].sort(rankCompare);
+      window.__fullTime = false;
       const me = racers.find(r=>r.isPlayer);
       const bots = racers.filter(r=>!r.isPlayer);
       const finTimes = bots.filter(b=>b.finished).map(b=>b.finishTime);
+
+      // What the early-end rule would have stopped the round at, worked out
+      // from the finish times of the run we just played: the first moment at
+      // which enough racers were home AND twenty seconds had passed since the
+      // leader, or the straggler rule, or the clock -- whichever came first.
+      const all = racers.filter(r=>r.finished).map(r=>r.finishTime).sort((a,b)=>a-b);
+      const keepN = survivorsAfter(1, racers.length);
+      let earlyEnd = limit;
+      if(all.length){
+        if(all.length >= keepN)             earlyEnd = Math.min(earlyEnd, Math.max(all[keepN-1], all[0]+20));
+        if(all.length >= racers.length-1)   earlyEnd = Math.min(earlyEnd, all[racers.length-2]+4);
+      }
+      const homeAtEnd = bots.filter(b=>b.finished && b.finishTime <= earlyEnd).length;
+
       return {
         secs: Math.round(ticks/60), limit, outAt,
+        // how many bots would get down the course inside the time limit
+        wouldFinish: bots.filter(b=>b.finished || b.y>=L).length,
+        // and how many the round-end rule would have counted -- reported only
+        homeAtEnd,
         // when the field gets home: the v20 brief wants this between 35 and 50 s
         medFinish: finTimes.length ? Math.round(median(finTimes)) : null,
         rank: sorted.findIndex(r=>r.isPlayer)+1,
@@ -2344,23 +2377,28 @@
 
     for(const key of RACES){
       const runs = [];
-      for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key));
+      for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key, true));
       const gapless = !runs.some(()=>false) && (MAPS.find(m=>m.key===key)||{}).forcedGap === false;
       const hurtIn   = runs.filter(r=>r.hurt >= 2).length;
       const medFalls = median(runs.map(r=>r.worstBotFalls));
-      const medHome  = median(runs.map(r=>r.finished));
+      const medHome  = median(runs.map(r=>r.wouldFinish));      // judged on this
+      const medAtEnd = median(runs.map(r=>r.homeAtEnd));        // reported only
       const medStill = median(runs.map(r=>r.stillest));
       const wonAny   = runs.filter(r=>r.rank === 1).length;
       const medFin   = median(runs.map(r=>r.medFinish===null ? 999 : r.medFinish));
       report[key] = 'hurt '+hurtIn+'/'+ACCEPT_SEEDS+(gapless?' (no forced hole)':'')+', worst-bot falls med '+medFalls
-                    +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' home, still '+medStill+'s'
-                    +', field home at '+medFin+'s';
+                    +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' would finish ('+medAtEnd
+                    +' home at the round end), still '+medStill+'s, field home at '+medFin+'s';
       if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+ACCEPT_SEEDS);
-      const needHurt = HURT_MIN[key]===undefined ? 4 : HURT_MIN[key];
+      // The per-map minimums were written against five seeds; they are shares
+      // of the seeds, not counts, so they scale rather than getting stricter.
+      const seedScale = (n)=>Math.round(n*ACCEPT_SEEDS/5);
+      const needHurt = seedScale(HURT_MIN[key]===undefined ? 4 : HURT_MIN[key]);
       const capFalls = FALL_MAX[key]===undefined ? 5 : FALL_MAX[key];
       if(hurtIn < needHurt)   bad.push(key+': hurt in only '+hurtIn+' of '+ACCEPT_SEEDS+', want '+needHurt);
       if(medFalls > capFalls) bad.push(key+': median worst-bot falls '+medFalls+', cap '+capFalls);
-      if(medHome < 10) bad.push(key+': median '+medHome+' bots home');
+      // 18 of 23, on the course rather than on the round-end rule
+      if(medHome < HOME_MIN) bad.push(key+': median '+medHome+' of 23 would finish, want '+HOME_MIN);
       if(medStill > 4) bad.push(key+': a bot idled '+medStill+'s');
     }
 
@@ -2409,9 +2447,12 @@
       if(shape.enforce) for(const m of miss) bad.push(m);
     }
 
-    return { name:'+ acceptance: five layouts a map, judged on medians',
+    // The numbers print either way. A failing acceptance that shows only what
+    // it objected to makes you re-run the whole thing to find out what the
+    // other fourteen maps did.
+    return { name:'+ acceptance: '+ACCEPT_SEEDS+' layouts a map, judged on medians',
              pass: bad.length===0,
-             detail: bad.length ? bad.join('; ') : JSON.stringify(report) };
+             detail: (bad.length ? 'UNDER: '+bad.join('; ')+' | ' : '') + JSON.stringify(report) };
   }
 
   // ---------- H: the match still cuts 24 -> 16 -> 8 ----------
