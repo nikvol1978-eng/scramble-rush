@@ -45,17 +45,32 @@
     // Half the radius it was. At 40/46 the podium was wider than the bean is
     // tall and read as the subject of the shot; the character is what the
     // lobby is for.
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(20,23,16,40),
+    // v24 §5.2: a squat drum, not a dish. The reference stands its character
+    // on something barely wider than the character -- so the eye reads the
+    // stumbler and takes the podium as a plinth. Ours was a layered cake 54
+    // across against a bean 25 across, which is two and a bit bean-widths and
+    // reads as furniture. This is 35 across: 1.4 bean-widths, as asked.
+    const DRUM_R = RIG.maxR*1.4;                  // 17.4 -- 1.4 bean-widths across
+    // Squat: wider than it is tall, or it reads as a barrel the character is
+    // standing on top of rather than a plinth it is standing in front of.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R, DRUM_R*1.05, 15, 40),
       new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
-    ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
-    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(25,27,8,40),
+    ped.position.y=-RADIUS-8.5; ped.receiveShadow=true; previewGroup.add(ped);
+    // A lighter top face, so the drum has a lid rather than being a flat pink
+    // shape, and a dark band under it for the same reason.
+    const pedTop=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.03, DRUM_R*1.03, 4, 40),
+      new THREE.MeshToonMaterial({color:0xff86c0, gradientMap:toonRamp()}));
+    pedTop.position.y=-RADIUS-1; pedTop.receiveShadow=true; previewGroup.add(pedTop);
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.10, DRUM_R*1.14, 7, 40),
       new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
-    pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
+    pedBase.position.y=-RADIUS-18; pedBase.receiveShadow=true; previewGroup.add(pedBase);
     lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
       new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
     lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
     previewGroup.add(lobbyBackdrop);
-    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,32),
+    // The gold ring follows the drum in rather than staying at the old width,
+    // where it would now hang off the edge of it.
+    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.06, DRUM_R*1.06, 3, 32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
 
@@ -262,7 +277,10 @@
     // Closer while the locker is open, not further away: the character is the
     // subject of this screen and was being framed like scenery.
     // In close on the lobby: the bean should be the biggest thing on screen.
-    const camZ = (profOpen && W>=861) ? -150 : -104;
+    // Closer again on the lobby now the podium is not competing for the frame:
+    // the reference gives its character a little over half the screen height,
+    // and at -104 with the old wide dish ours was nearer a third.
+    const camZ = (profOpen && W>=861) ? -150 : -86;
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);

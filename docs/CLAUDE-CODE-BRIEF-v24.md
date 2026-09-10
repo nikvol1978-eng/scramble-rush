@@ -29,7 +29,7 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5.1 shared chrome is committed. §5.2, the lobby, is next.)*
+*(§5.1 and §5.2 are committed. §5.3, the locker, is next.)*
 
 ## How "no gameplay number moved" is proved
 

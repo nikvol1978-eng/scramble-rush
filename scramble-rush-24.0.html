@@ -450,17 +450,21 @@
   #home.lobby > *{pointer-events:auto;}
   .lobbyTop{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;width:100%;gap:12px;}
   .lobbyBrand{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;}
-  .wordmark{display:flex;flex-direction:column;line-height:0.86;font-size:clamp(1.9rem,4.6vw,3.2rem);transform:rotate(-3deg);
+  /* v24 §5.2: about a fifth of the width, as the reference has it. Ours ran to
+     4.6vw and at 1280 the wordmark alone was 40% of the screen, which is why
+     the tab strip had nowhere to sit and why the character never looked like
+     the subject. The brand is a corner mark here, not a title card. */
+  h1.title.wordmark{display:flex;flex-direction:column;line-height:0.86;font-size:clamp(1.25rem,2.5vw,2.0rem);transform:rotate(-3deg);
     text-shadow:0 5px 0 var(--line);animation:wordIn .7s cubic-bezier(.2,1.5,.4,1) both;}
   .wordmark .w1{color:var(--pink);-webkit-text-stroke:2.5px var(--line);}
   .wordmark .w2{color:var(--gold);-webkit-text-stroke:2.5px var(--line);margin-left:0.5em;}
   @keyframes wordIn{from{transform:rotate(-3deg) translateY(-24px) scale(0.85);opacity:0}60%{transform:rotate(-3deg) translateY(4px) scale(1.04);opacity:1}to{transform:rotate(-3deg);opacity:1}}
-  .seasonTag{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(1rem,2vw,1.4rem);color:var(--cream);-webkit-text-stroke:1.5px var(--line);text-shadow:0 3px 0 var(--line);margin-top:4px;letter-spacing:1px;}
+  .seasonTag{font-family:'Fredoka',sans-serif;font-weight:700;font-size:clamp(0.8rem,1.35vw,1.05rem);color:var(--cream);-webkit-text-stroke:1.5px var(--line);text-shadow:0 3px 0 var(--line);margin-top:4px;letter-spacing:1px;}
   .seasonLbl{font-weight:700;font-size:0.72rem;color:var(--line);letter-spacing:1px;margin-top:8px;}
   .seasonBar{display:flex;align-items:center;gap:8px;}
-  .lvlBadge{width:38px;height:38px;border-radius:12px;background:var(--pink);color:var(--cream);border:3px solid var(--line);box-shadow:0 3px 0 var(--line);
+  .lvlBadge{width:34px;height:34px;border-radius:11px;background:var(--pink);color:var(--cream);border:3px solid var(--line);box-shadow:0 3px 0 var(--line);
     display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.05rem;transform:rotate(-6deg);}
-  .seasonTrack{position:relative;width:min(230px,34vw);height:22px;background:var(--cream);border:3px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 3px 0 var(--line);}
+  .seasonTrack{position:relative;width:min(210px,20vw);height:20px;background:var(--cream);border:3px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 3px 0 var(--line);}
   .seasonFill{height:100%;width:0%;background:linear-gradient(90deg,var(--pink),#ff7ac0);transition:width .4s;}
   .seasonText{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:0.72rem;color:var(--line);}
 
@@ -8255,17 +8259,32 @@ const QUALITY = {
     // Half the radius it was. At 40/46 the podium was wider than the bean is
     // tall and read as the subject of the shot; the character is what the
     // lobby is for.
-    const ped=new THREE.Mesh(new THREE.CylinderGeometry(20,23,16,40),
+    // v24 §5.2: a squat drum, not a dish. The reference stands its character
+    // on something barely wider than the character -- so the eye reads the
+    // stumbler and takes the podium as a plinth. Ours was a layered cake 54
+    // across against a bean 25 across, which is two and a bit bean-widths and
+    // reads as furniture. This is 35 across: 1.4 bean-widths, as asked.
+    const DRUM_R = RIG.maxR*1.4;                  // 17.4 -- 1.4 bean-widths across
+    // Squat: wider than it is tall, or it reads as a barrel the character is
+    // standing on top of rather than a plinth it is standing in front of.
+    const ped=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R, DRUM_R*1.05, 15, 40),
       new THREE.MeshToonMaterial({color:0xff4fa3, gradientMap:toonRamp()}));
-    ped.position.y=-RADIUS-8; ped.receiveShadow=true; previewGroup.add(ped);
-    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(25,27,8,40),
+    ped.position.y=-RADIUS-8.5; ped.receiveShadow=true; previewGroup.add(ped);
+    // A lighter top face, so the drum has a lid rather than being a flat pink
+    // shape, and a dark band under it for the same reason.
+    const pedTop=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.03, DRUM_R*1.03, 4, 40),
+      new THREE.MeshToonMaterial({color:0xff86c0, gradientMap:toonRamp()}));
+    pedTop.position.y=-RADIUS-1; pedTop.receiveShadow=true; previewGroup.add(pedTop);
+    const pedBase=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.10, DRUM_R*1.14, 7, 40),
       new THREE.MeshToonMaterial({color:0xc2276f, gradientMap:toonRamp()}));
-    pedBase.position.y=-RADIUS-17; pedBase.receiveShadow=true; previewGroup.add(pedBase);
+    pedBase.position.y=-RADIUS-18; pedBase.receiveShadow=true; previewGroup.add(pedBase);
     lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
       new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
     lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
     previewGroup.add(lobbyBackdrop);
-    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,32),
+    // The gold ring follows the drum in rather than staying at the old width,
+    // where it would now hang off the edge of it.
+    stageRing=new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R*1.06, DRUM_R*1.06, 3, 32),
       new THREE.MeshBasicMaterial({color:0xffcb3d}));
     stageRing.position.y=-RADIUS+0.5; previewGroup.add(stageRing);
 
@@ -8472,7 +8491,10 @@ const QUALITY = {
     // Closer while the locker is open, not further away: the character is the
     // subject of this screen and was being framed like scenery.
     // In close on the lobby: the bean should be the biggest thing on screen.
-    const camZ = (profOpen && W>=861) ? -150 : -104;
+    // Closer again on the lobby now the podium is not competing for the frame:
+    // the reference gives its character a little over half the screen height,
+    // and at -104 with the old wide dish ours was nearer a third.
+    const camZ = (profOpen && W>=861) ? -150 : -86;
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);
