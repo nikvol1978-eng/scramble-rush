@@ -607,7 +607,12 @@ sub("    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refresh
     "    boulders=[]; stopMusic(); refreshPreview(); refreshCoinChips(); refreshDailyChip(); if(typeof selectLobbyTab==='function') selectLobbyTab('play');",
     "goHome lights the play tab")
 sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu') $('home').classList.remove('hidden'); };",
-    "  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };",
+    "  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings();"
+    # Back to wherever it was opened from. Opened mid-match it has to give the
+    # pause menu back, or leaving the settings drops you on the lobby with a
+    # round still running underneath.
+    + " if(state==='paused') $('pause').classList.remove('hidden');"
+    + " else if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };",
     "settings back lights the play tab")
 
 # ---------------------------------------------------------------- preview + profile UI
@@ -713,6 +718,15 @@ sub("    state='menu'; $('hud').classList.add('hidden');",
     "    state='menu'; if(typeof syncMenuChrome==='function') setTimeout(syncMenuChrome,0); $('hud').classList.add('hidden');",
     "menu chrome follows the state")
 
+# ---------------------------------------------------- pause -> settings
+# Both are .screen at z-index 50 and #pause is later in the document, so
+# showing Settings without hiding Pause left Pause painted on top of it: the
+# settings were there, underneath, and unreachable. Coming back has to know
+# where it came from, or leaving Settings mid-match drops you on the lobby.
+sub("  $('pauseSettingsBtn').onclick=()=>{ SFX.click(); buildSettings(); $('settings').classList.remove('hidden'); };",
+    "  $('pauseSettingsBtn').onclick=()=>{ SFX.click(); buildSettings();"
+    + " $('pause').classList.add('hidden'); $('settings').classList.remove('hidden'); };",
+    "settings from pause hides pause")
 sub("  function updateHud(){",
     "  function updateHud(){" + chr(10) + "    updateSpectator();",
     "spectator hud tick")

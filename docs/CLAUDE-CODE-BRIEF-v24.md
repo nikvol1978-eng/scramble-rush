@@ -29,7 +29,13 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5 complete; §4: Hop & Duck, Slime Slope and Comb Collapse in. Wall Rush is next.)*
+*(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
+control with `elementFromPoint`. §4: Hop & Duck, Slime Slope and Comb Collapse
+in. Wall Rush is next.)*
+
+**Check `z` needs a viewport.** `elementFromPoint` returns null when the preview
+pane reports 0 x 0, which would make it pass by testing nothing, so it refuses to
+run instead. Size the tab (1280x720) before running the suite.
 
 ## How "no gameplay number moved" is proved
 

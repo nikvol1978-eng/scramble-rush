@@ -2852,6 +2852,129 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- z: every menu control the player can see, they can press ----------
+  // A screenshot cannot catch this, and neither can anyone who does not think
+  // to try every control: the pixels are right, the layout is right, and the
+  // click lands on something else. Two of these shipped. The tab strip sat at
+  // z-index 12 under the screens at 50, and the lobby's own pointer-enabled
+  // containers covered it, so elementFromPoint on any pill returned .lobbyBrand
+  // and PLAY was the only thing on the home screen that worked. Settings opened
+  // from the pause menu came up underneath the pause panel, which is the same
+  // failure pointing the other way.
+  //
+  // So: open each menu screen and ask the browser what is actually painted at
+  // the middle of every control. Anything but the control itself or one of its
+  // own children is something you can see and cannot press.
+  function checkHitTest(){
+    const bad = [], rep = {};
+
+    // Whatever round the check before this one left running, this is a menu
+    // test: the chrome only shows itself while state is 'menu'.
+    // elementFromPoint needs a viewport to point into. A hidden preview pane
+    // lays the page out but reports 0 x 0, and every hit comes back null -- which
+    // would make this check pass by testing nothing, the exact failure it exists
+    // to stop. So say so instead.
+    if(window.innerWidth < 2 || window.innerHeight < 2)
+      return { name:'z every menu control you can see, you can press', pass:false,
+               detail:'no viewport (' + window.innerWidth + 'x' + window.innerHeight
+                    + ') -- run the suite with the preview pane sized, e.g. 1280x720' };
+
+    try{ wipeRoundState(); }catch(e){}
+    state = 'menu';
+    ['hud','pauseBtn','pause','settings','results','gameover','buyBox','daily']
+      .forEach(id=>{ const e = $(id); if(e) e.classList.add('hidden'); });
+
+    // On screen means on screen: not display:none, not zero-sized, not off the
+    // window, and not scrolled out of a clipping ancestor. The locker's grid and
+    // the pass rail both scroll, and a tile parked outside its scroller is not a
+    // covered control, it is a control that is not there yet.
+    function onScreen(el){
+      if(!el || el.offsetParent === null) return false;
+      const r = el.getBoundingClientRect();
+      if(r.width < 2 || r.height < 2) return false;
+      const cx = r.left + r.width/2, cy = r.top + r.height/2;
+      if(cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return false;
+      for(let a = el.parentElement; a && a !== document.body; a = a.parentElement){
+        const cs = getComputedStyle(a);
+        if(cs.overflow==='visible' && cs.overflowX==='visible' && cs.overflowY==='visible') continue;
+        const ar = a.getBoundingClientRect();
+        if(cx < ar.left || cx > ar.right || cy < ar.top || cy > ar.bottom) return false;
+      }
+      return true;
+    }
+    function nameOf(el){
+      return el.id ? '#'+el.id
+           : '.'+String(el.className||el.tagName).split(' ').filter(Boolean)[0];
+    }
+    function topAt(el){
+      const r  = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+      if(!hit) return { miss:'nothing' };
+      if(hit === el || el.contains(hit)) return { ok:true };   // the control, or its own art
+      return { miss: nameOf(hit) };
+    }
+    function probe(where, els){
+      let seen = 0;
+      for(const el of els){
+        if(!onScreen(el)) continue;
+        seen++;
+        const r = topAt(el);
+        if(!r.ok) bad.push(where + ': ' + nameOf(el) + ' is covered by ' + r.miss);
+      }
+      return seen;
+    }
+
+    const screens = [
+      { name:'lobby',  tab:'play',   primary:'playBtn',    extra:'' },
+      { name:'locker', tab:'locker', primary:'lkAction',   extra:'#locker .lkTile' },
+      { name:'shop',   tab:'shop',   primary:'shPassCard', extra:'#shop .shCard'  },
+      { name:'pass',   tab:'pass',   primary:'psAction',   extra:'#pass .psTile'  }
+    ];
+    for(const sc of screens){
+      openLobbyTab(sc.tab);
+      const pills = [...document.querySelectorAll('#menuChrome .tabPill')];
+      const chips = [$('homeCrowns'), $('homeCoins')].filter(Boolean);
+      const prim  = $(sc.primary) ? [$(sc.primary)] : [];
+      const cards = sc.extra ? [...document.querySelectorAll(sc.extra)] : [];
+      const core  = probe(sc.name, pills) + probe(sc.name, chips) + probe(sc.name, prim);
+      const more  = probe(sc.name, cards);
+      rep[sc.name] = core + ' controls + ' + more + ' tiles';
+      // A screen that showed nothing would pass this check by testing nothing.
+      if(!$(sc.primary))     bad.push(sc.name + ': no #' + sc.primary + ' on the screen at all');
+      if(core < pills.length + chips.length + prim.length)
+        bad.push(sc.name + ': only ' + core + ' of ' + (pills.length+chips.length+prim.length)
+                 + ' chrome controls were on screen to test');
+    }
+    openLobbyTab('play');
+
+    // And the pause menu, which is the same bug pointing the other way: opening
+    // Settings from a match must not leave the pause panel painted over it, and
+    // leaving Settings must give the pause menu back rather than the lobby.
+    {
+      state = 'paused';
+      $('pause').classList.remove('hidden');
+      $('pauseSettingsBtn').click();
+      const bothUp = !$('settings').classList.contains('hidden')
+                  && !$('pause').classList.contains('hidden');
+      if(bothUp) bad.push('pause: opening Settings left the pause panel on top of it');
+      const done = $('settingsBackBtn');
+      if(!bothUp && done && onScreen(done)){
+        const r = topAt(done);
+        if(!r.ok) bad.push('pause: the settings DONE button is covered by ' + r.miss);
+      }
+      rep.pause = bothUp ? 'pause left over settings' : 'settings has the screen';
+      $('settingsBackBtn').click();
+      if($('pause').classList.contains('hidden'))
+        bad.push('pause: leaving Settings mid-match did not give the pause menu back');
+      $('pause').classList.add('hidden'); $('settings').classList.add('hidden');
+      state = 'menu';
+      openLobbyTab('play');
+    }
+
+    return { name:'z every menu control you can see, you can press', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -2864,7 +2987,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

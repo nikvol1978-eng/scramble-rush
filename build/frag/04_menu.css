@@ -643,8 +643,13 @@
   @keyframes ringSpin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
   @media (prefers-reduced-motion: reduce){ #menuRings{animation:none;} }
 
+  /* Above the screens, not under them. Every .screen is z-index 50, and the
+     lobby's own pointer-enabled containers cover the strip -- elementFromPoint
+     on any tab pill returned .lobbyBrand, so on the home screen only PLAY was
+     clickable. The container stays pointer-events:none so it never blocks the
+     screen underneath; only the strip and the chips take clicks. */
   #menuChrome{
-    position:absolute; top:0; left:0; right:0; z-index:12;
+    position:absolute; top:0; left:0; right:0; z-index:55;
     display:flex; align-items:center; justify-content:center;
     /* Centred in what is left after the wordmark and the currency chips, not
        in the whole width. Centred across everything, the first pill sat under
@@ -652,6 +657,12 @@
     padding:16px 210px 16px 340px; pointer-events:none;
   }
   #menuChrome .lobbyTabs, #menuChrome .lobbyCurrency{ pointer-events:auto; }
+  /* .coinChip carries pointer-events:none from v5, where it was a readout
+     inside a panel that had its own click target behind it. In the strip that
+     leaves it dead while the crown chip beside it -- same shape, same row --
+     takes clicks, and elementFromPoint on it returns .lobbyCurrency. The
+     profile header already overrides it the same way. */
+  #menuChrome .coinChip{ pointer-events:auto; }
   #menuChrome .lobbyCurrency{ position:absolute; right:22px; top:16px; display:flex; gap:10px; }
   /* The pills carry their names now. An icon strip is a strip you have to
      learn; a named one is a strip you can read. */
