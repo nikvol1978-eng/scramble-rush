@@ -52,7 +52,12 @@
     const a=pendAngle(o,t);
     return { x: o.cx + Math.sin(a)*o.armLen, h: o.pivotH - Math.cos(a)*o.armLen };
   }
-  function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
+  // Beam Team's rings speed up over the round, and a ring whose speed changes
+  // cannot be read off the clock: t*speed would jump the whole arm every time
+  // the multiplier moved. A ring that ramps carries its own accumulated angle,
+  // the way the closing ring carries its own radius. One that does not is still
+  // the clock, so the shelved sections read the same.
+  function spinlaserAngle(o,t){ return o.ang===undefined ? t*o.speed + o.phase : o.ang; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
   // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
@@ -77,7 +82,7 @@
   // Rounds whose floor is a shape rather than a corridor: the track walls do
   // not apply, because going off the side is the round.
   function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'
-                            || currentMap.mode==='walls'; }
+                            || currentMap.mode==='walls' || currentMap.mode==='beam'; }
   // How high a racer's feet are above the COURSE surface, not above whatever
   // they happen to be standing on. A hazard bolted to the floor -- a pusher, a
   // spin bar, a bumper, a boost pad -- has to be measured against this: a racer
@@ -533,6 +538,37 @@
         courseGroup.add(g);
         o.mesh=g;
 
+      } else if(o.type==='spinlaser'){
+        const g=new THREE.Group();
+        // Beam Team stacks a low ring and a high ring on one spindle, so the
+        // second of a pair draws its arms and leaves the post alone.
+        if(o.hub !== false){
+          const hh = o.post || 52;
+          const hub=new THREE.Mesh(new THREE.CylinderGeometry(24,30,hh,14),
+            new THREE.MeshPhongMaterial({color:0x1f2937, shininess:30}));
+          hub.position.y=hh/2; hub.castShadow=true; g.add(hub);
+          const lamp=new THREE.Mesh(new THREE.SphereGeometry(11,12,10),
+            new THREE.MeshBasicMaterial({color:0xa3e635}));
+          lamp.position.y=hh+4; g.add(lamp);
+        }
+        const arms=new THREE.Group(); arms.position.y=o.h; g.add(arms);
+        for(let i=0;i<o.arms;i++){
+          const arm=new THREE.Group(); arm.rotation.y = i*(Math.PI*2/o.arms); arms.add(arm);
+          const col = o.h >= 24 ? 0xff4fa3 : 0xa3e635;   // pink you duck, green you jump
+          const beam=new THREE.Mesh(new THREE.CylinderGeometry(4,4,o.len,8),
+            new THREE.MeshBasicMaterial({color:col}));
+          beam.rotation.z=Math.PI/2; beam.position.x=o.len/2; arm.add(beam);
+          const halo=new THREE.Mesh(new THREE.CylinderGeometry(9,9,o.len,8),
+            new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.20, depthWrite:false}));
+          halo.rotation.z=Math.PI/2; halo.position.x=o.len/2; arm.add(halo);
+          const tip=new THREE.Mesh(new THREE.SphereGeometry(8,10,8),
+            new THREE.MeshBasicMaterial({color:col}));
+          tip.position.x=o.len; arm.add(tip);
+        }
+        placeAt(g, o.cx, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g; o.arms3d=arms;
+
       //<<shelved:mesh-spinlaser>>
       } else if(o.type==='shortcut'){
         const deckMat = look.softMat(0);                  // a reward, not a threat: soft
@@ -699,6 +735,16 @@
         if(o.wait > 0) o.wait -= dt;
         else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
         if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
+      } else if(o.type==='spinlaser' && o.ramp){
+        // Not until the gun. The reveal and the flyover run about eleven
+        // seconds and the field cannot move for any of it, so arms that swept
+        // through them mowed down a stationary grid: eight racers gone before
+        // the countdown finished, which is the cut, so the round ended on the
+        // spot. How many depended on where the arms happened to start.
+        if(state!=='racing') continue;
+        const dir = Math.sign(o.speed) || 1;
+        if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
+        o.ang += o.speed*dt;
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
         if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
@@ -1287,6 +1333,64 @@
             r.invuln=700;
             spawnBurst3D(r.x,r.y,0xffffff,12);
             return;
+          }
+        }
+
+      } else if(o.type==='spinlaser'){
+        // Inert until the round starts, for the same reason they do not turn:
+        // a frozen arm across the grid is still an arm across the grid, and
+        // nobody can step off it during a countdown.
+        //
+        // And inert for a beat after it, the way the closing ring waits before
+        // it closes. Twenty-four racers start shoulder to shoulder in a box
+        // four hundred by a hundred and sixty, well inside the arms' reach, and
+        // the first sweep across that took a third of the field off before
+        // anyone had taken a step -- eight, which is the cut, so the round
+        // ended in its own countdown. The arms turn from the gun so the round
+        // reads as live; they take hold once the grid has had time to scatter.
+        if(state!=='racing' || raceTime < (o.grace||0)) continue;
+        const foot = (r.floorH||0) + r.h;
+        const top = foot + (r.diveT>0?18:33);
+        if(top > o.h-6 && foot < o.h+6){
+          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
+          if(dist > 14 && dist < o.len){
+            const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
+            for(let i=0;i<o.arms;i++){
+              let d = ang - (base + i*step);
+              while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+              // perpendicular distance to the arm, and only the half it points down
+              if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 10+RADIUS-8){
+                // A beam is a bar, not a slap.
+                //
+                // As a race section this knocked you over and let you get up,
+                // because on a corridor a knockdown costs you distance and that
+                // was the whole punishment. On a disc it costs nothing: an
+                // impulse moves a racer twenty units against a rim four hundred
+                // away, and sendTumbling caps the force at 14 whatever you hand
+                // it, so no amount of arm speed would have done it either.
+                // Twenty-four racers took a hundred hits between them in a
+                // minute and not one went over the edge.
+                //
+                // So the arm carries you, the way Wall Rush's walls do: pinned
+                // to its line, swept round with it, and worked outward a little
+                // every frame until the rim runs out. And it leaves you the way
+                // out you should have taken in the first place -- over the low
+                // one, under the high one -- because it does not knock you down
+                // and a racer on their feet can still jump.
+                const armAng = base + i*step;
+                const out = dist + (o.push||150)/60;
+                r.x = o.cx + Math.cos(armAng)*out;
+                r.y = o.y  + Math.sin(armAng)*out;
+                r.vx *= 0.5; r.vy *= 0.5;
+                r.squash = Math.max(r.squash||0, 0.35);
+                if(r.isPlayer && raceTime > (r.beamSfxT||0)){
+                  SFX.hit(); camShake = Math.max(camShake, 4); r.beamSfxT = raceTime + 0.4;
+                }
+                if(!(raceTime % 0.12 > 0.02))
+                  spawnBurst3D(r.x, r.y, o.h>=24?0xff4fa3:0xa3e635, 4);
+                return;
+              }
+            }
           }
         }
 

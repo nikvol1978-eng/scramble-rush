@@ -1994,6 +1994,9 @@ const QUALITY = {
     { key:'walls', name:'Wall Rush', tip:'The gap is the only way through. Never back away from a wall \u2014 there is nothing behind you.',
       ground:'#93c5fd', groundAlt:'#60a5fa', wall:'#1e3a8a', wallTop:'#ff4fa3', skyTop:'#dbeafe', skyMid:'#3b82f6', skyBot:'#eff6ff', accent:'#ff4fa3',
       objective:'FIND THE GAP!', isMinigame:true, mode:'walls', knockout:true },
+    { key:'beam', name:'Beam Team', tip:'Green sweeps low and you jump it. Pink sweeps high and you go under it. They speed up.',
+      ground:'#4b5563', groundAlt:'#374151', wall:'#111827', wallTop:'#a3e635', skyTop:'#1f2937', skyMid:'#334155', skyBot:'#64748b', accent:'#a3e635',
+      objective:'STAY ON THE DISC!', isMinigame:true, mode:'beam', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];
@@ -3114,6 +3117,52 @@ const QUALITY = {
       return obs;
     }
 
+    // ---- BEAM TEAM: one disc, two rings of arms, one low and one high ----
+    // Both rings are on the spindle at the middle and both reach the rim, so
+    // there is no corner of the floor an arm does not come to and nowhere to
+    // stand and wait. Green sweeps at ankle height and you jump it; pink sweeps
+    // at chest height and you go under it. They turn against each other, so the
+    // pattern the two of them make never repeats inside a round, and they both
+    // speed up for as long as the round lasts.
+    //
+    // Nothing here is new: the disc, the arms, their mesh, their contact and
+    // their sync were all built for v20's Carousel and Laser Tracer and shelved
+    // with them. What Beam Team adds is the pairing and the ramp.
+    if(mode==='beam'){
+      // Small enough that being thrown matters. At 860 the rim was four hundred
+      // units past where anyone stood and a knockdown was a inconvenience.
+      const yMid=60, rad=460, spin = Math.random()<0.5 ? 1 : -1;
+      obs.push({type:'disc', cx, y:yMid, y0:yMid-rad-200, y1:yMid+rad+200,
+                // A disc that turns is Carousel's round, not this one. Here the
+                // floor holds still and only the arms move.
+                r:rad, speed:0});
+      const ring = (h, arms, dir, speed)=>({
+        // Past the rim, not up to it. At 0.96 the last eighteen units of floor
+        // were outside every arm's reach: a racer carried outward was set down
+        // on that ring of it and left there, safe, which is the one place on
+        // the disc the round is not allowed to have.
+        type:'spinlaser', y:yMid, cx, arms, len:rad*1.04, h,
+        speed: speed*dir, ang: rand(0,6.28), phase: 0,
+        // Units a second outward while it has hold of you. Above a racer's own
+        // 276 it is not a hazard, it is an execution: at 340 anyone the arms
+        // touched was over the rim inside a second, and the first sweep after
+        // the grace took a third of the field. At 150 being caught costs you
+        // ground and you have a beat to get out of its plane, which is the
+        // round -- over the low one, under the high one.
+        push: 200, grace: 2.6,
+        ramp: 0.022, speedMax: hard ? 1.80 : 1.55,
+        hub: false,
+        y0:yMid-rad-100, y1:yMid+rad+100});
+      // The spindle is a pillar rather than the arms' own post, because a post
+      // you can stand inside is a safe spot in a round that is supposed to have
+      // none: the arms need dist > 14 to hit you, so the middle was immune.
+      obs.push({type:'pillars', y:yMid, y0:yMid-70, y1:yMid+70, items:[{x:cx, r:32}]});
+      obs.push(ring(14, hard?5:4,  spin, 0.44));   // low, green: jump it
+      obs.push(ring(34, hard?4:3, -spin, 0.36));   // high, pink: go under it
+      arenaEnd = yMid + rad - 40; trackLength = yMid + rad + 4000;
+      return obs;
+    }
+
     // ---- WALL RUSH: walls with one gap, sweeping down a plate over nothing ----
     // Our own plate, our own walls. The arena is fenced on three
     // sides -- the track walls hold the sides, arenaEnd holds the far end --
@@ -3972,7 +4021,8 @@ const QUALITY = {
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
     // the usual corridor under them would just floor the whole arena.
     const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin'
-                   || currentMap.mode==='walls';   // Wall Rush is a plate over nothing too
+                   || currentMap.mode==='walls'    // Wall Rush is a plate over nothing too
+                   || currentMap.mode==='beam';    // and Beam Team is a disc over nothing
     // ---- the v20 look: a neutral floor, pale walls, loud hazards ----
     // One warm key, a cool fill from the sky, and a haze that matches it.
     const accents = mapAccents();
@@ -4348,6 +4398,7 @@ const QUALITY = {
           o.rod.rotation.z = a;
         }
       }
+      else if(o.type==='spinlaser'){ if(o.arms3d) o.arms3d.rotation.y = -spinlaserAngle(o,t); }
       else if(o.type==='boost'){ if(o.mesh) o.mesh.position.y = Math.sin(t*5)*0.8; }
       else if(o.type==='cannon'){
         if(o.meshes) o.meshes.forEach(m=>{
@@ -5528,7 +5579,12 @@ const QUALITY = {
     const a=pendAngle(o,t);
     return { x: o.cx + Math.sin(a)*o.armLen, h: o.pivotH - Math.cos(a)*o.armLen };
   }
-  function spinlaserAngle(o,t){ return t*o.speed + o.phase; }
+  // Beam Team's rings speed up over the round, and a ring whose speed changes
+  // cannot be read off the clock: t*speed would jump the whole arm every time
+  // the multiplier moved. A ring that ramps carries its own accumulated angle,
+  // the way the closing ring carries its own radius. One that does not is still
+  // the clock, so the shelved sections read the same.
+  function spinlaserAngle(o,t){ return o.ang===undefined ? t*o.speed + o.phase : o.ang; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
   // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
@@ -5553,7 +5609,7 @@ const QUALITY = {
   // Rounds whose floor is a shape rather than a corridor: the track walls do
   // not apply, because going off the side is the round.
   function arenaMode(){ return currentMap.mode==='shrink' || currentMap.mode==='spin'
-                            || currentMap.mode==='walls'; }
+                            || currentMap.mode==='walls' || currentMap.mode==='beam'; }
   // How high a racer's feet are above the COURSE surface, not above whatever
   // they happen to be standing on. A hazard bolted to the floor -- a pusher, a
   // spin bar, a bumper, a boost pad -- has to be measured against this: a racer
@@ -6007,6 +6063,37 @@ const QUALITY = {
         courseGroup.add(g);
         o.mesh=g;
 
+      } else if(o.type==='spinlaser'){
+        const g=new THREE.Group();
+        // Beam Team stacks a low ring and a high ring on one spindle, so the
+        // second of a pair draws its arms and leaves the post alone.
+        if(o.hub !== false){
+          const hh = o.post || 52;
+          const hub=new THREE.Mesh(new THREE.CylinderGeometry(24,30,hh,14),
+            new THREE.MeshPhongMaterial({color:0x1f2937, shininess:30}));
+          hub.position.y=hh/2; hub.castShadow=true; g.add(hub);
+          const lamp=new THREE.Mesh(new THREE.SphereGeometry(11,12,10),
+            new THREE.MeshBasicMaterial({color:0xa3e635}));
+          lamp.position.y=hh+4; g.add(lamp);
+        }
+        const arms=new THREE.Group(); arms.position.y=o.h; g.add(arms);
+        for(let i=0;i<o.arms;i++){
+          const arm=new THREE.Group(); arm.rotation.y = i*(Math.PI*2/o.arms); arms.add(arm);
+          const col = o.h >= 24 ? 0xff4fa3 : 0xa3e635;   // pink you duck, green you jump
+          const beam=new THREE.Mesh(new THREE.CylinderGeometry(4,4,o.len,8),
+            new THREE.MeshBasicMaterial({color:col}));
+          beam.rotation.z=Math.PI/2; beam.position.x=o.len/2; arm.add(beam);
+          const halo=new THREE.Mesh(new THREE.CylinderGeometry(9,9,o.len,8),
+            new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.20, depthWrite:false}));
+          halo.rotation.z=Math.PI/2; halo.position.x=o.len/2; arm.add(halo);
+          const tip=new THREE.Mesh(new THREE.SphereGeometry(8,10,8),
+            new THREE.MeshBasicMaterial({color:col}));
+          tip.position.x=o.len; arm.add(tip);
+        }
+        placeAt(g, o.cx, o.y, 0);
+        courseGroup.add(g);
+        o.mesh=g; o.arms3d=arms;
+
       } else if(o.type==='shortcut'){
         const deckMat = look.softMat(0);                  // a reward, not a threat: soft
         const railMat = new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -6172,6 +6259,16 @@ const QUALITY = {
         if(o.wait > 0) o.wait -= dt;
         else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
         if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
+      } else if(o.type==='spinlaser' && o.ramp){
+        // Not until the gun. The reveal and the flyover run about eleven
+        // seconds and the field cannot move for any of it, so arms that swept
+        // through them mowed down a stationary grid: eight racers gone before
+        // the countdown finished, which is the cut, so the round ended on the
+        // spot. How many depended on where the arms happened to start.
+        if(state!=='racing') continue;
+        const dir = Math.sign(o.speed) || 1;
+        if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
+        o.ang += o.speed*dt;
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
         if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
@@ -6758,6 +6855,64 @@ const QUALITY = {
             r.invuln=700;
             spawnBurst3D(r.x,r.y,0xffffff,12);
             return;
+          }
+        }
+
+      } else if(o.type==='spinlaser'){
+        // Inert until the round starts, for the same reason they do not turn:
+        // a frozen arm across the grid is still an arm across the grid, and
+        // nobody can step off it during a countdown.
+        //
+        // And inert for a beat after it, the way the closing ring waits before
+        // it closes. Twenty-four racers start shoulder to shoulder in a box
+        // four hundred by a hundred and sixty, well inside the arms' reach, and
+        // the first sweep across that took a third of the field off before
+        // anyone had taken a step -- eight, which is the cut, so the round
+        // ended in its own countdown. The arms turn from the gun so the round
+        // reads as live; they take hold once the grid has had time to scatter.
+        if(state!=='racing' || raceTime < (o.grace||0)) continue;
+        const foot = (r.floorH||0) + r.h;
+        const top = foot + (r.diveT>0?18:33);
+        if(top > o.h-6 && foot < o.h+6){
+          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
+          if(dist > 14 && dist < o.len){
+            const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
+            for(let i=0;i<o.arms;i++){
+              let d = ang - (base + i*step);
+              while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+              // perpendicular distance to the arm, and only the half it points down
+              if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 10+RADIUS-8){
+                // A beam is a bar, not a slap.
+                //
+                // As a race section this knocked you over and let you get up,
+                // because on a corridor a knockdown costs you distance and that
+                // was the whole punishment. On a disc it costs nothing: an
+                // impulse moves a racer twenty units against a rim four hundred
+                // away, and sendTumbling caps the force at 14 whatever you hand
+                // it, so no amount of arm speed would have done it either.
+                // Twenty-four racers took a hundred hits between them in a
+                // minute and not one went over the edge.
+                //
+                // So the arm carries you, the way Wall Rush's walls do: pinned
+                // to its line, swept round with it, and worked outward a little
+                // every frame until the rim runs out. And it leaves you the way
+                // out you should have taken in the first place -- over the low
+                // one, under the high one -- because it does not knock you down
+                // and a racer on their feet can still jump.
+                const armAng = base + i*step;
+                const out = dist + (o.push||150)/60;
+                r.x = o.cx + Math.cos(armAng)*out;
+                r.y = o.y  + Math.sin(armAng)*out;
+                r.vx *= 0.5; r.vy *= 0.5;
+                r.squash = Math.max(r.squash||0, 0.35);
+                if(r.isPlayer && raceTime > (r.beamSfxT||0)){
+                  SFX.hit(); camShake = Math.max(camShake, 4); r.beamSfxT = raceTime + 0.4;
+                }
+                if(!(raceTime % 0.12 > 0.02))
+                  spawnBurst3D(r.x, r.y, o.h>=24?0xff4fa3:0xa3e635, 4);
+                return;
+              }
+            }
           }
         }
 
@@ -8000,6 +8155,54 @@ const QUALITY = {
       // parking in front of it.
       const dy = next.wy - r.y;
       drive(gx, dy > 300 ? next.wy - 300 : next.wy + 300, 14);
+      return true;
+    }
+
+    // ---- Beam Team: hold a spot, and read the arm that is coming to it
+    // A bot cannot outrun the arms -- they reach the rim -- so it does not try.
+    // It picks somewhere to stand and makes the same read the player makes: how
+    // long until an arm gets to my bearing, and is it the one I jump or the one
+    // I go under.
+    const hubs = obstacles.filter(o=>o.type==='spinlaser');
+    if(hubs.length){
+      const floor = obstacles.find(o=>o.type==='disc');
+      if(floor){
+        if(r.aiHome===undefined){ r.aiHome = rand(0.30,0.78); r.aiHomeA = rand(0,6.28); }
+        drive(floor.cx + Math.cos(r.aiHomeA)*floor.r*r.aiHome,
+              floor.y  + Math.sin(r.aiHomeA)*floor.r*r.aiHome, 30);
+      }
+      // Written as !(x>0), not x<=0: baseRacer() does not initialise tumbleT
+      // or getUpT, so on a racer that has never been knocked down both are
+      // undefined and `undefined <= 0` is false. The guard was never true
+      // and not one bot jumped a beam in the whole round -- the field stood
+      // there and let the arms walk it off the rim. Everything else in the
+      // codebase tests these the truthy way round; this did not.
+      if(r.h<=0 && !(r.stumbleT>0) && !(r.tumbleT>0) && !(r.getUpT>0)){
+        for(const o of hubs){
+          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
+          if(dist < 24 || dist > o.len) continue;
+          const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
+          const w = o.speed;
+          if(!w) continue;
+          let soonest = Infinity;
+          for(let i=0;i<o.arms;i++){
+            let d = ang - (base + i*step);
+            while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+            // Already in it -- being carried, and the way out is the same one
+            // it should have taken. Left to the arithmetic below this reads as
+            // a whole revolution away half the time, depending on which side of
+            // the beam's line the bot happens to be standing.
+            if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 34){ soonest = 0; break; }
+            // otherwise: when this arm's bearing reaches mine, the way it turns
+            let tt = d/w;
+            if(tt < 0) tt += Math.PI*2/Math.abs(w);
+            if(tt < soonest) soonest = tt;
+          }
+          // Leave it late. Jumping a second early is landing back in it, and a
+          // dive that has finished is a racer standing up into a high arm.
+          if(soonest < 0.26){ if(o.h < 24) doJump(r); else doDive(r); break; }
+        }
+      }
       return true;
     }
 

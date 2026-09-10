@@ -42,6 +42,7 @@
           o.rod.rotation.z = a;
         }
       }
+      else if(o.type==='spinlaser'){ if(o.arms3d) o.arms3d.rotation.y = -spinlaserAngle(o,t); }
       //<<shelved:sync-spinlaser>>
       else if(o.type==='boost'){ if(o.mesh) o.mesh.position.y = Math.sin(t*5)*0.8; }
       else if(o.type==='cannon'){

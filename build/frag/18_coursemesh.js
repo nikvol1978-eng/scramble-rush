@@ -79,7 +79,8 @@
     // Closing Circle and Carousel are a platform surrounded by nothing. Laying
     // the usual corridor under them would just floor the whole arena.
     const arenaOnly = currentMap.mode==='shrink' || currentMap.mode==='spin'
-                   || currentMap.mode==='walls';   // Wall Rush is a plate over nothing too
+                   || currentMap.mode==='walls'    // Wall Rush is a plate over nothing too
+                   || currentMap.mode==='beam';    // and Beam Team is a disc over nothing
     // ---- the v20 look: a neutral floor, pale walls, loud hazards ----
     // One warm key, a cool fill from the sky, and a haze that matches it.
     const accents = mapAccents();

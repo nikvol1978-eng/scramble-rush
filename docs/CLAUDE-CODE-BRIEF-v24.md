@@ -31,7 +31,22 @@ respawn is at the last checkpoint.
 
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse and
-Wall Rush in. Beam Team is next.)*
+Wall Rush and Beam Team in. Last Rung is next.)*
+
+**A survival round on an arena needs three things the race sections did not.**
+Both v24 arenas learned the same lessons in the same order, so they are written
+down once. One: the hazard has to *carry* you, not hit you. An impulse moves a
+racer twenty units and `sendTumbling` caps its force at 14 whatever you hand it,
+so no knockback will ever put anyone over an edge -- every survival round in the
+game eliminates by taking floor away or by pushing, never by hitting. Two: it
+has to reach every part of the floor, including under the fence and past the
+rim; a strip the hazard cannot get to is a strip the whole field stands on.
+Three: it has to be inert until the gun and for a beat after it. Twenty-four
+racers start shoulder to shoulder inside any arena worth the name and cannot
+move during the eleven seconds of reveal, flyover and countdown, so a hazard
+that is live through that mows down a stationary grid -- Beam Team lost eight
+before the countdown finished, which is the cut, so the round ended in its own
+intro.
 
 **Wall Rush deviates from its row in §4.** "Shelved blockwall" turned out to be
 a *race* section -- walls at a fixed y sliding side to side down a corridor --

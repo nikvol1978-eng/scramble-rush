@@ -624,6 +624,9 @@
     { key:'walls', name:'Wall Rush', tip:'The gap is the only way through. Never back away from a wall \u2014 there is nothing behind you.',
       ground:'#93c5fd', groundAlt:'#60a5fa', wall:'#1e3a8a', wallTop:'#ff4fa3', skyTop:'#dbeafe', skyMid:'#3b82f6', skyBot:'#eff6ff', accent:'#ff4fa3',
       objective:'FIND THE GAP!', isMinigame:true, mode:'walls', knockout:true },
+    { key:'beam', name:'Beam Team', tip:'Green sweeps low and you jump it. Pink sweeps high and you go under it. They speed up.',
+      ground:'#4b5563', groundAlt:'#374151', wall:'#111827', wallTop:'#a3e635', skyTop:'#1f2937', skyMid:'#334155', skyBot:'#64748b', accent:'#a3e635',
+      objective:'STAY ON THE DISC!', isMinigame:true, mode:'beam', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];

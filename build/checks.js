@@ -2279,7 +2279,7 @@
   function checkAccept(){
     const bad = [], report = {};
     const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope'];
-    const SURVIVE = ['lava','doors','tiles','shrink','comb','walls'];
+    const SURVIVE = ['lava','doors','tiles','shrink','comb','walls','beam'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
     // Hop & Duck is bars and nothing else, so a racer who reads them is not
@@ -3143,6 +3143,104 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- m: Beam Team sweeps you off, and you get out over or under ----------
+  // The round is two rings of arms on one spindle at two heights, and the whole
+  // of it is one question asked over and over: is the one coming at you the
+  // green one you jump or the pink one you go under. So this asserts the arena,
+  // then rides each ring three ways -- stand in it, jump it, dive it -- and
+  // checks that exactly the right one of those gets you out of it.
+  //
+  // Riding is done with the ring held still. A test that waits for an arm to
+  // come round is a test of when the arm comes round.
+  function checkBeam(){
+    const bad = [], rep = {};
+    begin('beam');
+    const disc  = obstacles.find(o=>o.type==='disc');
+    const rings = obstacles.filter(o=>o.type==='spinlaser');
+    const post  = obstacles.find(o=>o.type==='pillars');
+    const low   = rings.find(o=>o.h < 24), high = rings.find(o=>o.h >= 24);
+    if(!disc || !low || !high)
+      return { name:'m Beam Team sweeps you off, and you get out over or under', pass:false,
+               detail:'generated ' + (disc?'a disc':'no disc') + ' and ' + rings.length
+                    + ' rings (' + rings.map(o=>o.h).join('/') + ')' };
+
+    rep.arena = 'disc r' + Math.round(disc.r) + ', rings at h' + low.h + ' x' + low.arms
+              + ' and h' + high.h + ' x' + high.arms;
+
+    // (a) both rings reach the rim, or there is a ring of floor nothing sweeps
+    for(const o of rings)
+      if(o.len < disc.r)
+        bad.push('a ring reaches ' + Math.round(o.len) + ' of a ' + Math.round(disc.r)
+               + ' disc, so the last ' + Math.round(disc.r-o.len) + ' of it is a safe ring');
+    // (b) they turn against each other, or the pattern the pair makes repeats
+    if(Math.sign(low.speed) === Math.sign(high.speed))
+      bad.push('both rings turn the same way');
+    // (c) and the floor is not a carousel -- that is a different round
+    if(disc.speed) bad.push('the disc itself turns at ' + disc.speed);
+    if(!post) bad.push('no spindle: the middle of the disc is a safe spot, because an arm needs dist > 14 to reach you');
+
+    const bots = racers.filter(r=>!r.isPlayer);
+    const park = ()=>{ bots.forEach((r,i)=>{
+      r.x = disc.cx + Math.cos(i)*24; r.y = disc.y + Math.sin(i)*24;
+      r.vx = 0; r.vy = 0; r.h = 0; r.vh = 0; r.falling = false; r.invuln = 600; }); };
+    const p = player();
+
+    // Ride one ring at a fixed bearing, with the other ring's arms held off it.
+    function ride(o, other, radius, action, frames){
+      o.ang = 0;                                   // arm 0 along +x, where the probe is
+      other.ang = Math.PI/other.arms;              // and no arm of the other ring on 0
+      Object.assign(p, { x:o.cx + radius, y:o.y, h:0, vh:0, vx:0, vy:0, floorH:0,
+        falling:false, lavaOut:false, stumbleT:0, tumbleT:0, getUpT:0, diveT:0, diveCd:0, invuln:0 });
+      resetLook();
+      if(action === 'jump') tryJump();
+      if(action === 'dive') tryDive();
+      let far = radius;
+      for(let i=0;i<frames;i++){
+        o.ang = 0; other.ang = Math.PI/other.arms;
+        park(); window.__dbg.tick(1);
+        far = Math.max(far, Math.hypot(p.x-o.cx, p.y-o.y));
+      }
+      return Math.round(far - radius);
+    }
+
+    // The arms do not take hold until the grid has had a beat to scatter, so
+    // spend that first or every ride reads as "nothing touched me".
+    for(let i=0;i<Math.ceil(((low.grace||0)+0.3)*60); i++){ park(); window.__dbg.tick(1); }
+    const R = Math.round(disc.r*0.45);
+    const standLow  = ride(low,  high, R, 'stand', 30);
+    const jumpLow   = ride(low,  high, R, 'jump',  30);
+    const standHigh = ride(high, low,  R, 'stand', 30);
+    const diveHigh  = ride(high, low,  R, 'dive',  20);
+    rep.low  = 'stood ' + standLow  + ', jumped ' + jumpLow;
+    rep.high = 'stood ' + standHigh + ', dived '  + diveHigh;
+    // Against the round's own number rather than a round one of mine. At a flat
+    // 100 this read "stood 100" and passed on the boundary, which says nothing
+    // about whether the beam works -- it says push x frames happens to be 100.
+    const want = Math.round(low.push*30/60*0.6);
+    if(standLow  < want) bad.push('standing in a low arm was carried ' + standLow + ', want ' + want);
+    if(standHigh < want) bad.push('standing in a high arm was carried ' + standHigh + ', want ' + want);
+    if(jumpLow  > want/2) bad.push('jumping a low arm still carried the racer ' + jumpLow);
+    if(diveHigh > want/2) bad.push('diving under a high arm still carried the racer ' + diveHigh);
+
+    // (d) and carried far enough is off the disc
+    {
+      low.ang = 0; high.ang = Math.PI/high.arms;
+      Object.assign(p, { x:low.cx + disc.r - 70, y:low.y, h:0, vh:0, vx:0, vy:0, floorH:0,
+        falling:false, lavaOut:false, stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0 });
+      let out = false;
+      for(let i=0;i<150 && !out; i++){
+        low.ang = 0; high.ang = Math.PI/high.arms;
+        park(); window.__dbg.tick(1); out = !!p.lavaOut;
+      }
+      rep.rim = out ? 'carried over the rim is out'
+              : (p.falling ? 'falling but not out' : 'still on at r=' + Math.round(Math.hypot(p.x-disc.cx, p.y-disc.y)));
+      if(!out) bad.push('a racer carried past the rim was not put out');
+    }
+
+    return { name:'m Beam Team sweeps you off, and you get out over or under', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3155,7 +3253,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

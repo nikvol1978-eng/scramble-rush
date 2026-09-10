@@ -117,6 +117,52 @@
       return obs;
     }
 
+    // ---- BEAM TEAM: one disc, two rings of arms, one low and one high ----
+    // Both rings are on the spindle at the middle and both reach the rim, so
+    // there is no corner of the floor an arm does not come to and nowhere to
+    // stand and wait. Green sweeps at ankle height and you jump it; pink sweeps
+    // at chest height and you go under it. They turn against each other, so the
+    // pattern the two of them make never repeats inside a round, and they both
+    // speed up for as long as the round lasts.
+    //
+    // Nothing here is new: the disc, the arms, their mesh, their contact and
+    // their sync were all built for v20's Carousel and Laser Tracer and shelved
+    // with them. What Beam Team adds is the pairing and the ramp.
+    if(mode==='beam'){
+      // Small enough that being thrown matters. At 860 the rim was four hundred
+      // units past where anyone stood and a knockdown was a inconvenience.
+      const yMid=60, rad=460, spin = Math.random()<0.5 ? 1 : -1;
+      obs.push({type:'disc', cx, y:yMid, y0:yMid-rad-200, y1:yMid+rad+200,
+                // A disc that turns is Carousel's round, not this one. Here the
+                // floor holds still and only the arms move.
+                r:rad, speed:0});
+      const ring = (h, arms, dir, speed)=>({
+        // Past the rim, not up to it. At 0.96 the last eighteen units of floor
+        // were outside every arm's reach: a racer carried outward was set down
+        // on that ring of it and left there, safe, which is the one place on
+        // the disc the round is not allowed to have.
+        type:'spinlaser', y:yMid, cx, arms, len:rad*1.04, h,
+        speed: speed*dir, ang: rand(0,6.28), phase: 0,
+        // Units a second outward while it has hold of you. Above a racer's own
+        // 276 it is not a hazard, it is an execution: at 340 anyone the arms
+        // touched was over the rim inside a second, and the first sweep after
+        // the grace took a third of the field. At 150 being caught costs you
+        // ground and you have a beat to get out of its plane, which is the
+        // round -- over the low one, under the high one.
+        push: 200, grace: 2.6,
+        ramp: 0.022, speedMax: hard ? 1.80 : 1.55,
+        hub: false,
+        y0:yMid-rad-100, y1:yMid+rad+100});
+      // The spindle is a pillar rather than the arms' own post, because a post
+      // you can stand inside is a safe spot in a round that is supposed to have
+      // none: the arms need dist > 14 to hit you, so the middle was immune.
+      obs.push({type:'pillars', y:yMid, y0:yMid-70, y1:yMid+70, items:[{x:cx, r:32}]});
+      obs.push(ring(14, hard?5:4,  spin, 0.44));   // low, green: jump it
+      obs.push(ring(34, hard?4:3, -spin, 0.36));   // high, pink: go under it
+      arenaEnd = yMid + rad - 40; trackLength = yMid + rad + 4000;
+      return obs;
+    }
+
     // ---- WALL RUSH: walls with one gap, sweeping down a plate over nothing ----
     // Our own plate, our own walls. The arena is fenced on three
     // sides -- the track walls hold the sides, arenaEnd holds the far end --

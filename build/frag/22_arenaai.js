@@ -66,6 +66,54 @@
       return true;
     }
 
+    // ---- Beam Team: hold a spot, and read the arm that is coming to it
+    // A bot cannot outrun the arms -- they reach the rim -- so it does not try.
+    // It picks somewhere to stand and makes the same read the player makes: how
+    // long until an arm gets to my bearing, and is it the one I jump or the one
+    // I go under.
+    const hubs = obstacles.filter(o=>o.type==='spinlaser');
+    if(hubs.length){
+      const floor = obstacles.find(o=>o.type==='disc');
+      if(floor){
+        if(r.aiHome===undefined){ r.aiHome = rand(0.30,0.78); r.aiHomeA = rand(0,6.28); }
+        drive(floor.cx + Math.cos(r.aiHomeA)*floor.r*r.aiHome,
+              floor.y  + Math.sin(r.aiHomeA)*floor.r*r.aiHome, 30);
+      }
+      // Written as !(x>0), not x<=0: baseRacer() does not initialise tumbleT
+      // or getUpT, so on a racer that has never been knocked down both are
+      // undefined and `undefined <= 0` is false. The guard was never true
+      // and not one bot jumped a beam in the whole round -- the field stood
+      // there and let the arms walk it off the rim. Everything else in the
+      // codebase tests these the truthy way round; this did not.
+      if(r.h<=0 && !(r.stumbleT>0) && !(r.tumbleT>0) && !(r.getUpT>0)){
+        for(const o of hubs){
+          const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);
+          if(dist < 24 || dist > o.len) continue;
+          const ang=Math.atan2(dy,dx), base=spinlaserAngle(o,t), step=Math.PI*2/o.arms;
+          const w = o.speed;
+          if(!w) continue;
+          let soonest = Infinity;
+          for(let i=0;i<o.arms;i++){
+            let d = ang - (base + i*step);
+            while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+            // Already in it -- being carried, and the way out is the same one
+            // it should have taken. Left to the arithmetic below this reads as
+            // a whole revolution away half the time, depending on which side of
+            // the beam's line the bot happens to be standing.
+            if(Math.cos(d) > 0 && Math.abs(Math.sin(d))*dist < 34){ soonest = 0; break; }
+            // otherwise: when this arm's bearing reaches mine, the way it turns
+            let tt = d/w;
+            if(tt < 0) tt += Math.PI*2/Math.abs(w);
+            if(tt < soonest) soonest = tt;
+          }
+          // Leave it late. Jumping a second early is landing back in it, and a
+          // dive that has finished is a racer standing up into a high arm.
+          if(soonest < 0.26){ if(o.h < 24) doJump(r); else doDive(r); break; }
+        }
+      }
+      return true;
+    }
+
     // ---- closing arena: hold a spot somewhere off the middle
     const arena = obstacles.find(o=>o.type==='ring'||o.type==='disc');
     if(arena){
