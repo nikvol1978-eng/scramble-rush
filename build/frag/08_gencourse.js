@@ -77,6 +77,46 @@
       return obs;
     }
 
+    // ---- COMB COLLAPSE: four tiers of hexagons, each dropping after you step ----
+    // Shelved since v20 and brought back for v24 §4. Everything except this
+    // generator was still live -- the mesh, the fuse-and-drop update, the
+    // collision and the respawn -- so what the round needed was the field
+    // itself and a plan for the bots, which is the tile field's plan: the
+    // columns and tiers are the same shape, so tileFloor() reads both.
+    //
+    // Layered like Panel Drop: step through one hexagon and you land on the
+    // tier under it, and only the bottom one is a fall. Tiers rebuild after
+    // four seconds, or a field of twenty-four would eat itself long before
+    // the round timer ran out.
+    if(mode==='hex'){
+      // A shorter field on purpose: every hex is two meshes, and the whole point
+      // is the drop, not the distance.
+      const yStart=420, yEnd=yStart+3300;
+      const hexR=76, colW=hexR*1.5, rowH=hexR*Math.sqrt(3);
+      const cols=Math.max(3, Math.floor(TRACK_W/colW)-1);
+      const rows=Math.max(6, Math.floor((yEnd-yStart)/rowH));
+      const TIERS=[0,-42,-84,-126];
+      const cells=[], columns=[];
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const x = colW*0.9 + c*colW;
+        const y = yStart + r*rowH + (c%2?rowH/2:0);
+        if(x<hexR || x>TRACK_W-hexR || y>yEnd) continue;
+        const tiers=[];
+        for(let ti=0; ti<TIERS.length; ti++){
+          const missing = ti>0 && Math.random() < 0.09*ti;
+          const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
+                      touched:false, fuse:-1, gone:missing, drop:missing?1:0, back:missing?3:0};
+          tiers.push(cell); cells.push(cell);
+        }
+        columns.push({x, y, r:hexR, tiers});
+      }
+      // tiers rebuild, or a crowded field would strand everyone before the line
+      obs.push({type:'hexfield', yStart, yEnd, y0:yStart, y1:yEnd, cells, columns, tiers:TIERS,
+                fuseTime: hard?1.0:1.3, respawnTime: 4.0});
+      arenaEnd = yEnd-60; trackLength = yEnd+4000;
+      return obs;
+    }
+
     //<<shelved:gencourse-spin-hex-laser-tracer-blockdash>>
     // ---- DOOR DASH: rows of doors, half of them paper ----
     if(mode==='doors'){

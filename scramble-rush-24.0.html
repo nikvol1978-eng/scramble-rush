@@ -1977,6 +1977,9 @@ const QUALITY = {
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
     { key:'tiles', name:'Panel Drop', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
       ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
+    { key:'comb', name:'Comb Collapse', tip:'Every hexagon you touch drops a beat later. Keep moving and never stand still.',
+      ground:'#ffd166', groundAlt:'#f2b73d', wall:'#7a4a12', wallTop:'#ff8a5c', skyTop:'#ffe9b0', skyMid:'#ffb84d', skyBot:'#fff3d0', accent:'#ff8a5c',
+      objective:"DON'T FALL!", isMinigame:true, mode:'hex', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];
@@ -3054,6 +3057,46 @@ const QUALITY = {
                 // racers still fitted and the round stalled above its own cut.
                 r:r0, r0, rMin:34, shrink: hard? 30 : 26, wait: 2.5});
       arenaEnd = yMid + r0 - 40; trackLength = yMid + r0 + 4000;
+      return obs;
+    }
+
+    // ---- COMB COLLAPSE: four tiers of hexagons, each dropping after you step ----
+    // Shelved since v20 and brought back for v24 §4. Everything except this
+    // generator was still live -- the mesh, the fuse-and-drop update, the
+    // collision and the respawn -- so what the round needed was the field
+    // itself and a plan for the bots, which is the tile field's plan: the
+    // columns and tiers are the same shape, so tileFloor() reads both.
+    //
+    // Layered like Panel Drop: step through one hexagon and you land on the
+    // tier under it, and only the bottom one is a fall. Tiers rebuild after
+    // four seconds, or a field of twenty-four would eat itself long before
+    // the round timer ran out.
+    if(mode==='hex'){
+      // A shorter field on purpose: every hex is two meshes, and the whole point
+      // is the drop, not the distance.
+      const yStart=420, yEnd=yStart+3300;
+      const hexR=76, colW=hexR*1.5, rowH=hexR*Math.sqrt(3);
+      const cols=Math.max(3, Math.floor(TRACK_W/colW)-1);
+      const rows=Math.max(6, Math.floor((yEnd-yStart)/rowH));
+      const TIERS=[0,-42,-84,-126];
+      const cells=[], columns=[];
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const x = colW*0.9 + c*colW;
+        const y = yStart + r*rowH + (c%2?rowH/2:0);
+        if(x<hexR || x>TRACK_W-hexR || y>yEnd) continue;
+        const tiers=[];
+        for(let ti=0; ti<TIERS.length; ti++){
+          const missing = ti>0 && Math.random() < 0.09*ti;
+          const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
+                      touched:false, fuse:-1, gone:missing, drop:missing?1:0, back:missing?3:0};
+          tiers.push(cell); cells.push(cell);
+        }
+        columns.push({x, y, r:hexR, tiers});
+      }
+      // tiers rebuild, or a crowded field would strand everyone before the line
+      obs.push({type:'hexfield', yStart, yEnd, y0:yStart, y1:yEnd, cells, columns, tiers:TIERS,
+                fuseTime: hard?1.0:1.3, respawnTime: 4.0});
+      arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }
 
@@ -4893,6 +4936,10 @@ const QUALITY = {
     $('mapIntroGoal').textContent=objectiveOf(currentMap);
     $('roundBadge').textContent=roundLabel(n);
     $('hud').classList.add('hidden'); $('pauseBtn').classList.add('hidden');   // the flyover owns the screen first
+    // §5.1's tab strip and rings are menu chrome, and a round starting is the
+    // one way out of the menu that did not tell them so -- they sat over the
+    // top of the course.
+    if(typeof syncMenuChrome === 'function') syncMenuChrome();
     if(settings.hints) $('hint').classList.remove('hidden');
     $('touchControls').classList.toggle('hidden', !settings.touch);
     // reel first, then the map card, then go
@@ -7658,6 +7705,11 @@ const QUALITY = {
         return set(r.aiDoorX, 1);
       }
 
+      // v24 §4: Comb Collapse is the same problem wearing hexagons -- columns
+      // of tiers, the top live one is the floor, and it arms when touched. The
+      // plan below reads both because tileFloor() is written against col.tiers
+      // rather than against either shape.
+      case 'hexfield':
       case 'tilefield': {
         // Tile Trap is an arena, not a course. Running the field end to end
         // bunched the whole pack at the far side, where they ate the tiles

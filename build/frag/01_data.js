@@ -618,6 +618,9 @@
       ground:'#e7d7ff', groundAlt:'#d6c1ff', wall:'#4c1d95', wallTop:'#ffcb3d', skyTop:'#c4b5fd', skyMid:'#7c3aed', skyBot:'#2e1065', accent:'#a855f7', isMinigame:true, mode:'doors', lenScale:1.6 },
     { key:'tiles', name:'Panel Drop', tip:'Three floors down. Drop through one and you land on the next — drop through the last and you are out.',
       ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#075985', wallTop:'#fde68a', skyTop:'#e0f2fe', skyMid:'#38bdf8', skyBot:'#0c4a6e', accent:'#fde68a', isMinigame:true, mode:'tiles', knockout:true },
+    { key:'comb', name:'Comb Collapse', tip:'Every hexagon you touch drops a beat later. Keep moving and never stand still.',
+      ground:'#ffd166', groundAlt:'#f2b73d', wall:'#7a4a12', wallTop:'#ff8a5c', skyTop:'#ffe9b0', skyMid:'#ffb84d', skyBot:'#fff3d0', accent:'#ff8a5c',
+      objective:"DON'T FALL!", isMinigame:true, mode:'hex', knockout:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];

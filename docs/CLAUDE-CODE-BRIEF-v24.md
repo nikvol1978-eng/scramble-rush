@@ -29,7 +29,7 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5 is complete: §5.1-§5.5 committed. Next is §4's remaining rounds -- Comb Collapse first.)*
+*(§5 complete; §4: Hop & Duck, Slime Slope and Comb Collapse in. Wall Rush is next.)*
 
 ## How "no gameplay number moved" is proved
 

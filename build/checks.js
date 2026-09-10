@@ -2279,7 +2279,7 @@
   function checkAccept(){
     const bad = [], report = {};
     const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope'];
-    const SURVIVE = ['lava','doors','tiles','shrink'];
+    const SURVIVE = ['lava','doors','tiles','shrink','comb'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
     // Hop & Duck is bars and nothing else, so a racer who reads them is not
@@ -2776,6 +2776,82 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- x: Comb Collapse drops the hex you stood on ----------
+  // (id 'x' because 'C' was already the ground-support check)
+  // The round's whole mechanic in four assertions: the field is layered, a
+  // hexagon you touch arms and then goes, the tier under it catches you, and
+  // the bottom one does not. Everything but the generator for this was already
+  // live from v20, so this check is as much about the wiring as the shape.
+  function checkComb(){
+    const bad = [], rep = {};
+    begin('comb');
+    const f = obstacles.find(o=>o.type==='hexfield');
+    if(!f) return { name:'x Comb Collapse drops the hex you stood on', pass:false,
+                    detail:'no hex field generated' };
+
+    rep.field = f.columns.length + ' columns, ' + f.tiers.length + ' tiers, fuse '
+              + f.fuseTime + 's, rebuild ' + f.respawnTime + 's';
+    if(f.tiers.length < 3) bad.push('only ' + f.tiers.length + ' tiers, want at least 3');
+    if(!f.columns.length)  bad.push('no columns');
+
+    // (a) a hexagon you stand on arms, and then drops
+    // Well inside the field, not the first column: the collision tests
+    // `r.y > yStart` and the first row sits exactly on yStart, so a probe
+    // standing there is standing one unit outside the field it is testing.
+    const inside = f.columns.filter(c=>c.tiers.every(t=>!t.gone)
+                                    && c.y > f.yStart + 120 && c.y < f.yEnd - 120);
+    const col = inside[Math.floor(inside.length/2)] || f.columns[0];
+    const p = player();
+    // Parked, NOT eliminated. Marking them out ends a knockout round the moment
+    // one racer is left, and a round that has ended stops running its minigame
+    // update -- so the fuse this check is about never drained, and the check
+    // read "an armed hexagon never dropped" while the mechanic worked fine.
+    for(const r of racers) if(!r.isPlayer){ r.y = f.yStart - 600; r.vx = 0; r.vy = 0; r.invuln = 9999; }
+    Object.assign(p, { x:col.x, y:col.y, h:0, vx:0, vy:0, vh:0, floorH:col.tiers[0].hy,
+                       falling:false, stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0,
+                       lavaOut:false, tileGraceUntil:0 });
+    resetLook();
+    let armed = false, dropped = false;
+    for(let i=0; i<Math.ceil((f.fuseTime+2.5)*60) && !dropped; i++){
+      // Pinned hard: the probe has to be standing on it at the moment the
+      // collision runs, and anything that drifts it off is measuring nothing.
+      p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0; p.h = 0; p.vh = 0; p.invuln = 0;
+      window.__dbg.tick(1);
+      if(col.tiers[0].fuse >= 0) armed = true;
+      if(col.tiers[0].gone) dropped = true;
+    }
+    rep.fuse = armed ? (dropped ? 'armed and dropped' : 'armed but never dropped') : 'never armed';
+    if(!armed)   bad.push('standing on a hexagon did not arm it');
+    if(!dropped) bad.push('an armed hexagon never dropped');
+
+    // (b) the tier under it catches you -- this is the layering
+    if(dropped && f.tiers.length > 1){
+      let caught = false;
+      for(let i=0; i<120 && !caught; i++){
+        p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0;
+        window.__dbg.tick(1);
+        if(!p.falling && Math.abs((p.floorH||0) - col.tiers[1].hy) < 30) caught = true;
+      }
+      rep.layer = caught ? 'the tier below caught the fall' : 'fell straight past the next tier';
+      if(!caught) bad.push('dropping through a hexagon did not land on the tier below');
+    }
+
+    // (c) with every tier gone, it is a fall
+    for(const t of col.tiers){ t.gone = true; t.fuse = -1; }
+    Object.assign(p, { x:col.x, y:col.y, h:0, vh:0, falling:false, floorH:0, invuln:0, tileGraceUntil:0 });
+    let fell = false;
+    for(let i=0; i<60 && !fell; i++){
+      p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0; p.h = 0; p.vh = 0;
+      p.invuln = 0; p.tileGraceUntil = 0;
+      window.__dbg.tick(1); fell = !!(p.falling || p.lavaOut);
+    }
+    rep.bottom = fell ? 'an empty column is a fall' : 'stood on nothing';
+    if(!fell) bad.push('an empty column was not a fall');
+
+    return { name:'x Comb Collapse drops the hex you stood on', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -2788,7 +2864,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

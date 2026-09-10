@@ -172,6 +172,10 @@
     $('mapIntroGoal').textContent=objectiveOf(currentMap);
     $('roundBadge').textContent=roundLabel(n);
     $('hud').classList.add('hidden'); $('pauseBtn').classList.add('hidden');   // the flyover owns the screen first
+    // §5.1's tab strip and rings are menu chrome, and a round starting is the
+    // one way out of the menu that did not tell them so -- they sat over the
+    // top of the course.
+    if(typeof syncMenuChrome === 'function') syncMenuChrome();
     if(settings.hints) $('hint').classList.remove('hidden');
     $('touchControls').classList.toggle('hidden', !settings.touch);
     // reel first, then the map card, then go

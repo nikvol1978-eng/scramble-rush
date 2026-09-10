@@ -576,6 +576,11 @@
         return set(r.aiDoorX, 1);
       }
 
+      // v24 §4: Comb Collapse is the same problem wearing hexagons -- columns
+      // of tiers, the top live one is the floor, and it arms when touched. The
+      // plan below reads both because tileFloor() is written against col.tiers
+      // rather than against either shape.
+      case 'hexfield':
       case 'tilefield': {
         // Tile Trap is an arena, not a course. Running the field end to end
         // bunched the whole pack at the far side, where they ate the tiles

@@ -50,36 +50,6 @@
       return obs;
     }
 
-    // ---- HEX DROP: four tiers of hexagons, each drops shortly after you touch it ----
-    if(mode==='hex'){
-      // A shorter field on purpose: every hex is two meshes, and the whole point
-      // is the drop, not the distance.
-      const yStart=420, yEnd=yStart+3300;
-      const hexR=76, colW=hexR*1.5, rowH=hexR*Math.sqrt(3);
-      const cols=Math.max(3, Math.floor(TRACK_W/colW)-1);
-      const rows=Math.max(6, Math.floor((yEnd-yStart)/rowH));
-      const TIERS=[0,-42,-84,-126];
-      const cells=[], columns=[];
-      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
-        const x = colW*0.9 + c*colW;
-        const y = yStart + r*rowH + (c%2?rowH/2:0);
-        if(x<hexR || x>TRACK_W-hexR || y>yEnd) continue;
-        const tiers=[];
-        for(let ti=0; ti<TIERS.length; ti++){
-          const missing = ti>0 && Math.random() < 0.09*ti;
-          const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
-                      touched:false, fuse:-1, gone:missing, drop:missing?1:0, back:missing?3:0};
-          tiers.push(cell); cells.push(cell);
-        }
-        columns.push({x, y, r:hexR, tiers});
-      }
-      // tiers rebuild, or a crowded field would strand everyone before the line
-      obs.push({type:'hexfield', yStart, yEnd, y0:yStart, y1:yEnd, cells, columns, tiers:TIERS,
-                fuseTime: hard?1.0:1.3, respawnTime: 4.0});
-      arenaEnd = yEnd-60; trackLength = yEnd+4000;
-      return obs;
-    }
-
     // ---- LASER DODGE: sweeping beams, low ones you jump, high ones you dive under ----
     if(mode==='laser'){
       let z=560;
