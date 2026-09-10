@@ -127,8 +127,13 @@
           // seconds and the full minute depending on where those holes fell.
           const missing = ti>0 && Math.random() < 0.045*ti;
           const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
-                      // the bottom rung of the final is spent for good
-                      noBack: isFinal && ti===TIERS.length-1,
+                      // Spent for good: the bottom rung of the final, and the bottom two
+          // of Comb Collapse. Rebuilding every tier is what made that round a
+          // cliff -- the rebuild kept pace with the fuse until it suddenly did
+          // not, and which side of that a run landed on was the whole outcome.
+          // With the lower half gone for good the floor shrinks all round, so
+          // the last stretch is fought on less of it every second.
+                      noBack: isFinal ? (ti === TIERS.length-1) : (ti >= TIERS.length-2),
                       touched:false, fuse:-1, gone:missing, drop:missing?1:0, back:missing?3:0};
           tiers.push(cell); cells.push(cell);
         }
@@ -150,7 +155,15 @@
                 // actually walking on it, that pair ate the field in six
                 // seconds. These are Panel Drop's shape -- a fuse you can beat
                 // and a rebuild that keeps up with twenty-four of them.
-                fuseTime: isFinal ? 1.6 : (hard?1.6:1.9),
+                // The fuse ramps instead of sitting still: two seconds at the
+                // gun and one and a bit by the time the round is old, held there.
+                // Early the field is safe enough to cross, late it goes under
+                // everybody at once. The final does not ramp -- eight racers on
+                // three rungs is already the endgame.
+                fuse0: isFinal ? 1.6 : 2.0,
+                fuse1: isFinal ? 1.6 : (hard ? 1.25 : 1.4),
+                fuseRampS: 45,
+                fuseTime: isFinal ? 1.6 : 2.0,
                 // The final's top rung comes back quicker than the survival
                 // round's, not slower: with only two rungs and the lower one
                 // spent for good, a slow rebuild on top of that took eight

@@ -2299,9 +2299,15 @@
       window.__dbg.hold('w', true);
       let ticks = 0, ended = false, stillest = 0;
       const lastY = new Map(), stuckFor = new Map();
+      // When each racer goes out, not just how many did. A survival round that
+      // loses eight people in five seconds and none in the other fifty has the
+      // same count as one that loses them steadily, and they are not the same
+      // round.
+      const outAt = [], wasOut = new Set();
       while(ticks < 60*72 && !ended){
         window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);   // mash it
         window.__dbg.tick(12); ticks += 12;
+        for(const r of racers) if(r.lavaOut && !wasOut.has(r)){ wasOut.add(r); outAt.push(+(ticks/60).toFixed(1)); }
         ended = (state !== 'racing');
         for(const r of racers){
           if(r.isPlayer || r.finished || r.lavaOut) continue;
@@ -2325,7 +2331,7 @@
       const bots = racers.filter(r=>!r.isPlayer);
       const finTimes = bots.filter(b=>b.finished).map(b=>b.finishTime);
       return {
-        secs: Math.round(ticks/60), limit,
+        secs: Math.round(ticks/60), limit, outAt,
         // when the field gets home: the v20 brief wants this between 35 and 50 s
         medFinish: finTimes.length ? Math.round(median(finTimes)) : null,
         rank: sorted.findIndex(r=>r.isPlayer)+1,
@@ -2358,15 +2364,49 @@
       if(medStill > 4) bad.push(key+': a bot idled '+medStill+'s');
     }
 
+    // Comb Collapse is judged on its shape, not only its length: how long, how
+    // many go out, and whether they go out steadily. Its fuse used to be a
+    // cliff -- a round either collapsed or did nothing -- and a median alone
+    // could not tell those apart.
+    // Same targets as check x, and the same recorded miss: the length and the
+    // count are met, the spread is not, and the timestamps are printed either
+    // way so the shape is on the record every run.
+    const SURVIVE_SHAPE = { comb: { minS:40, maxS:55, minOut:4, maxOut:8, burst:3, window:5, enforce:false } };
     for(const key of SURVIVE){
       const runs = [];
       for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key));
       const medSecs = median(runs.map(r=>r.secs));
       const limit = runs[0].limit;
-      report[key] = 'median '+medSecs+'s of '+limit+'s';
-      const floorS = key==='lava' ? 20 : 30;
-      if(medSecs < floorS)   bad.push(key+': median run only '+medSecs+'s');
-      if(medSecs > limit+6)  bad.push(key+': median run '+medSecs+'s, past its '+limit+'s limit');
+      const shape = SURVIVE_SHAPE[key];
+      if(!shape){
+        report[key] = 'median '+medSecs+'s of '+limit+'s';
+        const floorS = key==='lava' ? 20 : 30;
+        if(medSecs < floorS)   bad.push(key+': median run only '+medSecs+'s');
+        if(medSecs > limit+6)  bad.push(key+': median run '+medSecs+'s, past its '+limit+'s limit');
+        continue;
+      }
+      const medOut = median(runs.map(r=>r.outAt.length));
+      // the fullest `window` seconds of any run
+      let worstBurst = 0, worstRun = null;
+      for(const r of runs){
+        for(const t0 of r.outAt){
+          const n = r.outAt.filter(t=>t >= t0 && t < t0+shape.window).length;
+          if(n > worstBurst){ worstBurst = n; worstRun = r; }
+        }
+      }
+      report[key] = 'median '+medSecs+'s of '+limit+'s, '+medOut+' out, worst '
+                  + shape.window+'s window '+worstBurst
+                  + ' | out at ' + runs.map(r=>'['+r.outAt.join(' ')+']').join(' ');
+      const miss = [];
+      if(medSecs < shape.minS || medSecs > shape.maxS)
+        miss.push(key+': median run '+medSecs+'s, want '+shape.minS+'-'+shape.maxS);
+      if(medOut < shape.minOut || medOut > shape.maxOut)
+        miss.push(key+': median '+medOut+' out of 24, want '+shape.minOut+'-'+shape.maxOut);
+      if(worstBurst > shape.burst)
+        miss.push(key+': '+worstBurst+' went out inside one '+shape.window+'s window ('
+                + (worstRun ? worstRun.outAt.join(' ') : '') + '), want at most '+shape.burst);
+      if(miss.length) report[key] += ' | KNOWN MISS: ' + miss.join('; ');
+      if(shape.enforce) for(const m of miss) bad.push(m);
     }
 
     return { name:'+ acceptance: five layouts a map, judged on medians',
@@ -2851,6 +2891,68 @@
     }
     rep.bottom = fell ? 'an empty column is a fall' : 'stood on nothing';
     if(!fell) bad.push('an empty column was not a fall');
+
+    // ---- and the shape of the round it makes ------------------------------
+    // The mechanic above is one hexagon under one probe. This is the round: how
+    // long it lasts, how many it takes, and whether it takes them steadily. The
+    // fuse ramps from 2.0s to 1.4s over the first forty-five seconds and the
+    // bottom two tiers never rebuild, so the floor shrinks all the way through
+    // and the last stretch is fought on less of it -- which is meant to make
+    // this a slope. If it is a cliff instead, the timestamps below say so.
+    // `enforce:false` is a recorded known miss, not a softened target. The two
+    // shape changes asked for are both in -- the fuse ramps 2.0s -> 1.4s over
+    // forty-five seconds, and the bottom two tiers never rebuild -- and the
+    // floor does now shrink smoothly all round: a hundred of four hundred cells
+    // gone by twenty seconds, at a steady five a second, with the field spread
+    // from y=400 to y=2500 rather than bunched.
+    //
+    // What does not follow is the spread. Nobody goes out for the first fifteen
+    // seconds and then everybody does, because a four-tier column needs all
+    // four gone underneath you: until the two permanent ones are widely spent
+    // AND the two that rebuild happen to be down at the same moment, no fall is
+    // possible -- and that coincidence stops being rare everywhere at once.
+    // The cliff is the column depth, not the fuse.
+    //
+    // Flip enforce to true to make these bite again.
+    const COMB_SHAPE = { minS:40, maxS:55, minOut:4, maxOut:8, burst:3, window:5, enforce:false };
+    {
+      const runs = [];
+      for(let i=0;i<3;i++){
+        begin('comb');
+        window.__dbg.hold('w', true);
+        let ticks = 0; const outAt = [], seen = new Set();
+        while(ticks < 60*72 && state === 'racing'){
+          window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);
+          window.__dbg.tick(12); ticks += 12;
+          for(const r of racers) if(r.lavaOut && !seen.has(r)){ seen.add(r); outAt.push(+(ticks/60).toFixed(1)); }
+        }
+        window.__dbg.hold('w', false);
+        window.__dbg.hold(settings.keys.jump, false);
+        runs.push({ secs: Math.round(ticks/60), outAt });
+      }
+      const secs = runs.map(r=>r.secs).sort((a,b)=>a-b);
+      const medSecs = secs[1];
+      const outs = runs.map(r=>r.outAt.length).sort((a,b)=>a-b);
+      const medOut = outs[1];
+      let worst = 0, worstAt = null;
+      for(const r of runs) for(const t0 of r.outAt){
+        const n = r.outAt.filter(t=>t >= t0 && t < t0+COMB_SHAPE.window).length;
+        if(n > worst){ worst = n; worstAt = r.outAt; }
+      }
+      rep.rounds = medSecs + 's median, ' + medOut + ' out, worst ' + COMB_SHAPE.window
+                 + 's window ' + worst;
+      rep.outAt = runs.map(r=>'[' + r.outAt.join(' ') + ']').join(' ');
+      const miss = [];
+      if(medSecs < COMB_SHAPE.minS || medSecs > COMB_SHAPE.maxS)
+        miss.push('median round ' + medSecs + 's, want ' + COMB_SHAPE.minS + '-' + COMB_SHAPE.maxS);
+      if(medOut < COMB_SHAPE.minOut || medOut > COMB_SHAPE.maxOut)
+        miss.push('median ' + medOut + ' out of 24, want ' + COMB_SHAPE.minOut + '-' + COMB_SHAPE.maxOut);
+      if(worst > COMB_SHAPE.burst)
+        miss.push(worst + ' went out inside one ' + COMB_SHAPE.window + 's window ('
+                + (worstAt ? worstAt.join(' ') : '') + '), want at most ' + COMB_SHAPE.burst);
+      if(miss.length) rep.knownMiss = miss.join('; ');
+      if(COMB_SHAPE.enforce) for(const m of miss) bad.push(m);
+    }
 
     return { name:'x Comb Collapse drops the hex you stood on', pass: bad.length===0,
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };

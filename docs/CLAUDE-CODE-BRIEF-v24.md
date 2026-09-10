@@ -33,13 +33,30 @@ respawn is at the last checkpoint.
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
 Wall Rush, Beam Team, Last Rung and Tilt Deck in. Log Jam is next.)*
 
-**Comb Collapse is bimodal and wants a play-test.** Once the pack was
-actually on the field, its fuse turned out to be a cliff rather than a dial:
-1.7s gives a median of 29s with the cut reached, 1.9s gives a full minute
-with one or two out, and there is very little in between -- the cascade
-either catches or it does not. It is set to 1.9 because that is the side
-that passes the acceptance, but which side is the better round is a
-judgement to make by playing it.
+**Comb Collapse: the spread is a recorded known miss.** The round is now shaped
+rather than tuned -- the fuse ramps 2.0s at the gun to 1.4s at forty-five
+seconds and holds, and the bottom two tiers never rebuild -- and the floor does
+shrink smoothly all the way through: a hundred of four hundred cells gone by
+twenty seconds, a steady five a second, with the field spread from y=400 to
+y=2500 rather than bunched. Two of the three targets are met and one is not:
+
+    length   21s median          want 40-55s     MISS
+    count    8 of 24 out         want 4-8        met
+    spread   7 in a 5s window    want max 3      MISS
+    out at   [14.2 14.2 16 17.2 17.4 18.2 20.4 20.6]
+             [8 17 19.8 20.2 20.6 21.2 23 23]
+             [14.6 16.2 16.4 17.2 17.2 20.8 20.8 21]
+
+Nobody goes out for the first fifteen seconds and then everybody does. The cause
+is column depth, not the fuse: a four-tier column needs all four gone underneath
+you, so until the two permanent tiers are widely spent *and* the two that
+rebuild happen to be down at the same moment, no fall is possible at all -- and
+that coincidence stops being rare everywhere at once. The eight go out, the
+round hits its cut, and it ends at twenty seconds.
+
+The targets are in check `x` and in the acceptance with `enforce:false`, so the
+numbers print on every run and neither goes red. Flipping that one flag makes
+them bite.
 
 **A round can pass its own section check and never happen.** Comb Collapse
 shipped with a check that dropped a hex under a teleported probe, a generator

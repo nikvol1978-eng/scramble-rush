@@ -39,6 +39,14 @@
     }
     return (best && bestD < best.r*1.15) ? best : null;
   }
+  // What a hexagon's fuse is worth at this moment in the round. A field with
+  // no ramp on it answers with the number it was built with, so Last Rung and
+  // anything else that wants a flat fuse reads the same as before.
+  function hexFuse(o){
+    if(o.fuse0 === undefined) return o.fuseTime;
+    const k = clamp(raceTime/(o.fuseRampS||45), 0, 1);
+    return o.fuse0 + (o.fuse1 - o.fuse0)*k;
+  }
   function hexFloor(col){
     if(!col) return null;
     for(const c of col.tiers){ if(!c.gone) return c; }
@@ -949,7 +957,7 @@
           c.fuse -= dt;
           if(c.mesh){
             c.mesh.position.y = c.baseY + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
-            if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hf.fuseTime*0.45 ? 0xff5a4d : 0xffd166);
+            if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hexFuse(hf)*0.45 ? 0xff5a4d : 0xffd166);
           }
           // Infinity, not a flag checked at the other end: the rebuild below
           // counts this down, so a rung that is never coming back is one whose
@@ -1195,7 +1203,7 @@
         if(!floor){ if(!grace){ fallDown(r); return; } }
         else {
           r.floorH = floor.hy;
-          if(!floor.touched){ floor.touched=true; floor.fuse=hf.fuseTime; }
+          if(!floor.touched){ floor.touched=true; floor.fuse=hexFuse(hf); }
         }
       }
     }
