@@ -295,6 +295,34 @@
           out.position.copy(mesh.position); courseGroup.add(out);
           return mesh;
         });
+      } else if(o.type==='logroll'){
+        o.meshes = o.logs.map(l=>{
+          const g = new THREE.Group();
+          const len = l.b - l.a;
+          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(o.R, o.R, len, 22),
+            new THREE.MeshPhongMaterial({color:mixHex(floorHex, accents[0], 0.30), shininess:16}));
+          // a cylinder stands up by default; lay it down the course
+          barrel.rotation.x = Math.PI/2; barrel.castShadow = true; barrel.receiveShadow = true;
+          g.add(barrel); registerFadeable(barrel);
+          // Bands, so you can see it turning. A smooth barrel rolls invisibly.
+          const bandMat = new THREE.MeshLambertMaterial({color:accents[1]});
+          for(let i=1;i<6;i++){
+            const b = new THREE.Mesh(new THREE.CylinderGeometry(o.R*1.012, o.R*1.012, 10, 22, 1, true), bandMat);
+            b.rotation.x = Math.PI/2; b.position.z = -len/2 + len*i/6; g.add(b);
+          }
+          const pegMat = new THREE.MeshLambertMaterial({color:currentMap.wallTop});
+          l.pegMeshes = l.pegs.map(peg=>{
+            const pg = new THREE.Group();
+            const stub = new THREE.Mesh(THREE.RoundedBox(o.pegW*1.7, o.pegLen*2.1, o.pegW*1.7), pegMat);
+            stub.castShadow = true; pg.add(stub);
+            pg.position.z = (peg.y - (l.a+l.b)/2);
+            g.add(pg);
+            return pg;
+          });
+          placeAt(g, l.cx, (l.a+l.b)/2, o.crown - o.R);
+          courseGroup.add(g);
+          return g;
+        });
       } else if(o.type==='tiltdeck'){
         o.meshes = o.decks.map(dk=>{
           const g = new THREE.Group();

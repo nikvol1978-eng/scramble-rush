@@ -31,7 +31,24 @@ respawn is at the last checkpoint.
 
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
-Wall Rush, Beam Team, Last Rung and Tilt Deck in. Log Jam is next.)*
+Wall Rush, Beam Team, Last Rung, Tilt Deck and Log Jam in. Splash Slide's
+hoop finish is next, then the twelve-round pools, then cut 24.0.)*
+
+**Two guards that read `undefined` and three more like them.** `baseRacer()`
+initialises `stumbleT` but not `tumbleT` or `getUpT`, so `r.tumbleT <= 0` on a
+racer that has never been knocked down is `undefined <= 0`, which is false --
+the guard never opens. Written that way it killed the beam dodge in the arena
+AI, the log's sideways carry and Tilt Deck's slide. All three are now `!(x>0)`.
+Three more of the same shape are still in shipped code and are **not** touched,
+because fixing them changes how the game already plays:
+
+    24_botplan.js:36   r.tumbleT <= 0   the air-dive gate -- bots cannot air
+                                        dive until they have tumbled once
+    12_charanim.js:138 r.tumbleT <= 0   the ice skid lean, same
+    12_charanim.js:148 r.tumbleT <= 0   and the lean it falls back to
+
+The first of those is v24 §2's own feature, so it is worth a decision rather
+than a silent fix.
 
 **Comb Collapse: the spread is a recorded known miss.** The round is now shaped
 rather than tuned -- the fuse ramps 2.0s at the gun to 1.4s at forty-five

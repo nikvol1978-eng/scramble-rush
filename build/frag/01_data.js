@@ -366,6 +366,11 @@
       objective:'JUMP THE LOW ONES, DIVE THE HIGH ONES!',
       round1Total:9200, forcedGap:false, obstacles:['beam','laserbar','narrow','gate'] },
 
+    { key:'logjam', name:'Log Jam', tip:'The log turns under you and pushes you off the crown. Lean into it, and jump the pegs as they come up.',
+      ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#155e75', wallTop:'#f97316', skyTop:'#e0f2fe', skyMid:'#0ea5e9', skyBot:'#f0f9ff', accent:'#f97316',
+      objective:'RACE TO THE FINISH!',
+      round1Total:8600, forcedGap:false, obstacles:['logroll','narrow','ramp','gate','pillars'] },
+
     { key:'tiltdeck', name:'Tilt Deck', tip:'The decks lean toward whoever is standing on them. Cross on the high side, or cross fast.',
       ground:'#fcd34d', groundAlt:'#f59e0b', wall:'#78350f', wallTop:'#38bdf8', skyTop:'#fef3c7', skyMid:'#fbbf24', skyBot:'#fff7ed', accent:'#38bdf8',
       objective:'RACE TO THE FINISH!',
@@ -504,6 +509,22 @@
     // Tilt Deck: three decks on a pivot, three times, with something that
     // wants you on a line in between each set -- being shoved off the middle of
     // a deck has to cost you on the next thing, or leaning is just scenery.
+    // Log Jam: a narrow before every log, because racers arrive at a section
+    // spread across the whole track and a log is a fifth of it. Being funnelled
+    // onto the crown is the start of the problem, not a way round it.
+    logjam: [
+      { type:'start',   len:700 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1500 },
+      { type:'ramp',    len:640, turn:+20 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1500, turn:-22 },
+      { type:'gate',    len:620 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1400 },
+      { type:'finish',  len:580 }
+    ],
+
     tiltdeck: [
       { type:'start',    len:700 },
       { type:'tiltdeck', len:1300 },

@@ -433,6 +433,41 @@
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
+    } else if(type==='logroll'){
+      // A log lying along the course, not across it: you run down the top of it
+      // and it turns underneath you, which pushes you sideways off the crown
+      // toward a shoulder that is not floor. Pegs are set into it and come up
+      // over the top as it turns -- they are the thing you jump, and the log is
+      // the thing you fight.
+      //
+      // Consecutive logs turn opposite ways, so the answer is never "hold one
+      // direction": you lean against it, it stops, and now you are leaning the
+      // wrong way into the next one.
+      const R = 150, band = R*0.74, gapY = 120;
+      const n = 2, logLen = clamp((len-260)/n - gapY, 620, 1000);
+      let ly = cursor + gap + 140;
+      const logs = [];
+      const dir0 = Math.random()<0.5 ? 1 : -1;
+      for(let i=0;i<n;i++){
+        const a = ly, b = ly + logLen;
+        // Pegs: spaced down the log, each at its own angle, so they come up one
+        // at a time rather than as a fence.
+        const pegs = [];
+        const pn = hard ? 5 : 4;
+        for(let k=0;k<pn;k++)
+          pegs.push({ y: a + logLen*(k+0.7)/(pn+0.4), a: rand(0, Math.PI*2) });
+        logs.push({ cx, a, b, ang: rand(0, Math.PI*2),
+                    spin: dir0*(i%2 ? -1 : 1)*rand(0.34, 0.50)*spd, pegs });
+        ly = b + gapY;
+      }
+      const yStart2 = logs[0].a - 30, yEnd2 = logs[n-1].b + 30;
+      obs.push({type:'logroll', yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+40,
+                logs, R, band, crown: 62,
+                // how far a peg stands out of the log. A standing jump tops out
+                // near seventy, so this has to be well under it or the round is
+                // a wall you cannot cross.
+                pegLen: 30, pegW: 26});
+      cursor = yEnd2 + 90;
     } else if(type==='tiltdeck'){
       // Three big decks on a pivot with a step between them. A deck leans the
       // way the weight on it leans, and what is standing on it slides downhill,

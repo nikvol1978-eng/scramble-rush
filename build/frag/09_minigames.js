@@ -67,6 +67,23 @@
   // the clock, so the shelved sections read the same.
   function spinlaserAngle(o,t){ return o.ang===undefined ? t*o.speed + o.phase : o.ang; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
+  // The log a racer is over, and how high its surface is under them. The crown
+  // is the high line down the middle; the further off it you are the lower and
+  // the steeper the ground, until there is none.
+  function logOver(o, y){ return o.logs.find(l=>y >= l.a && y <= l.b); }
+  function logSurface(o, l, x){
+    const dx = x - l.cx;
+    if(Math.abs(dx) > o.band) return null;
+    return o.crown - (o.R - Math.sqrt(Math.max(0, o.R*o.R - dx*dx)));
+  }
+  // Where a peg is in its turn: zero is straight up, and how far it stands
+  // proud of the surface is the cosine of that.
+  function pegRise(o, l, peg){
+    let a = (peg.a + l.ang) % (Math.PI*2);
+    if(a > Math.PI) a -= Math.PI*2;
+    if(a < -Math.PI) a += Math.PI*2;
+    return { ang:a, rise: Math.cos(a)*o.pegLen };
+  }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
   // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
   // the closing ring carries its own radius. Everything else that draws or hits
@@ -753,6 +770,8 @@
         const dir = Math.sign(o.speed) || 1;
         if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
         o.ang += o.speed*dt;
+      } else if(o.type==='logroll'){
+        for(const l of o.logs) l.ang += l.spin*dt;
       } else if(o.type==='tiltdeck'){
         for(const dk of o.decks){
           let sx = 0, sy = 0, n = 0;
@@ -1087,6 +1106,77 @@
       }
     }
 
+    // ---- surfaces you stand on ------------------------------------------
+    // Above the ground-hazard gate below, not inside it. That gate is
+    // `r.h<=0.5 && (r.floorH||0) <= 20`, which is right for a hole in the floor
+    // and wrong for a floor that is not at zero: the first frame on a log sets
+    // floorH to 61 and the frame after that the gate is shut, so the log turned
+    // under nobody, its pegs swept through nobody, and stepping off its
+    // shoulder was stepping onto thin air that never noticed. Tilt Deck had it
+    // too -- a leaning deck is up to 49 off zero -- which is why its slide had
+    // never once moved a racer.
+    const lr = obstacles.find(o=>o.type==='logroll' && r.y>o.yStart && r.y<o.yEnd);
+    if(lr){
+      const lg = logOver(lr, r.y);
+      if(lg){
+        const surf = logSurface(lr, lg, r.x);
+        // Off the shoulder is off. There is nothing beside a log.
+        if(surf === null){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+          r.floorH = surf;
+          r.onLog = lg;
+          // !(x>0), not x<=0: baseRacer() does not initialise tumbleT, so on a
+          // racer that has never been knocked down this reads `undefined <= 0`
+          // and is false. Written the wrong way round the log turned, the pegs
+          // went round with it, and neither ever touched anybody -- the whole
+          // round was scenery. Same trap as the beam dodge in the arena AI.
+          if(r.h <= 0.5 && !(r.tumbleT > 0)){
+            // The surface of a turning log moves sideways at spin x radius,
+            // and it takes what is standing on it with it. This is the round:
+            // everything else is you arguing with this line.
+            r.x += lg.spin*lr.R/60;
+            // and a peg that is coming up over the crown catches anything
+            // whose feet are still down
+            for(const peg of lg.pegs){
+              if(Math.abs(r.y - peg.y) > lr.pegW + RADIUS) continue;
+              const p = pegRise(lr, lg, peg);
+              if(p.rise <= 6) continue;                 // still under the log
+              if(r.h >= p.rise) continue;               // jumped it
+              if(r.invuln > 0) continue;
+              const dir = Math.sign(lg.spin) || 1;
+              hazardHit(r, dir*lr.R*Math.abs(lg.spin)/60, 0, dir, 0);
+              r.invuln = 620;
+              spawnBurst3D(r.x, r.y, 0xffcb3d, 8);
+              break;
+            }
+          }
+        }
+      } else if(r.onLog){ r.floorH = 0; r.onLog = null; }
+    } else if(r.onLog){ r.floorH = 0; r.onLog = null; }
+    const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
+    if(td){
+      // A little tolerance at the seams: the decks touch, and a racer exactly
+      // on the join between two of them is on both, not on neither.
+      const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
+      // Between two decks is a step you jump, so only a racer with their feet
+      // down is over nothing.
+      if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
+      else {
+        const ox = r.x-dk.cx, oy = r.y-dk.y;
+        // the surface, so the camera and the feet agree about where the floor is
+        r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
+        r.onDeck = dk;
+        // And the same here, which is why Tilt Deck's lean has been visual
+        // only since it landed: the decks tilted, the floor under you moved,
+        // and nothing ever slid. It needed a hammer bolted to the course to
+        // hurt anybody at all.
+        if(r.h <= 0.5 && !(r.tumbleT > 0)){
+          r.vx += dk.tx*td.slide;
+          r.vy += dk.ty*td.slide;
+        }
+      }
+    } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
+
     // ---- ground hazards (only when on the ground, and only at ground level) ----
     if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
@@ -1126,25 +1216,6 @@
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
-      const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
-      if(td){
-        // A little tolerance at the seams: the decks touch, and a racer exactly
-        // on the join between two of them is on both, not on neither.
-        const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
-        // Between two decks is a step you jump, so only a racer with their feet
-        // down is over nothing.
-        if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
-        else {
-          const ox = r.x-dk.cx, oy = r.y-dk.y;
-          // the surface, so the camera and the feet agree about where the floor is
-          r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
-          r.onDeck = dk;
-          if(r.h <= 0.5 && r.tumbleT <= 0){
-            r.vx += dk.tx*td.slide;
-            r.vy += dk.ty*td.slide;
-          }
-        }
-      } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
@@ -1207,7 +1278,7 @@
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck && !r.onLog) r.floorH = 0;
 
     // ---- terrain (v24 §2.8) ------------------------------------------------
     // Slime and bounce pads are ground, not hazards, so they go above the

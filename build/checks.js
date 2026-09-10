@@ -2278,7 +2278,7 @@
 
   function checkAccept(){
     const bad = [], report = {};
-    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope','tiltdeck'];
+    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope','tiltdeck','logjam'];
     const SURVIVE = ['lava','doors','tiles','shrink','comb','walls','beam'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
@@ -2290,8 +2290,8 @@
     // your line, and what that costs you is the narrow section that follows
     // every set of decks. So: hurt like the others, and falls only where
     // being off-line put you.
-    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2, tiltdeck:1 };
-    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8, tiltdeck:5 };
+    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2, tiltdeck:1, logjam:2 };
+    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8, tiltdeck:5, logjam:6 };
 
     function playThrough(key){
       begin(key);
@@ -3554,6 +3554,133 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- l: Log Jam turns under you, and its pegs come up over the top ----------
+  // The round is one surface and one hazard. The surface is a cylinder lying
+  // down the course: its crown is the high line, its shoulders fall away, and
+  // because it turns it takes whatever is standing on it sideways -- at spin
+  // times radius, which is the number this checks against rather than a number
+  // of its own. The hazard is the pegs set into it, which come up over the top
+  // as it turns and are there to be jumped.
+  //
+  // The carry is the assertion that matters. It shipped dead twice in one
+  // sitting: once behind `r.tumbleT <= 0`, which is `undefined <= 0` on a racer
+  // that has never been knocked down, and once inside the ground-hazard gate
+  // `(r.floorH||0) <= 20`, which shuts the moment you are standing on something
+  // sixty-one units up. Both times the log turned, the pegs went round with it,
+  // and neither touched anybody.
+  function checkLogJam(){
+    const bad = [], rep = {};
+    begin('logjam');
+    const secs = obstacles.filter(o=>o.type==='logroll');
+    if(!secs.length) return { name:'l Log Jam turns under you and its pegs come over the top', pass:false,
+                              detail:'no logs generated' };
+    const o = secs[0];
+    rep.field = secs.length + ' sections of ' + o.logs.length + ' logs, R' + o.R
+              + ', band ' + Math.round(o.band) + ', pegs ' + o.logs[0].pegs.length + ' a log';
+
+    // (a) consecutive logs turn opposite ways, or leaning is a held direction
+    for(const sec of secs)
+      for(let i=1;i<sec.logs.length;i++)
+        if(Math.sign(sec.logs[i].spin) === Math.sign(sec.logs[i-1].spin))
+          bad.push('two logs in a row turn the same way');
+
+    const lg = o.logs[0];
+    const bots = racers.filter(r=>!r.isPlayer);
+    const park = ()=>{ bots.forEach((r,i)=>{ r.x = 30; r.y = o.yStart - 900 - i*10;
+                                             r.vx = 0; r.vy = 0; r.h = 0; r.falling = false; }); };
+    const p = player();
+    const mid = (lg.a + lg.b)/2;
+    const put = (x,y)=>{ Object.assign(p, { x, y, h:0, vx:0, vy:0, vh:0, floorH:0, falling:false,
+      stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0, lavaOut:false }); resetLook(); };
+
+    // (b) the crown is the high line and the shoulders fall away from it
+    {
+      put(lg.cx, mid); park(); window.__dbg.tick(1);
+      const crown = p.floorH;
+      put(lg.cx + o.band*0.92, mid); park(); window.__dbg.tick(1);
+      const shoulder = p.floorH;
+      rep.shape = 'crown ' + Math.round(crown) + ', shoulder ' + Math.round(shoulder);
+      if(crown < 20)             bad.push('the crown is only ' + Math.round(crown) + ' up, so the log is not a log');
+      if(shoulder >= crown - 12) bad.push('the shoulder is level with the crown: no curve on it');
+    }
+
+    // (c) it carries you sideways at spin x radius, and the right way round
+    {
+      // hold the pegs under the log so this measures the turn, not a peg
+      const hidden = lg.pegs.map(pg=>pg.a);
+      lg.pegs.forEach(pg=>{ pg.a = Math.PI; });
+      lg.ang = 0;
+      put(lg.cx, mid);
+      const x0 = p.x;
+      const N = 40;
+      for(let i=0;i<N;i++){ park(); p.y = mid; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+      const moved = p.x - x0;
+      const want = lg.spin*o.R*N/60;
+      rep.carry = 'carried ' + Math.round(moved) + ' in ' + N + ' frames, spin x radius says ' + Math.round(want);
+      if(Math.sign(moved) !== Math.sign(want))
+        bad.push('the log carried the racer the wrong way: ' + Math.round(moved) + ' against ' + Math.round(want));
+      if(Math.abs(moved) < Math.abs(want)*0.6)
+        bad.push('the log barely carried: ' + Math.round(moved) + ' against ' + Math.round(want));
+      lg.pegs.forEach((pg,i)=>{ pg.a = hidden[i]; });
+    }
+
+    // (d) off the shoulder is off, and you come back on the crown rather than
+    // beside it -- coming back beside a log is coming back into the water
+    {
+      put(lg.cx + o.band + 30, mid);
+      let fell = false;
+      for(let i=0;i<20 && !fell; i++){ park(); p.y = mid; p.x = lg.cx + o.band + 30; window.__dbg.tick(1); fell = !!p.falling; }
+      rep.edge = fell ? 'off the shoulder is a fall' : 'stood on nothing beside the log';
+      if(!fell) bad.push('standing off the shoulder of a log was not a fall');
+      else {
+        for(let i=0;i<70 && p.falling; i++){ park(); window.__dbg.tick(1); }
+        const back = Math.abs(p.x - lg.cx);
+        rep.respawn = 'came back ' + Math.round(back) + ' off the crown';
+        if(back > o.band) bad.push('a fall off a log put the racer back ' + Math.round(back)
+                                 + ' off the crown, which is off the log again');
+      }
+    }
+
+    // (e) a peg over the top catches feet on the floor and misses a jump
+    {
+      const peg = lg.pegs[0];
+      const ride = (jump)=>{
+        peg.a = 0; lg.ang = 0;                       // this peg straight up
+        put(lg.cx, peg.y);
+        if(jump) tryJump();
+        let hit = false;
+        for(let i=0;i<26 && !hit; i++){
+          peg.a = -lg.ang;                           // hold it at the top
+          park(); p.y = peg.y; p.x = lg.cx;
+          window.__dbg.tick(1);
+          if(p.tumbleT > 0 || p.stumbleT > 0) hit = true;
+        }
+        return hit;
+      };
+      const stood = ride(false), jumped = ride(true);
+      rep.peg = 'standing ' + (stood ? 'hit' : 'missed') + ', jumping ' + (jumped ? 'hit' : 'missed');
+      if(!stood)  bad.push('a peg over the top did not catch a racer standing under it');
+      if(jumped)  bad.push('a peg over the top caught a racer who jumped it');
+    }
+
+    // (f) and the field actually rides them
+    {
+      begin('logjam');
+      window.__dbg.hold('w', true);
+      window.__dbg.tick(60*18);
+      window.__dbg.hold('w', false);
+      const sec = obstacles.filter(x=>x.type==='logroll')[0];
+      const past = racers.filter(r=>r.y > sec.logs[0].b).length;
+      const falls = racers.reduce((a,r)=>a+(r.fallCount||0), 0);
+      rep.through = past + ' of ' + racers.length + ' past the first log after 18s, ' + falls + ' falls';
+      if(past < 8)   bad.push('only ' + past + ' racers got past the first log in eighteen seconds');
+      if(falls > 40) bad.push(falls + ' falls in eighteen seconds -- the logs are eating the field');
+    }
+
+    return { name:'l Log Jam turns under you and its pegs come over the top', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3566,7 +3693,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

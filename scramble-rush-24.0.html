@@ -1736,6 +1736,11 @@ const QUALITY = {
       objective:'JUMP THE LOW ONES, DIVE THE HIGH ONES!',
       round1Total:9200, forcedGap:false, obstacles:['beam','laserbar','narrow','gate'] },
 
+    { key:'logjam', name:'Log Jam', tip:'The log turns under you and pushes you off the crown. Lean into it, and jump the pegs as they come up.',
+      ground:'#7dd3fc', groundAlt:'#38bdf8', wall:'#155e75', wallTop:'#f97316', skyTop:'#e0f2fe', skyMid:'#0ea5e9', skyBot:'#f0f9ff', accent:'#f97316',
+      objective:'RACE TO THE FINISH!',
+      round1Total:8600, forcedGap:false, obstacles:['logroll','narrow','ramp','gate','pillars'] },
+
     { key:'tiltdeck', name:'Tilt Deck', tip:'The decks lean toward whoever is standing on them. Cross on the high side, or cross fast.',
       ground:'#fcd34d', groundAlt:'#f59e0b', wall:'#78350f', wallTop:'#38bdf8', skyTop:'#fef3c7', skyMid:'#fbbf24', skyBot:'#fff7ed', accent:'#38bdf8',
       objective:'RACE TO THE FINISH!',
@@ -1874,6 +1879,22 @@ const QUALITY = {
     // Tilt Deck: three decks on a pivot, three times, with something that
     // wants you on a line in between each set -- being shoved off the middle of
     // a deck has to cost you on the next thing, or leaning is just scenery.
+    // Log Jam: a narrow before every log, because racers arrive at a section
+    // spread across the whole track and a log is a fifth of it. Being funnelled
+    // onto the crown is the start of the problem, not a way round it.
+    logjam: [
+      { type:'start',   len:700 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1500 },
+      { type:'ramp',    len:640, turn:+20 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1500, turn:-22 },
+      { type:'gate',    len:620 },
+      { type:'narrow',  len:520 },
+      { type:'logroll', len:1400 },
+      { type:'finish',  len:580 }
+    ],
+
     tiltdeck: [
       { type:'start',    len:700 },
       { type:'tiltdeck', len:1300 },
@@ -3455,6 +3476,41 @@ const QUALITY = {
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
+    } else if(type==='logroll'){
+      // A log lying along the course, not across it: you run down the top of it
+      // and it turns underneath you, which pushes you sideways off the crown
+      // toward a shoulder that is not floor. Pegs are set into it and come up
+      // over the top as it turns -- they are the thing you jump, and the log is
+      // the thing you fight.
+      //
+      // Consecutive logs turn opposite ways, so the answer is never "hold one
+      // direction": you lean against it, it stops, and now you are leaning the
+      // wrong way into the next one.
+      const R = 150, band = R*0.74, gapY = 120;
+      const n = 2, logLen = clamp((len-260)/n - gapY, 620, 1000);
+      let ly = cursor + gap + 140;
+      const logs = [];
+      const dir0 = Math.random()<0.5 ? 1 : -1;
+      for(let i=0;i<n;i++){
+        const a = ly, b = ly + logLen;
+        // Pegs: spaced down the log, each at its own angle, so they come up one
+        // at a time rather than as a fence.
+        const pegs = [];
+        const pn = hard ? 5 : 4;
+        for(let k=0;k<pn;k++)
+          pegs.push({ y: a + logLen*(k+0.7)/(pn+0.4), a: rand(0, Math.PI*2) });
+        logs.push({ cx, a, b, ang: rand(0, Math.PI*2),
+                    spin: dir0*(i%2 ? -1 : 1)*rand(0.34, 0.50)*spd, pegs });
+        ly = b + gapY;
+      }
+      const yStart2 = logs[0].a - 30, yEnd2 = logs[n-1].b + 30;
+      obs.push({type:'logroll', yStart:yStart2, yEnd:yEnd2, y0:yStart2-40, y1:yEnd2+40,
+                logs, R, band, crown: 62,
+                // how far a peg stands out of the log. A standing jump tops out
+                // near seventy, so this has to be well under it or the round is
+                // a wall you cannot cross.
+                pegLen: 30, pegW: 26});
+      cursor = yEnd2 + 90;
     } else if(type==='tiltdeck'){
       // Three big decks on a pivot with a step between them. A deck leans the
       // way the weight on it leans, and what is standing on it slides downhill,
@@ -4356,6 +4412,34 @@ const QUALITY = {
           out.position.copy(mesh.position); courseGroup.add(out);
           return mesh;
         });
+      } else if(o.type==='logroll'){
+        o.meshes = o.logs.map(l=>{
+          const g = new THREE.Group();
+          const len = l.b - l.a;
+          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(o.R, o.R, len, 22),
+            new THREE.MeshPhongMaterial({color:mixHex(floorHex, accents[0], 0.30), shininess:16}));
+          // a cylinder stands up by default; lay it down the course
+          barrel.rotation.x = Math.PI/2; barrel.castShadow = true; barrel.receiveShadow = true;
+          g.add(barrel); registerFadeable(barrel);
+          // Bands, so you can see it turning. A smooth barrel rolls invisibly.
+          const bandMat = new THREE.MeshLambertMaterial({color:accents[1]});
+          for(let i=1;i<6;i++){
+            const b = new THREE.Mesh(new THREE.CylinderGeometry(o.R*1.012, o.R*1.012, 10, 22, 1, true), bandMat);
+            b.rotation.x = Math.PI/2; b.position.z = -len/2 + len*i/6; g.add(b);
+          }
+          const pegMat = new THREE.MeshLambertMaterial({color:currentMap.wallTop});
+          l.pegMeshes = l.pegs.map(peg=>{
+            const pg = new THREE.Group();
+            const stub = new THREE.Mesh(THREE.RoundedBox(o.pegW*1.7, o.pegLen*2.1, o.pegW*1.7), pegMat);
+            stub.castShadow = true; pg.add(stub);
+            pg.position.z = (peg.y - (l.a+l.b)/2);
+            g.add(pg);
+            return pg;
+          });
+          placeAt(g, l.cx, (l.a+l.b)/2, o.crown - o.R);
+          courseGroup.add(g);
+          return g;
+        });
       } else if(o.type==='tiltdeck'){
         o.meshes = o.decks.map(dk=>{
           const g = new THREE.Group();
@@ -4521,6 +4605,20 @@ const QUALITY = {
           // fallen slabs sink and fade rather than blinking out
           placeAt(m, sl.x, sl.y, o.h - sl.drop*150);
           m.visible = sl.drop < 0.99;
+        });
+      }
+      else if(o.type==='logroll'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const l = o.logs[i];
+          m.rotation.z = l.ang;
+          // The pegs ride the barrel: each sits at its own angle around it, and
+          // the group turns with the log.
+          if(l.pegMeshes) l.pegMeshes.forEach((pg,k)=>{
+            const a = l.pegs[k].a + l.ang;
+            pg.position.x = Math.sin(a)*(o.R + o.pegLen*0.2);
+            pg.position.y = Math.cos(a)*(o.R + o.pegLen*0.2);
+            pg.rotation.z = -a;
+          });
         });
       }
       else if(o.type==='tiltdeck'){
@@ -5515,12 +5613,16 @@ const QUALITY = {
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x, hitObs=null;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank'||o.type==='logroll') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90; hitObs=o;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
-        if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
+        // Back on the crown of the log you came off, not at the x you fell
+        // from: that x is beside it, and coming back beside a log is coming
+        // back into the water.
+        if(o.type==='logroll') rx = o.logs[0].cx;
+        else if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
         // back onto the lane of discs nearest the one they came off, not the
         // middle of the track: the middle can be a gap
@@ -5743,6 +5845,23 @@ const QUALITY = {
   // the clock, so the shelved sections read the same.
   function spinlaserAngle(o,t){ return o.ang===undefined ? t*o.speed + o.phase : o.ang; }
   function rollerX(o,t){ return o.cx + Math.sin(t*o.speed+o.phase)*o.amp; }
+  // The log a racer is over, and how high its surface is under them. The crown
+  // is the high line down the middle; the further off it you are the lower and
+  // the steeper the ground, until there is none.
+  function logOver(o, y){ return o.logs.find(l=>y >= l.a && y <= l.b); }
+  function logSurface(o, l, x){
+    const dx = x - l.cx;
+    if(Math.abs(dx) > o.band) return null;
+    return o.crown - (o.R - Math.sqrt(Math.max(0, o.R*o.R - dx*dx)));
+  }
+  // Where a peg is in its turn: zero is straight up, and how far it stands
+  // proud of the surface is the cosine of that.
+  function pegRise(o, l, peg){
+    let a = (peg.a + l.ang) % (Math.PI*2);
+    if(a > Math.PI) a -= Math.PI*2;
+    if(a < -Math.PI) a += Math.PI*2;
+    return { ang:a, rise: Math.cos(a)*o.pegLen };
+  }
   function blockShift(o,t){ return Math.sin(t*o.speed+o.phase)*o.amp; }
   // A Wall Rush wall carries its own y and moves it in updateMinigames, the way
   // the closing ring carries its own radius. Everything else that draws or hits
@@ -6426,6 +6545,8 @@ const QUALITY = {
         const dir = Math.sign(o.speed) || 1;
         if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
         o.ang += o.speed*dt;
+      } else if(o.type==='logroll'){
+        for(const l of o.logs) l.ang += l.spin*dt;
       } else if(o.type==='tiltdeck'){
         for(const dk of o.decks){
           let sx = 0, sy = 0, n = 0;
@@ -6760,6 +6881,77 @@ const QUALITY = {
       }
     }
 
+    // ---- surfaces you stand on ------------------------------------------
+    // Above the ground-hazard gate below, not inside it. That gate is
+    // `r.h<=0.5 && (r.floorH||0) <= 20`, which is right for a hole in the floor
+    // and wrong for a floor that is not at zero: the first frame on a log sets
+    // floorH to 61 and the frame after that the gate is shut, so the log turned
+    // under nobody, its pegs swept through nobody, and stepping off its
+    // shoulder was stepping onto thin air that never noticed. Tilt Deck had it
+    // too -- a leaning deck is up to 49 off zero -- which is why its slide had
+    // never once moved a racer.
+    const lr = obstacles.find(o=>o.type==='logroll' && r.y>o.yStart && r.y<o.yEnd);
+    if(lr){
+      const lg = logOver(lr, r.y);
+      if(lg){
+        const surf = logSurface(lr, lg, r.x);
+        // Off the shoulder is off. There is nothing beside a log.
+        if(surf === null){ if(r.h <= 0.5){ fallDown(r); return; } }
+        else {
+          r.floorH = surf;
+          r.onLog = lg;
+          // !(x>0), not x<=0: baseRacer() does not initialise tumbleT, so on a
+          // racer that has never been knocked down this reads `undefined <= 0`
+          // and is false. Written the wrong way round the log turned, the pegs
+          // went round with it, and neither ever touched anybody -- the whole
+          // round was scenery. Same trap as the beam dodge in the arena AI.
+          if(r.h <= 0.5 && !(r.tumbleT > 0)){
+            // The surface of a turning log moves sideways at spin x radius,
+            // and it takes what is standing on it with it. This is the round:
+            // everything else is you arguing with this line.
+            r.x += lg.spin*lr.R/60;
+            // and a peg that is coming up over the crown catches anything
+            // whose feet are still down
+            for(const peg of lg.pegs){
+              if(Math.abs(r.y - peg.y) > lr.pegW + RADIUS) continue;
+              const p = pegRise(lr, lg, peg);
+              if(p.rise <= 6) continue;                 // still under the log
+              if(r.h >= p.rise) continue;               // jumped it
+              if(r.invuln > 0) continue;
+              const dir = Math.sign(lg.spin) || 1;
+              hazardHit(r, dir*lr.R*Math.abs(lg.spin)/60, 0, dir, 0);
+              r.invuln = 620;
+              spawnBurst3D(r.x, r.y, 0xffcb3d, 8);
+              break;
+            }
+          }
+        }
+      } else if(r.onLog){ r.floorH = 0; r.onLog = null; }
+    } else if(r.onLog){ r.floorH = 0; r.onLog = null; }
+    const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
+    if(td){
+      // A little tolerance at the seams: the decks touch, and a racer exactly
+      // on the join between two of them is on both, not on neither.
+      const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
+      // Between two decks is a step you jump, so only a racer with their feet
+      // down is over nothing.
+      if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
+      else {
+        const ox = r.x-dk.cx, oy = r.y-dk.y;
+        // the surface, so the camera and the feet agree about where the floor is
+        r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
+        r.onDeck = dk;
+        // And the same here, which is why Tilt Deck's lean has been visual
+        // only since it landed: the decks tilted, the floor under you moved,
+        // and nothing ever slid. It needed a hammer bolted to the course to
+        // hurt anybody at all.
+        if(r.h <= 0.5 && !(r.tumbleT > 0)){
+          r.vx += dk.tx*td.slide;
+          r.vy += dk.ty*td.slide;
+        }
+      }
+    } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
+
     // ---- ground hazards (only when on the ground, and only at ground level) ----
     if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
@@ -6799,25 +6991,6 @@ const QUALITY = {
         for(const pl of pk.planks) if(Math.abs(r.x-pl.x) < pl.w/2 + RADIUS - 14){ onPlank = true; break; }
         if(!onPlank){ fallDown(r); return; }
       }
-      const td = obstacles.find(o=>o.type==='tiltdeck' && r.y>o.yStart && r.y<o.yEnd);
-      if(td){
-        // A little tolerance at the seams: the decks touch, and a racer exactly
-        // on the join between two of them is on both, not on neither.
-        const dk = td.decks.find(d=>Math.abs(r.x-d.cx)<=d.w/2+4 && Math.abs(r.y-d.y)<=d.d/2+4);
-        // Between two decks is a step you jump, so only a racer with their feet
-        // down is over nothing.
-        if(!dk){ if(r.h <= 0.5){ fallDown(r); return; } }
-        else {
-          const ox = r.x-dk.cx, oy = r.y-dk.y;
-          // the surface, so the camera and the feet agree about where the floor is
-          r.floorH = -(dk.tx*ox + dk.ty*oy)*td.maxTilt;
-          r.onDeck = dk;
-          if(r.h <= 0.5 && r.tumbleT <= 0){
-            r.vx += dk.tx*td.slide;
-            r.vy += dk.ty*td.slide;
-          }
-        }
-      } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
       const df = obstacles.find(o=>o.type==='discField' && r.y>o.yStart-4 && r.y<o.yEnd+4);
       if(df){
         const on = discCellAt(df, r.x, r.y);
@@ -6880,7 +7053,7 @@ const QUALITY = {
         }
       }
     }
-    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck) r.floorH = 0;
+    if(!field && !hf && !ramp && !r.onRamp && !sc && !r.onShortcut && !mv && !cr && !r.onDeck && !r.onLog) r.floorH = 0;
 
     // ---- terrain (v24 §2.8) ------------------------------------------------
     // Slime and bounce pads are ground, not hazards, so they go above the
@@ -8036,6 +8209,35 @@ const QUALITY = {
           if(d < bestD){ bestD = d; best = px; }
         }
         return best === null ? false : set(best, 0.5);
+      }
+
+      case 'logroll': {
+        // Lean into the turn and jump what comes up. A bot that aims at the
+        // crown is already losing -- by the time it gets there the log has
+        // moved it past -- so it aims upstream of the crown by a quarter of the
+        // radius and lets the log bring it back.
+        let lg = null, best = 1e9;
+        for(const l of o.logs){
+          const gap = l.b - r.y;
+          if(gap < 0) continue;
+          if(gap < best){ best = gap; lg = l; }
+        }
+        if(!lg) return set(o.logs[o.logs.length-1].cx, 1);
+        const want = lg.cx - Math.sign(lg.spin)*o.R*0.26;
+        const on = r.y >= lg.a && r.y <= lg.b;
+        if(on && r.h <= 0 && !(r.stumbleT > 0) && !(r.tumbleT > 0) && !(r.getUpT > 0)){
+          for(const peg of lg.pegs){
+            // jump it while it is still in front of you, not once it has you
+            const ahead = peg.y - r.y;
+            if(ahead < -o.pegW || ahead > o.pegW + 120) continue;
+            let a = (peg.a + lg.ang) % (Math.PI*2);
+            if(a > Math.PI) a -= Math.PI*2;
+            if(a < -Math.PI) a += Math.PI*2;
+            // coming up, or up: cos(a) is what it stands proud by
+            if(Math.cos(a)*o.pegLen > 4){ doJump(r); break; }
+          }
+        }
+        return set(want, 1);
       }
 
       case 'tiltdeck': {

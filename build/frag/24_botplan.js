@@ -396,6 +396,35 @@
         return best === null ? false : set(best, 0.5);
       }
 
+      case 'logroll': {
+        // Lean into the turn and jump what comes up. A bot that aims at the
+        // crown is already losing -- by the time it gets there the log has
+        // moved it past -- so it aims upstream of the crown by a quarter of the
+        // radius and lets the log bring it back.
+        let lg = null, best = 1e9;
+        for(const l of o.logs){
+          const gap = l.b - r.y;
+          if(gap < 0) continue;
+          if(gap < best){ best = gap; lg = l; }
+        }
+        if(!lg) return set(o.logs[o.logs.length-1].cx, 1);
+        const want = lg.cx - Math.sign(lg.spin)*o.R*0.26;
+        const on = r.y >= lg.a && r.y <= lg.b;
+        if(on && r.h <= 0 && !(r.stumbleT > 0) && !(r.tumbleT > 0) && !(r.getUpT > 0)){
+          for(const peg of lg.pegs){
+            // jump it while it is still in front of you, not once it has you
+            const ahead = peg.y - r.y;
+            if(ahead < -o.pegW || ahead > o.pegW + 120) continue;
+            let a = (peg.a + lg.ang) % (Math.PI*2);
+            if(a > Math.PI) a -= Math.PI*2;
+            if(a < -Math.PI) a += Math.PI*2;
+            // coming up, or up: cos(a) is what it stands proud by
+            if(Math.cos(a)*o.pegLen > 4){ doJump(r); break; }
+          }
+        }
+        return set(want, 1);
+      }
+
       case 'tiltdeck': {
         // Cross on the high side. A bot that walks the middle is fine on its
         // own and is a disaster in a pack of twenty-four, because the middle is

@@ -10,12 +10,16 @@
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x, hitObs=null;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank'||o.type==='logroll') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90; hitObs=o;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
         // at a single narrow.
-        if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
+        // Back on the crown of the log you came off, not at the x you fell
+        // from: that x is beside it, and coming back beside a log is coming
+        // back into the water.
+        if(o.type==='logroll') rx = o.logs[0].cx;
+        else if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
         // back onto the lane of discs nearest the one they came off, not the
         // middle of the track: the middle can be a gap

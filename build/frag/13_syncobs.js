@@ -26,6 +26,20 @@
         });
       }
       //<<shelved:sync-log>>
+      else if(o.type==='logroll'){
+        if(o.meshes) o.meshes.forEach((m,i)=>{
+          const l = o.logs[i];
+          m.rotation.z = l.ang;
+          // The pegs ride the barrel: each sits at its own angle around it, and
+          // the group turns with the log.
+          if(l.pegMeshes) l.pegMeshes.forEach((pg,k)=>{
+            const a = l.pegs[k].a + l.ang;
+            pg.position.x = Math.sin(a)*(o.R + o.pegLen*0.2);
+            pg.position.y = Math.cos(a)*(o.R + o.pegLen*0.2);
+            pg.rotation.z = -a;
+          });
+        });
+      }
       else if(o.type==='tiltdeck'){
         if(o.meshes) o.meshes.forEach((m,i)=>{
           const dk = o.decks[i];
