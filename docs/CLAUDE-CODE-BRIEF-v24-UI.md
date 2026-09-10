@@ -62,6 +62,22 @@ Replace the current profile/locker screen with a two-pane layout:
 
 ## 5.3 Shop (`ui-shop.png`)
 
+> **Two things the locker learned, which apply to every screen that renders an
+> item on the stumbler — the shop's cards and the pass's tier tiles included:**
+>
+> 1. **Turn tone mapping off around the tile pass.** The race view is tone
+>    mapped by the composer at the end of the frame; a direct render to a
+>    target goes through the renderer's own ACES curve instead, and every
+>    colourway comes out two shades darker and flatter than its own swatch.
+> 2. **The menu camera sits at negative z looking back at the origin, so the
+>    view is mirrored** — world `-x` lands on the *right* of the screen. Any
+>    screen that moves the character aside for a panel wants a *positive*
+>    offset, and it should be measured off the panel's own bounding box rather
+>    than hardcoded: the panels change width at the 1000px breakpoint, and a
+>    fixed offset that centres the character at one size buries it at the other.
+
+
+
 Replace the current shop with:
 
 - Header "SHOP" top-left. Two sections stacked: **FEATURED** (three large
@@ -81,6 +97,22 @@ Replace the current shop with:
 - Keyboard: arrows move between cards, Enter opens, Esc back.
 
 ## 5.4 Season pass (`ui-pass.png`)
+
+> **Two things the locker learned, which apply to every screen that renders an
+> item on the stumbler — the shop's cards and the pass's tier tiles included:**
+>
+> 1. **Turn tone mapping off around the tile pass.** The race view is tone
+>    mapped by the composer at the end of the frame; a direct render to a
+>    target goes through the renderer's own ACES curve instead, and every
+>    colourway comes out two shades darker and flatter than its own swatch.
+> 2. **The menu camera sits at negative z looking back at the origin, so the
+>    view is mirrored** — world `-x` lands on the *right* of the screen. Any
+>    screen that moves the character aside for a panel wants a *positive*
+>    offset, and it should be measured off the panel's own bounding box rather
+>    than hardcoded: the panels change width at the 1000px breakpoint, and a
+>    fixed offset that centres the character at one size buries it at the other.
+
+
 
 New screen, replacing the plain season-progress bar's role:
 

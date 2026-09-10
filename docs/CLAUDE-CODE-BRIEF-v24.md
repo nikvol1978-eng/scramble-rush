@@ -29,7 +29,7 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5.1-§5.3 are committed. §5.4, the shop, is next -- it reuses the locker's tile and rarity-pill style.)*
+*(§5.1-§5.4 are committed. §5.5, the season pass, is the last menu screen.)*
 
 ## How "no gameplay number moved" is proved
 

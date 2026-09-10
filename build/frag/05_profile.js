@@ -269,7 +269,10 @@
     // Never hidden while the locker is open: you are choosing how this
     // character looks, and on a narrow window the old rule removed it from the
     // screen altogether, which is the one place it has to be.
-    previewGroup.visible = !dailyOpen;
+    // The shop has no character on it -- the cards carry their own renders --
+    // and a stumbler standing behind them reads as something that got left on.
+    const shopOpen = !$('shop').classList.contains('hidden');
+    previewGroup.visible = !dailyOpen && !shopOpen;
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
     if(stageFloor) stageFloor.visible = profOpen;

@@ -296,28 +296,44 @@
     lkConfirm(item);
   }
 
-  function lkConfirm(item){
-    const cost = item.unlock.cost;
-    const box = $('lkBuy');
-    $('lkBuyName').textContent = item.name;
-    $('lkBuyCost').textContent = cost + ' coins';
-    lkPaint($('lkBuyShot'), lkTab, item.id);
-    $('lkBuyWarn').textContent = stats.coins >= cost ? '' : 'Not enough coins.';
-    $('lkBuyYes').disabled = stats.coins < cost;
-    box.classList.remove('hidden');
-    lkBuyItem = item;
+  // ---- the buy confirm ---------------------------------------------------
+  // One dialog for the whole menu. It knows how to show an item and take a
+  // yes; what buying actually means is the caller's business, because the
+  // locker equips what you just bought and the shop does not.
+  let buyPending = null, lkTryOn = null;
+  function openBuy(o){
+    buyPending = o;
+    $('buyName').textContent = o.name;
+    $('buyCost').textContent = o.cost + ' coins';
+    lkPaint($('buyShot'), o.kind, o.id);
+    const short = stats.coins < o.cost;
+    $('buyWarn').textContent = short ? 'Not enough coins.' : '';
+    $('buyYes').disabled = short;
+    $('buyBox').classList.remove('hidden');
   }
-  let lkBuyItem = null, lkTryOn = null;
-  function lkBuyDo(){
-    const item = lkBuyItem; if(!item) return;
-    const cost = item.unlock.cost;
-    if(stats.coins < cost) return;
-    stats.coins -= cost;
-    if(lkTab === 'skin'){ (stats.owned = stats.owned||[]).push(item.id); custom.skin = item.id; syncCustomColor(); }
-    else { (stats.patterns = stats.patterns||[]).push(item.id); custom.pattern = item.id; }
-    saveProfile(); SFX.coin ? SFX.coin() : SFX.click(); refreshCoinChips();
-    $('lkBuy').classList.add('hidden'); lkBuyItem = null;
-    buildLockerGrid(); lkSync();
+  function closeBuy(){ $('buyBox').classList.add('hidden'); buyPending = null; }
+  function doBuy(){
+    const o = buyPending; if(!o || stats.coins < o.cost) return;
+    o.onBuy();
+    SFX.coin ? SFX.coin() : SFX.click();
+    closeBuy();
+  }
+  $('buyYes').addEventListener('click', doBuy);
+  $('buyNo').addEventListener('click', closeBuy);
+
+  function lkConfirm(item){
+    openBuy({
+      kind: lkTab, id: item.id, name: item.name, cost: item.unlock.cost,
+      onBuy: ()=>{
+        stats.coins -= item.unlock.cost;
+        // The locker puts on what you just bought, because that is what you
+        // came to the locker to do.
+        if(lkTab === 'skin'){ (stats.owned = stats.owned||[]).push(item.id); custom.skin = item.id; syncCustomColor(); }
+        else { (stats.patterns = stats.patterns||[]).push(item.id); custom.pattern = item.id; }
+        saveProfile(); refreshCoinChips();
+        buildLockerGrid(); lkSync();
+      }
+    });
   }
 
   // ---- opening it --------------------------------------------------------
@@ -336,13 +352,11 @@
         SFX.click(); openLocker(b.dataset.lk);
       }));
       $('lkAction').addEventListener('click', ()=>lkAct());
-      $('lkBuyYes').addEventListener('click', lkBuyDo);
-      $('lkBuyNo').addEventListener('click', ()=>{ $('lkBuy').classList.add('hidden'); lkBuyItem=null; });
     }
   }
   function closeLocker(){
     lkTryOn = null; setPreview(null, null); clearPreview(); syncCustomColor(); saveProfile();
-    $('lkBuy').classList.add('hidden'); lkBuyItem = null;
+    closeBuy();
     $('locker').classList.add('hidden');
   }
 
@@ -351,9 +365,9 @@
     if($('locker').classList.contains('hidden')) return;
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     const n = lkItems().length;
-    if(!$('lkBuy').classList.contains('hidden')){
-      if(e.key==='Enter'){ lkBuyDo(); e.preventDefault(); }
-      if(e.key==='Escape'){ $('lkBuy').classList.add('hidden'); lkBuyItem=null; e.preventDefault(); }
+    if(!$('buyBox').classList.contains('hidden')){
+      if(e.key==='Enter'){ doBuy(); e.preventDefault(); }
+      if(e.key==='Escape'){ closeBuy(); e.preventDefault(); }
       return;
     }
     let d = 0;

@@ -339,6 +339,126 @@
 
 
 
+
+  /* ---- v24 §5.4: the shop ------------------------------------------------ */
+  #shop{ display:block; }
+  .shWrap{
+    position:absolute; inset:74px 22px 18px 22px; display:flex; gap:16px; align-items:stretch;
+  }
+  /* A grid, not a column of auto heights: the two rows have to share whatever
+     is left after the headers, and a flex column let the featured row collapse
+     to its own content so the card art had nowhere to go. */
+  .shMain{
+    flex:1 1 auto; min-width:0; display:grid; gap:0;
+    grid-template-rows:auto auto minmax(0,1.5fr) auto minmax(0,1fr) auto;
+  }
+  .shTitle{
+    text-align:left;
+    font-family:'Fredoka',sans-serif; font-weight:700; margin:0 0 10px;
+    font-size:clamp(1.5rem,3vw,2.2rem); color:var(--cream);
+    -webkit-text-stroke:2.5px var(--line); text-shadow:0 5px 0 var(--line); letter-spacing:1px;
+  }
+  .shSecHead{ display:flex; align-items:center; gap:12px; margin:2px 0 8px; }
+  .shSecName{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.95rem; letter-spacing:1.4px;
+    color:var(--cream); -webkit-text-stroke:1.5px var(--line);
+  }
+  .shRule{ flex:1 1 auto; height:3px; background:rgba(255,255,255,0.45); border-radius:2px; }
+  .shTimer{
+    display:flex; align-items:center; gap:6px; font-family:'Fredoka',sans-serif; font-weight:700;
+    font-size:0.8rem; color:var(--cream); background:rgba(26,16,51,0.8);
+    border:3px solid var(--line); border-radius:999px; padding:4px 12px;
+  }
+  .shClock{ font-size:0.9rem; }
+
+  .shRow{ display:grid; gap:12px; min-height:0; }
+  .shRow.featured{ grid-template-columns:repeat(3, 1fr); margin-bottom:12px; }
+  .shRow.daily{ grid-template-columns:repeat(6, 1fr); }
+
+  .shCard{
+    position:relative; padding:0; cursor:pointer; overflow:hidden; text-align:center;
+    background:var(--cream); border:4px solid var(--line); border-radius:20px;
+    box-shadow:0 6px 0 var(--line); display:flex; flex-direction:column;
+    transition:transform .09s ease;
+  }
+  .shCard:hover{ transform:translateY(-2px); }
+  .shCard.hi{ box-shadow:0 0 0 5px var(--gold), 0 6px 0 var(--line); transform:translateY(-2px); }
+  .shBand{
+    display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 6px 5px;
+    border-bottom:3px solid var(--line); background:#9ca3af;
+  }
+  .shBand.r-common{ background:#9ca3af; } .shBand.r-rare{ background:#22c55e; }
+  .shBand.r-superrare{ background:#3b82f6; } .shBand.r-epic{ background:#a855f7; }
+  .shBand.r-legendary{ background:#eab308; } .shBand.r-special{ background:#ffcb3d; }
+  .shName{
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--line);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+  }
+  .shCard.big .shName{ font-size:1.05rem; }
+  .shShot{ position:relative; width:100%; flex:1 1 auto; min-height:0;
+           opacity:0; transition:opacity .18s ease; }
+  .shShot.done{ opacity:1; }
+  .shFoot{
+    display:flex; align-items:center; justify-content:center; gap:6px; padding:6px;
+    border-top:3px solid var(--line); background:#fff;
+    font-family:'Fredoka',sans-serif; font-weight:700; color:var(--line); font-size:0.9rem;
+  }
+  .shCost.small{ font-size:0.66rem; font-weight:700; opacity:0.8; }
+  .shOwned{ font-size:0.82rem; color:#128a4a; }
+  .shCoin, .shCrown{ width:16px; height:16px; border-radius:50%; border:2px solid var(--line); display:inline-block; }
+  .shCoin{ background:var(--gold); }
+  .shCrown{ background:var(--purple); border-radius:3px; }
+
+  .shNote{
+    margin-top:10px; min-height:1.2em; font-family:'Fredoka',sans-serif; font-weight:700;
+    font-size:0.82rem; color:var(--cream); -webkit-text-stroke:1px var(--line);
+  }
+
+  .shPass{
+    flex:0 0 clamp(180px, 20%, 260px); cursor:pointer; padding:0; overflow:hidden;
+    display:flex; flex-direction:column; align-items:stretch; text-align:center;
+  }
+  .shPassTop, .shPassBot{
+    font-family:'Fredoka',sans-serif; font-weight:700; color:var(--cream); letter-spacing:1px;
+    background:var(--purple); padding:12px 8px; font-size:1rem;
+  }
+  .shPassBot{ background:var(--line); font-size:0.76rem; }
+  .shPassArt{ position:relative; flex:1 1 auto; background:var(--void2); overflow:hidden;
+              display:flex; align-items:center; justify-content:center; }
+  .shPassRings{
+    position:absolute; inset:-40%;
+    background:repeating-radial-gradient(circle at 50% 50%,
+      rgba(255,203,61,0.16) 0 22px, rgba(255,203,61,0) 22px 60px);
+    animation:ringSpin 70s linear infinite;
+  }
+  .shPassBadge{
+    position:relative; width:78px; height:78px; border-radius:22px; background:var(--gold);
+    border:4px solid var(--line); box-shadow:0 5px 0 var(--line);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Fredoka',sans-serif; font-weight:700; font-size:2rem; color:var(--line);
+  }
+
+  /* ---- the buy confirm, shared by the locker and the shop ---------------- */
+  .buyBox{ position:absolute; inset:0; z-index:24; display:flex; align-items:center; justify-content:center;
+           background:rgba(21,12,46,0.62); }
+  .buyCard{ padding:22px 26px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .buyTitle{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.1rem; color:var(--line); letter-spacing:1px; }
+  .buyShot{ width:132px; height:132px; }
+  .buyName{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.25rem; color:var(--line); }
+  .buyCost{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1rem; color:var(--line); opacity:0.8; }
+  .buyWarn{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--red); min-height:1em; }
+  .buyRow{ display:flex; gap:10px; margin-top:6px; }
+
+  @media (max-width: 1000px){
+    /* The daily row stays six across. Wrapping it to two rows of three needs
+       two rows' worth of height, and at 600 tall there is not enough to go
+       round -- giving it to the daily row sliced the featured cards down to
+       their name bands instead. Six narrower cards is the honest trade: at
+       960 they are still 120 wide, which is plenty for the art and a price.  */
+    .shPass{ flex-basis:170px; }
+    .shCard.big .shName{ font-size:0.92rem; }
+    .shName{ font-size:0.72rem; }
+  }
   /* ---- v24 §5.3: the locker ---------------------------------------------- */
   /* The left half is left empty on purpose: the 3D stumbler stands there and
      shows through. The panel takes the right half and nothing else. */

@@ -116,17 +116,49 @@
     </div>
   </div>
 
-  <div id="lkBuy" class="lkBuy hidden">
-    <div class="panel lkBuyCard">
-      <div class="lkBuyTitle">BUY THIS?</div>
-      <canvas class="lkBuyShot" id="lkBuyShot" width="96" height="96"></canvas>
-      <div class="lkBuyName" id="lkBuyName"></div>
-      <div class="lkBuyCost" id="lkBuyCost"></div>
-      <div class="lkBuyWarn" id="lkBuyWarn"></div>
-      <div class="lkBuyRow">
-        <button class="btn small gold" id="lkBuyYes">BUY</button>
-        <button class="btn small blue" id="lkBuyNo">CANCEL</button>
+</div>
+
+<!-- ================= SHOP (v24 §5.4) ================= -->
+<div id="shop" class="screen hidden">
+  <div class="shWrap">
+    <div class="shMain">
+      <h2 class="shTitle">SHOP</h2>
+
+      <div class="shSecHead">
+        <span class="shSecName">FEATURED</span>
+        <span class="shRule"></span>
+        <span class="shTimer"><span class="shClock">&#8635;</span><span id="shFeatTime">--</span></span>
       </div>
+      <div class="shRow featured" id="shFeatured"></div>
+
+      <div class="shSecHead">
+        <span class="shSecName">DAILY</span>
+        <span class="shRule"></span>
+        <span class="shTimer"><span class="shClock">&#8635;</span><span id="shDailyTime">--</span></span>
+      </div>
+      <div class="shRow daily" id="shDaily"></div>
+      <div class="shNote" id="shNote"></div>
+    </div>
+
+    <button class="shPass panel" id="shPassCard">
+      <div class="shPassTop">SEASON PASS</div>
+      <div class="shPassArt"><div class="shPassRings"></div><div class="shPassBadge" id="shPassTier">1</div></div>
+      <div class="shPassBot">SEASON 1 &middot; VIEW REWARDS</div>
+    </button>
+  </div>
+</div>
+
+<!-- ============ BUY CONFIRM: shared by the locker and the shop ============ -->
+<div id="buyBox" class="buyBox hidden">
+  <div class="panel buyCard">
+    <div class="buyTitle">BUY THIS?</div>
+    <canvas class="buyShot" id="buyShot" width="96" height="96"></canvas>
+    <div class="buyName" id="buyName"></div>
+    <div class="buyCost" id="buyCost"></div>
+    <div class="buyWarn" id="buyWarn"></div>
+    <div class="buyRow">
+      <button class="btn small gold" id="buyYes">BUY</button>
+      <button class="btn small blue" id="buyNo">CANCEL</button>
     </div>
   </div>
 </div>
