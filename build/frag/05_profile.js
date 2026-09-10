@@ -273,6 +273,9 @@
     // and a stumbler standing behind them reads as something that got left on.
     const shopOpen = !$('shop').classList.contains('hidden');
     previewGroup.visible = !dailyOpen && !shopOpen;
+    // The pass puts the character in the middle between two panels rather
+    // than to one side, so it wants the lobby's framing, not the locker's.
+    const psOpen = !$('pass').classList.contains('hidden');
     if(stageBackdrop) stageBackdrop.visible = profOpen;      // the stage only dresses the profile
     if(stageRing) stageRing.visible = profOpen;
     if(stageFloor) stageFloor.visible = profOpen;

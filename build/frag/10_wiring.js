@@ -2,12 +2,12 @@
   function syncCustomColor(){ custom.color = skinBaseColor(skinOf(custom.skin)); }
 
   // ---- the lobby: five tabs across the top, Q / E cycle them ----
-  const LOBBY_TABS = ['play','locker','badges','shop','settings'];
+  const LOBBY_TABS = ['play','locker','badges','shop','pass','settings'];
   // v24 §5.1: the strip and the chips belong to the menu, not to the lobby.
   // Whatever menu screen is up, they are up with it -- a strip that vanishes
   // when you open the locker is a strip you cannot navigate with.
   function menuScreenOpen(){
-    return state === 'menu' && ['home','locker','shop','profile','settings','daily','mpHome']
+    return state === 'menu' && ['home','locker','shop','pass','profile','settings','daily','mpHome']
       .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
   }
   function syncMenuChrome(){
@@ -27,6 +27,7 @@
     if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
     if(!$('locker').classList.contains('hidden')) closeLocker();
     if(!$('shop').classList.contains('hidden')) closeShop();
+    if(!$('pass').classList.contains('hidden')) closePass();
     ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
@@ -39,6 +40,7 @@
       case 'locker':   backToLobby(); $('home').classList.add('hidden'); openLocker('skin'); break;
       case 'badges':   backToLobby(); openProfile('badges'); break;
       case 'shop':     backToLobby(); $('home').classList.add('hidden'); openShop(); break;
+      case 'pass':     backToLobby(); $('home').classList.add('hidden'); openPass(); break;
       case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
     }
     syncMenuChrome();
@@ -95,6 +97,7 @@
   // profile pane after §5.3 replaced it.
   $('profileBtn').onclick = ()=>{ SFX.click(); openLobbyTab('locker'); };
   $('shopBtn').onclick    = ()=>{ SFX.click(); openLobbyTab('shop'); };
+  $('passBtn').onclick    = ()=>{ SFX.click(); openLobbyTab('pass'); };
   $('badgesBtn').onclick  = ()=>{ SFX.click(); selectLobbyTab('badges'); openProfile('badges'); };
   $('homeName').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12).trim()||'YOU'; $('profNameLbl').textContent=custom.name; saveProfile(); refreshLobby(); });
   $('homeName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); e.stopPropagation(); });

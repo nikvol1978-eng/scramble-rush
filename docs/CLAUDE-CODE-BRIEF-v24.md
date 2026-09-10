@@ -29,7 +29,7 @@ respawn is at the last checkpoint.
 
 ## Resume here
 
-*(§5.1-§5.4 are committed. §5.5, the season pass, is the last menu screen.)*
+*(§5 is complete: §5.1-§5.5 committed. Next is §4's remaining rounds -- Comb Collapse first.)*
 
 ## How "no gameplay number moved" is proved
 
@@ -56,23 +56,32 @@ carries the claim.
 
 ## Open items
 
-*(None. The §1 item below was closed after §2.)*
+**Known miss — check `h` on Splash Slide, about one seed in fifteen.**
 
-**Closed — §1, check `h` at Splash Slide's ice channels.** A field of
-twenty-four put check `h` -- no racer falls more than three times at one hazard
-inside twenty seconds -- on its limit: it read 3 and tipped to 4 in about one
-run in three, always on Splash Slide. The agreed plan was to leave the cap at
-3 and the channel as it was, re-measure after §2's collision model, and only
-then consider the pit rule's waiting logic or recording a miss.
+The rule is that no racer may fall more than three times at one hazard inside
+twenty seconds. Splash Slide reads 3 almost always and 4 occasionally, and the
+agreed three-step plan for it has now run its course:
 
-**Re-measured over twelve Splash Slide seeds after §2: 3 every time, never 4.**
-The worst hazard also moved off `narrow@2227` -- the channel v23 widened -- and
-onto `narrow@5113`, the bias-155 steering test the map is built around, which
-is where the map's hardest reading ought to be. §2.6's physical knockback is
-the likely reason: a glancing hit from a hazard no longer costs a full ragdoll,
-so a bot clipped on the way into a channel keeps its feet and its line.
+1. Re-measure after §2's collision model. Done: twelve seeds, 3 every time.
+   Closed at that point.
+2. It reopened when the §4 pit changed that map's layout, so the pit rule's
+   waiting logic was extended to channels: a bot that has fallen twice at one
+   holds at its mouth until the traffic ahead has cleared, up to four seconds.
+   That helped a great deal -- the rate went from about one run in three to
+   about one in five, which on four map-seeds a run is roughly one seed in
+   fifteen -- but it did not remove it.
+3. So it is recorded here, with the numbers, the way v21's three misses are.
 
-No waiting logic was needed and nothing was widened.
+Measured on the build at §5.5: five consecutive full runs, one of which read
+`slide: a bot fell 4 times at narrow@2054`. The other four read 3 or less on
+every map (`narrow@4866`, `narrow@2054`, `crumble@8431` and the disc fields).
+Nothing was widened and the cap stays at 3.
+
+What is left is one bot, on ice, at a channel it has already fallen into twice,
+being caught by the pack while it crawls. Fixing it properly means either
+letting a burned bot stop for longer than four seconds -- which the round timer
+cannot afford -- or making the pack go round it, which is a crowd-avoidance
+behaviour the bots do not have. Neither belongs in a menu pass.
 
 ---
 

@@ -54,6 +54,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.5 11h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg><span class="tabName">SHOP</span>
       <span class="pip hidden" id="shopPip"></span>
     </button>
+    <button class="tabPill" id="passBtn" data-lobby="pass" aria-label="Season pass" title="Season pass">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/><path d="M9 5v14"/></svg><span class="tabName">PASS</span>
+    </button>
     <button class="tabPill" id="settingsBtn" data-lobby="settings" aria-label="Settings" title="Settings">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.6 1.6 2.6-2.6 1.5-.5 3-3-.4L12 21.4 10.5 18.8l-3 .4-.5-3L4.4 14.7 6 12.1 4.4 9.5l2.6-1.5.5-3 3 .4z"/></svg><span class="tabName">SETTINGS</span>
     </button>
@@ -116,6 +119,33 @@
     </div>
   </div>
 
+</div>
+
+<!-- ================= SEASON PASS (v24 §5.5) ================= -->
+<!-- The stumbler stands in the middle of the 3D view, which shows through
+     between the header on the left and the reward panel on the right. -->
+<div id="pass" class="screen hidden">
+  <div class="psHead">
+    <h2 class="psTitle">SEASON PASS</h2>
+    <div class="psTierRow">
+      <div class="psBadge" id="psTier">1</div>
+      <div class="psBarWrap">
+        <div class="psBar"><div class="psFill" id="psFill"></div></div>
+        <div class="psXp" id="psXp">0 / 70 XP</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="psInfo panel">
+    <span class="rarityPill r-common" id="psRarity">COMMON</span>
+    <div class="psName" id="psName">&mdash;</div>
+    <div class="psType" id="psType">&mdash;</div>
+    <button class="btn small pink" id="psAction">CLAIM</button>
+  </div>
+
+  <div class="psRail">
+    <div class="psTrack" id="psTrack"></div>
+  </div>
 </div>
 
 <!-- ================= SHOP (v24 §5.4) ================= -->
