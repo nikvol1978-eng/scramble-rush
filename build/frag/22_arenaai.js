@@ -79,12 +79,13 @@
         drive(floor.cx + Math.cos(r.aiHomeA)*floor.r*r.aiHome,
               floor.y  + Math.sin(r.aiHomeA)*floor.r*r.aiHome, 30);
       }
-      // Written as !(x>0), not x<=0: baseRacer() does not initialise tumbleT
-      // or getUpT, so on a racer that has never been knocked down both are
-      // undefined and `undefined <= 0` is false. The guard was never true
-      // and not one bot jumped a beam in the whole round -- the field stood
-      // there and let the arms walk it off the rim. Everything else in the
-      // codebase tests these the truthy way round; this did not.
+      // Written as !(x>0), not x<=0. baseRacer() initialised getUpT and not
+      // tumbleT, so on a racer that had never been knocked down the tumbleT
+      // half of this read `undefined <= 0` -- false -- and the guard never
+      // opened: not one bot jumped a beam in the whole round, and the field
+      // stood there and let the arms walk it off the rim. tumbleT starts at
+      // zero now, so either spelling works; this one cannot break again if a
+      // field is ever added without an initialiser.
       if(r.h<=0 && !(r.stumbleT>0) && !(r.tumbleT>0) && !(r.getUpT>0)){
         for(const o of hubs){
           const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);

@@ -3681,6 +3681,63 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- f: a fresh racer's timers are all numbers ----------
+  // Six guards in this codebase have read `r.<timer> <= 0` on a racer that had
+  // never been knocked down, and every one of them was false, because the field
+  // was undefined and `undefined <= 0` is false. Not one of them threw, logged
+  // or looked wrong; they just never opened. Bots could not air dive until they
+  // had tumbled once, the ice skid lean never showed, Tilt Deck's decks leaned
+  // and never slid anybody, and Log Jam's log turned under nobody.
+  //
+  // The fix is that every timer starts at zero. This is the check that keeps it
+  // that way, because the seventh guard will be written the same natural way
+  // round as the first six.
+  function checkRacerFields(){
+    const bad = [], rep = {};
+    // Every field the codebase compares with <, <=, > or >= somewhere. If you
+    // add a timer and compare it, add it here.
+    const TIMERS = ['stumbleT','tumbleT','getUpT','getUpTotal','tumbleSpin','tumbleAng',
+                    'diveT','diveCd','invuln','fallT','landT','jumpBuf','coyote','slideT',
+                    'respawnFreeze','tileGraceUntil','holeWait','skidLean',
+                    'stuckT','squash','fallCount','h','vh','vx','vy','floorH','airSpeed0'];
+
+    const fresh = baseRacer();
+    for(const k of TIMERS){
+      const v = fresh[k];
+      if(typeof v !== 'number' || !isFinite(v)) bad.push('baseRacer().' + k + ' is ' + String(v));
+      // and the comparison that started all this has to answer on a fresh one
+      else if(!(v <= 0) && !(v >= 0)) bad.push('baseRacer().' + k + ' compares as neither <=0 nor >=0');
+    }
+    rep.baseRacer = TIMERS.length + ' timers, all numbers';
+
+    // And on a racer the game actually made, not just the template: makeRacers
+    // builds the field through Object.assign, and a survivor carried into round
+    // two is assigned over rather than rebuilt.
+    begin('sunny');
+    const missing = {};
+    for(const r of racers) for(const k of TIMERS)
+      if(typeof r[k] !== 'number' || !isFinite(r[k])) missing[k] = (missing[k]||0) + 1;
+    rep.inPlay = Object.keys(missing).length
+               ? Object.entries(missing).map(([k,n])=>k+' on '+n).join(', ')
+               : racers.length + ' racers on the grid, all timers numeric';
+    for(const k in missing) bad.push(k + ' is not a number on ' + missing[k] + ' racers at the gun');
+
+    // and after a round of being knocked about, in case something clears one
+    window.__dbg.hold('w', true);
+    window.__dbg.tick(60*12);
+    window.__dbg.hold('w', false);
+    const after = {};
+    for(const r of racers) for(const k of TIMERS)
+      if(typeof r[k] !== 'number' || !isFinite(r[k])) after[k] = (after[k]||0) + 1;
+    rep.afterPlay = Object.keys(after).length
+                  ? Object.entries(after).map(([k,n])=>k+' on '+n).join(', ')
+                  : 'still all numeric after twelve seconds';
+    for(const k in after) bad.push(k + ' went non-numeric on ' + after[k] + ' racers during play');
+
+    return { name:'f a fresh racer has no undefined timers on it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3693,7 +3750,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

@@ -4677,7 +4677,7 @@ const QUALITY = {
   // ============================================================
   // RACERS
   // ============================================================
-  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,x:0,y:-60,vx:0,vy:0,h:0,vh:0,finished:false,finishTime:0,falling:false,fallT:0,stumbleT:0,diveT:0,diveCd:0,invuln:0,renderFacing:0,facing:Math.PI/2,stuckT:0,aiObs:null,aiDecideT:0,aiRoute:0,aiPlat:null,targetX:0,squash:0,fallCount:0,lavaOut:false,lavaCatchY:0}; }
+  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,x:0,y:-60,vx:0,vy:0,h:0,vh:0,finished:false,finishTime:0,falling:false,fallT:0,stumbleT:0,diveT:0,diveCd:0,invuln:0,renderFacing:0,facing:Math.PI/2,stuckT:0,aiObs:null,aiDecideT:0,aiRoute:0,aiPlat:null,targetX:0,squash:0,fallCount:0,lavaOut:false,lavaCatchY:0}; }
   // ============================================================
   // THE FIELD  (v24 §1)
   // ============================================================
@@ -6900,11 +6900,11 @@ const QUALITY = {
         else {
           r.floorH = surf;
           r.onLog = lg;
-          // !(x>0), not x<=0: baseRacer() does not initialise tumbleT, so on a
-          // racer that has never been knocked down this reads `undefined <= 0`
-          // and is false. Written the wrong way round the log turned, the pegs
-          // went round with it, and neither ever touched anybody -- the whole
-          // round was scenery. Same trap as the beam dodge in the arena AI.
+          // !(x>0), not x<=0. tumbleT was the one field baseRacer() did not
+          // initialise, so on a racer that had never been knocked down this
+          // read `undefined <= 0` and was false: the log turned, the pegs went
+          // round with it, and neither ever touched anybody. It starts at zero
+          // now and check f keeps it that way.
           if(r.h <= 0.5 && !(r.tumbleT > 0)){
             // The surface of a turning log moves sideways at spin x radius,
             // and it takes what is standing on it with it. This is the round:
@@ -8607,12 +8607,13 @@ const QUALITY = {
         drive(floor.cx + Math.cos(r.aiHomeA)*floor.r*r.aiHome,
               floor.y  + Math.sin(r.aiHomeA)*floor.r*r.aiHome, 30);
       }
-      // Written as !(x>0), not x<=0: baseRacer() does not initialise tumbleT
-      // or getUpT, so on a racer that has never been knocked down both are
-      // undefined and `undefined <= 0` is false. The guard was never true
-      // and not one bot jumped a beam in the whole round -- the field stood
-      // there and let the arms walk it off the rim. Everything else in the
-      // codebase tests these the truthy way round; this did not.
+      // Written as !(x>0), not x<=0. baseRacer() initialised getUpT and not
+      // tumbleT, so on a racer that had never been knocked down the tumbleT
+      // half of this read `undefined <= 0` -- false -- and the guard never
+      // opened: not one bot jumped a beam in the whole round, and the field
+      // stood there and let the arms walk it off the rim. tumbleT starts at
+      // zero now, so either spelling works; this one cannot break again if a
+      // field is ever added without an initialiser.
       if(r.h<=0 && !(r.stumbleT>0) && !(r.tumbleT>0) && !(r.getUpT>0)){
         for(const o of hubs){
           const dx=r.x-o.cx, dy=r.y-o.y, dist=Math.hypot(dx,dy);

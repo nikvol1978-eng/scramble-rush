@@ -1125,11 +1125,11 @@
         else {
           r.floorH = surf;
           r.onLog = lg;
-          // !(x>0), not x<=0: baseRacer() does not initialise tumbleT, so on a
-          // racer that has never been knocked down this reads `undefined <= 0`
-          // and is false. Written the wrong way round the log turned, the pegs
-          // went round with it, and neither ever touched anybody -- the whole
-          // round was scenery. Same trap as the beam dodge in the arena AI.
+          // !(x>0), not x<=0. tumbleT was the one field baseRacer() did not
+          // initialise, so on a racer that had never been knocked down this
+          // read `undefined <= 0` and was false: the log turned, the pegs went
+          // round with it, and neither ever touched anybody. It starts at zero
+          // now and check f keeps it that way.
           if(r.h <= 0.5 && !(r.tumbleT > 0)){
             // The surface of a turning log moves sideways at spin x radius,
             // and it takes what is standing on it with it. This is the round:

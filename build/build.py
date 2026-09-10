@@ -457,8 +457,18 @@ cut("""    const p=racers.find(r=>r.isPlayer);
     "movement + physics")
 
 # racers carry the new timers
+# v24: and every remaining timer a racer is ever compared on. The list stopped
+# at getUpT, so tumbleT was undefined on any racer that had never been knocked
+# down -- and `undefined <= 0` is false. Six guards read that way and simply
+# never opened: bots could not air dive until they had tumbled once, the ice
+# skid lean never showed, Tilt Deck's slide never moved anybody, and Log Jam's
+# log turned under nobody. Fixed here rather than at the six sites, because the
+# sites are not the bug -- a field that can be undefined is, and the next guard
+# written the natural way round would have been the seventh.
 sub("  function baseRacer(){ return {x:0,y:-60,",
-    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,x:0,y:-60,",
+    "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,"
+    + "tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,"
+    + "x:0,y:-60,",
     "baseRacer fields")
 
 # ---------------------------------------------------------------- bot AI must predict the same bar the collision uses
