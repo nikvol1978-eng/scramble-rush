@@ -397,9 +397,24 @@
   // The lightness floor only applies to maps that were light to begin with.
   // Neon Nightrun and Magma Chase are dark on purpose, and lifting their floors
   // to 0.72 would turn a night course into an afternoon one.
+  // v24 §3: one line under the round's name saying what it wants. A name tells
+  // you where you are; on a survival round what you actually need to know is
+  // that there is no finish line to run at.
+  function objectiveOf(map){
+    if(!map) return '';
+    if(map.objective) return map.objective;
+    if(map.mode === 'lava' || map.mode === 'shrink' || map.mode === 'spin')
+      return 'LAST ONE STANDING WINS!';
+    if(map.isMinigame) return "DON'T FALL!";
+    return 'RACE TO THE FINISH!';
+  }
+
   function neutralFloor(hex){
     return withHSL(hex, h=>{
-      h.s = Math.min(h.s, 0.70);
+      // §3 raises this from 0.70. The floor is allowed to be the map's colour;
+      // what it is not allowed to be is as loud as the thing that can hurt you,
+      // and check 3b is what holds that line rather than this cap.
+      h.s = Math.min(h.s, 0.75);
       h.l = h.l >= 0.45 ? clamp(h.l, 0.72, 0.80) : Math.min(h.l, 0.80);
     });
   }
@@ -579,4 +594,5 @@
     dirLight.color.set(s.elev < 12 ? 0xffb98a : 0xfff4e0);
     if(scene.fog) scene.fog.color.set(currentMap.skyMid);
     buildClouds();
+    buildSkyline();
   }

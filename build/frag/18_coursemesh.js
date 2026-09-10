@@ -83,6 +83,10 @@
     // One warm key, a cool fill from the sky, and a haze that matches it.
     const accents = mapAccents();
     const floorHex = neutralFloor(currentMap.ground);
+    // §3: no clearcoat except on ice and water. A slippery map's floor is
+    // the one surface that has to say "you cannot stand on me" before you
+    // step on it, and a wet highlight is how it says so.
+    const FloorMat = currentMap.slippery ? THREE.MeshGlossMaterial : THREE.MeshFloorMaterial;
     const floorAltHex = mixHex(floorHex, neutralFloor(currentMap.groundAlt), 0.5);   // half the old contrast
     currentMap.__floorHex = floorHex;
     hemi.color.set(currentMap.skyTop); hemi.groundColor.set(floorHex);
@@ -92,7 +96,7 @@
     const voidMat = new THREE.MeshLambertMaterial({color:0x1b1040});
     const wallMat = new THREE.MeshLambertMaterial({color:paleWall});
     const wallTopMat = new THREE.MeshLambertMaterial({color:accents[0]});       // the accent rail
-    const skirtMat = new THREE.MeshFloorMaterial({color:mixHex(paleWall, floorHex, 0.5)});
+    const skirtMat = new FloorMat({color:mixHex(paleWall, floorHex, 0.5)});
     const mapGroundTex = checkerTexture(floorHex, floorAltHex, 1);
     const mapStripeTex = stripeTexture('#ffffff', accents[0]);
     // Materials for the things that hit you. Tagged with their accent so the
@@ -105,13 +109,13 @@
       const w=x1-x0, d=z1-z0; if(w<=0||d<=0) return;
       let mat;
       if(sunken){ mat=voidMat; }
-      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new THREE.MeshFloorMaterial({map:tex}); }
+      else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new FloorMat({map:tex}); }
       if(!coursePath){
-        const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,sunken?4:12,d), mat);
+        const mesh=new THREE.Mesh(THREE.RoundedBox(w,sunken?4:12,d), mat);
         mesh.position.set(toSceneX((x0+x1)/2), sunken?-62:-6, (z0+z1)/2);
         mesh.receiveShadow=true; courseGroup.add(mesh);
         if(!sunken){
-          const skirt=new THREE.Mesh(new THREE.BoxGeometry(w+2,40,d+2), skirtMat);
+          const skirt=new THREE.Mesh(THREE.RoundedBox(w+2,40,d+2), skirtMat);
           skirt.position.set(mesh.position.x,-32,mesh.position.z); courseGroup.add(skirt);
         }
         return;
@@ -136,9 +140,9 @@
     function addWall(xPos,z0,z1){
       const d=z1-z0; if(d<=0) return;
       if(!coursePath){
-        const mesh=new THREE.Mesh(new THREE.BoxGeometry(8,30,d), wallMat);
+        const mesh=new THREE.Mesh(THREE.RoundedBox(8,30,d), wallMat);
         mesh.position.set(toSceneX(xPos),15,(z0+z1)/2); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerBlocker(mesh);
-        const top=new THREE.Mesh(new THREE.BoxGeometry(10,4,d), wallTopMat); top.position.set(toSceneX(xPos),31,(z0+z1)/2); courseGroup.add(top);
+        const top=new THREE.Mesh(THREE.RoundedBox(10,4,d), wallTopMat); top.position.set(toSceneX(xPos),31,(z0+z1)/2); courseGroup.add(top);
         return;
       }
       const face = ribbonStrip(z0, z1, s=>[toWorld(xPos,s,0), toWorld(xPos,s,30)]);
@@ -173,19 +177,19 @@
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
         // the island: solid, still, and obviously not a platform
         for(const is of (o.islands||[])){
-          const slab = new THREE.Mesh(new THREE.BoxGeometry(is.w, 14, is.y1-is.y0),
-            new THREE.MeshFloorMaterial({color: accents[1]}));
+          const slab = new THREE.Mesh(THREE.RoundedBox(is.w, 14, is.y1-is.y0),
+            new FloorMat({color: accents[1]}));
           slab.receiveShadow = true;
           placeAt(slab, is.x, (is.y0+is.y1)/2, 7); courseGroup.add(slab);
-          const lip = new THREE.Mesh(new THREE.BoxGeometry(is.w+10, 5, is.y1-is.y0+10),
+          const lip = new THREE.Mesh(THREE.RoundedBox(is.w+10, 5, is.y1-is.y0+10),
             new THREE.MeshLambertMaterial({color:0xfff8ec}));
           placeAt(lip, is.x, (is.y0+is.y1)/2, 1.5); courseGroup.add(lip);
         }
         const platMat=new THREE.MeshPhongMaterial({color:0x23e6c9, shininess:30});
         o.platformMeshes=o.platforms.map(p=>{
           const g=new THREE.Group();
-          const top=new THREE.Mesh(new THREE.BoxGeometry(p.width,12,o.yEnd-o.yStart), platMat); top.receiveShadow=true; top.castShadow=true; g.add(top);
-          const under=new THREE.Mesh(new THREE.BoxGeometry(p.width-10,30,o.yEnd-o.yStart-10), new THREE.MeshLambertMaterial({color:0x0e9e8a})); under.position.y=-20; g.add(under);
+          const top=new THREE.Mesh(THREE.RoundedBox(p.width,12,o.yEnd-o.yStart), platMat); top.receiveShadow=true; top.castShadow=true; g.add(top);
+          const under=new THREE.Mesh(THREE.RoundedBox(p.width-10,30,o.yEnd-o.yStart-10), new THREE.MeshLambertMaterial({color:0x0e9e8a})); under.position.y=-20; g.add(under);
           placeAt(g, TRACK_W/2, (o.yStart+o.yEnd)/2, -6); courseGroup.add(g); return g;
         });
       } else if(o.type==='narrow'){
@@ -222,10 +226,10 @@
       // upload to the card for an identical image.
       const padTex = chk.clone(); padTex.needsUpdate = true;
       padTex.repeat.set(4, (padLen/segs)/90);
-      const padMat = new THREE.MeshFloorMaterial({map:padTex});
+      const padMat = new FloorMat({map:padTex});
       for(let i=0;i<segs;i++){
         const sy = padStart + padLen*(i+0.5)/segs;
-        const plate = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-14, 3, (padLen/segs)*0.99),
+        const plate = new THREE.Mesh(THREE.RoundedBox(TRACK_W-14, 3, (padLen/segs)*0.99),
           padMat);
         plate.receiveShadow = true;
         placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
@@ -238,7 +242,7 @@
       for(let i=0;i<=START_COLS;i++){
         const bx = TRACK_W/2 + (i-START_COLS/2)*colW;
         if(bx < 20 || bx > TRACK_W-20) continue;
-        const bay = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 200), bayMat);
+        const bay = new THREE.Mesh(THREE.RoundedBox(4, 3, 200), bayMat);
         placeAt(bay, bx, -105, 2.2); courseGroup.add(bay);
       }
     }
@@ -250,10 +254,10 @@
       const g = new THREE.Group();
       const postMat = new THREE.MeshLambertMaterial({color:0x1a1033});
       [-1,1].forEach(s=>{
-        const post = new THREE.Mesh(new THREE.BoxGeometry(9, 84, 9), postMat);
+        const post = new THREE.Mesh(THREE.RoundedBox(9, 84, 9), postMat);
         post.position.set(s*(TRACK_W/2-26), 42, 0); post.castShadow = true; g.add(post);
       });
-      const banner = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-52, 26, 4),
+      const banner = new THREE.Mesh(THREE.RoundedBox(TRACK_W-52, 26, 4),
         new THREE.MeshLambertMaterial({color: accents[0]}));
       banner.position.y = 74; g.add(banner);
       placeAt(g, TRACK_W/2, c.y, 0); courseGroup.add(g);
@@ -264,7 +268,7 @@
     }
 
     // start line
-    const sl=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
+    const sl=new THREE.Mesh(THREE.RoundedBox(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
     placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
 
     // Pillars only block, so they are soft; everything that swings, spins or
@@ -291,7 +295,7 @@
         });
       } else if(o.type==='hammer'){
         const xs=o.items.map(i=>i.pivotX);
-        const beam=new THREE.Mesh(new THREE.BoxGeometry(Math.max(...xs)-Math.min(...xs)+40,8,8), poleMat);
+        const beam=new THREE.Mesh(THREE.RoundedBox(Math.max(...xs)-Math.min(...xs)+40,8,8), poleMat);
         placeAt(beam, (Math.max(...xs)+Math.min(...xs))/2, o.y, 100); beam.castShadow=true; courseGroup.add(beam);
         for(const it of o.items){
           const pole=new THREE.Mesh(new THREE.CylinderGeometry(4,5,100,8), poleMat);
@@ -304,20 +308,20 @@
         }
       } else if(o.type==='spinbar'){
         const g=new THREE.Group();
-        const mesh=new THREE.Mesh(new THREE.BoxGeometry(o.length,22,o.thickness), barMat); mesh.castShadow=true; g.add(mesh);
-        const out=new THREE.Mesh(new THREE.BoxGeometry(o.length+5,26,o.thickness+5), outlineMat); g.add(out);
+        const mesh=new THREE.Mesh(THREE.RoundedBox(o.length,22,o.thickness), barMat); mesh.castShadow=true; g.add(mesh);
+        const out=new THREE.Mesh(THREE.RoundedBox(o.length+5,26,o.thickness+5), outlineMat); g.add(out);
         placeAt(g, o.cx, o.y, 22); courseGroup.add(g);
         const hub=new THREE.Mesh(new THREE.CylinderGeometry(16,18,40,12), darkMat);
         placeAt(hub, o.cx, o.y, 20); courseGroup.add(hub);
         o.mesh=g;
       } else if(o.type==='pusher'){
-        const rail=new THREE.Mesh(new THREE.BoxGeometry(TRACK_W-16,3,o.d+6), new THREE.MeshLambertMaterial({color:0x2a1a55}));
+        const rail=new THREE.Mesh(THREE.RoundedBox(TRACK_W-16,3,o.d+6), new THREE.MeshLambertMaterial({color:0x2a1a55}));
         placeAt(rail, TRACK_W/2, o.y, 1); courseGroup.add(rail);
         o.meshes=o.items.map(it=>{
           const g=new THREE.Group();
-          const box=new THREE.Mesh(new THREE.BoxGeometry(it.width,34,it.d), pusherMat); box.castShadow=true; g.add(box);
-          const out=new THREE.Mesh(new THREE.BoxGeometry(it.width+5,38,it.d+5), outlineMat); g.add(out);
-          const face=new THREE.Mesh(new THREE.BoxGeometry(it.width-6,30,3), pusherFaceMat); face.position.set(0,0,-it.d/2-1.2); g.add(face);
+          const box=new THREE.Mesh(THREE.RoundedBox(it.width,34,it.d), pusherMat); box.castShadow=true; g.add(box);
+          const out=new THREE.Mesh(THREE.RoundedBox(it.width+5,38,it.d+5), outlineMat); g.add(out);
+          const face=new THREE.Mesh(THREE.RoundedBox(it.width-6,30,3), pusherFaceMat); face.position.set(0,0,-it.d/2-1.2); g.add(face);
           placeAt(g, TRACK_W/2, o.y, 17); courseGroup.add(g); return g;
         });
       }
@@ -355,8 +359,8 @@
       const standAt = [];
       for(let z=450; z<trackLength-200; z+=900) [-1,1].forEach(s=>standAt.push({x: s<0 ? -78 : TRACK_W+78, z, s}));
       if(standAt.length){
-        const stands = new THREE.InstancedMesh(new THREE.BoxGeometry(100, 24, 230), standMat, standAt.length);
-        const rails  = new THREE.InstancedMesh(new THREE.BoxGeometry(6, 8, 230), standRail, standAt.length);
+        const stands = new THREE.InstancedMesh(THREE.RoundedBox(100, 24, 230), standMat, standAt.length);
+        const rails  = new THREE.InstancedMesh(THREE.RoundedBox(6, 8, 230), standRail, standAt.length);
         const probe = new THREE.Object3D();
         standAt.forEach((q, i)=>{
           placeAt(probe, q.x, q.z, 12); probe.updateMatrix(); stands.setMatrixAt(i, probe.matrix);

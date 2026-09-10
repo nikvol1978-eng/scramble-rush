@@ -36,7 +36,13 @@
       }
     };
     composer.addPass(gtaoPass);
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.15, 0.4, 0.9);
+    // §3: bloom off except on confetti. There is no per-object bloom here and
+    // a second render target for one particle effect is not worth 3ms, so the
+    // strength goes to nearly nothing and the threshold up above everything
+    // except a white-hot particle -- confetti and sparks glow, the course does
+    // not. Turning the pass off outright would also drop the sparkle that
+    // makes a win read.
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.28, 0.6, 1.15);
     composer.addPass(bloomPass);
     outputPass = new THREE.OutputPass();
     composer.addPass(outputPass);
@@ -53,8 +59,12 @@
     // setting it rewrites a #define and the program fails to validate.
     composer.setSize(W, H);
     composer.render();
+    // §3: occlusion at half strength. At scale 1.0 every inside corner of a
+    // chunky low-poly course goes to a hard grey smudge, which is the opposite
+    // of flat saturated colour -- it wants to be a hint of contact shadow, not
+    // a second lighting model.
     gtaoPass.updateGtaoMaterial({ radius: 14, distanceExponent: 1.0,
-                                  thickness: 12, scale: 1.0 });
+                                  thickness: 12, scale: 0.5 });
     return composer;
   }
 

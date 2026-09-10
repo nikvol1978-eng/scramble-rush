@@ -117,6 +117,92 @@
   // out of it shifted every bot's speed and slot, and check L noticed.
   function crand(a, b){ return a + Math.random()*(b-a); }
 
+
+  // ---- the skyline (v24 §3) ----------------------------------------------
+  // A band of low-poly shapes on the horizon, per theme, so the sky is a place
+  // rather than a gradient. It is one merged mesh a map -- fifty separate
+  // hills would be fifty draw calls, and §1 spent a long time getting the
+  // frame under three hundred -- and it sits far enough out that it never
+  // reads as something you could reach.
+  //
+  // The shape is the theme's, not the map's palette: hills for the sunny and
+  // watery maps, towers for the neon one, jagged peaks for lava and the climb.
+  // Cosmetics draw from Math.random, never rand(), for the reason the clouds do.
+  let skylineGroup = null;
+  const SKYLINE = {
+    // Sized against the distance they stand at, not against the course. At
+    // 1500-3000 units out a 300-tall hill subtends about four degrees and
+    // reads as a bump on the horizon line; these are what actually make a
+    // shape against the sky from a chase camera 176 units up.
+    hills:  { n: 26, w: [900, 1900], h: [420, 900],  shape: 'cone', seg: 5 },
+    towers: { n: 34, w: [220,  480], h: [600, 1600], shape: 'box',  seg: 0 },
+    peaks:  { n: 22, w: [700, 1500], h: [700, 1400], shape: 'cone', seg: 4 }
+  };
+  function skylineKind(){
+    if(currentMap.mode === 'lava' || currentMap.climbs) return 'peaks';
+    if(currentMap.night || currentMap.key === 'neon')   return 'towers';
+    return 'hills';
+  }
+  function buildSkyline(){
+    if(!skylineGroup){ skylineGroup = new THREE.Group(); scene.add(skylineGroup); }
+    clearGroup(skylineGroup);
+    const kind = SKYLINE[skylineKind()];
+    // Two shades of the horizon band, darkened, so the row has depth without
+    // becoming a second thing to read.
+    const base = new THREE.Color(currentMap.skyMid || currentMap.skyTop);
+    const parts = [];
+    const span = Math.max(3200, trackLength + 2400);
+    for(let i=0;i<kind.n;i++){
+      const w = crand(kind.w[0], kind.w[1]), h = crand(kind.h[0], kind.h[1]);
+      const g = kind.shape === 'cone'
+        ? new THREE.ConeGeometry(w*0.5, h, kind.seg)
+        : new THREE.BoxGeometry(w, h, w*0.8);
+      // far out to one side or the other, and spread the length of the course
+      const side = (i % 2) ? 1 : -1;
+      const x = TRACK_W/2 + side*crand(1500, 3000);
+      const y = -900 + span*(i + crand(0,0.9))/kind.n;
+      // Base a little under the ribbon, not far under it: the first version
+      // centred each shape at -260 and the whole band sat below the floor,
+      // which is a skyline you cannot see.
+      const p = toWorld(x, y, -70 + h/2);
+      g.translate(p.x, p.y, p.z);
+      // a shade per shape, so the band is not one flat silhouette
+      const c = base.clone().multiplyScalar(crand(0.34, 0.62));
+      const col = new Float32Array(g.attributes.position.count*3);
+      for(let v=0; v<g.attributes.position.count; v++){ col[v*3]=c.r; col[v*3+1]=c.g; col[v*3+2]=c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(g);
+    }
+    const merged = mergeSimple(parts);
+    const m = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors:true, fog:false }));
+    m.frustumCulled = false; m.renderOrder = -1;
+    skylineGroup.add(m);
+  }
+  // A concatenation, not a library: three's BufferGeometryUtils is one more
+  // module over the wire for something this file can do in ten lines.
+  function mergeSimple(parts){
+    let nv = 0, ni = 0;
+    for(const g of parts){ nv += g.attributes.position.count; ni += g.index.count; }
+    const pos = new Float32Array(nv*3), nor = new Float32Array(nv*3), col = new Float32Array(nv*3);
+    const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+    let v = 0, k = 0;
+    for(const g of parts){
+      const n = g.attributes.position.count;
+      pos.set(g.attributes.position.array, v*3);
+      nor.set(g.attributes.normal.array, v*3);
+      col.set(g.attributes.color.array, v*3);
+      const gi = g.index.array;
+      for(let i=0;i<gi.length;i++) idx[k+i] = gi[i] + v;
+      v += n; k += gi.length;
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    out.setAttribute('normal',   new THREE.Float32BufferAttribute(nor, 3));
+    out.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3));
+    out.setIndex(new THREE.BufferAttribute(idx, 1));
+    return out;
+  }
+
   function buildClouds(){
     if(!cloudGroup){ cloudGroup = new THREE.Group(); scene.add(cloudGroup); }
     clearGroup(cloudGroup);

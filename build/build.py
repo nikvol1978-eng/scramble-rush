@@ -656,6 +656,51 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     "loop hooks")
 
 # HUD progress dots should show the player's colourway
+# --------------------------------------------------------------- v24 §3 UI
+# Thicker panels, bigger colour-blocked buttons, and a bounce on every one of
+# them. The border, the radius and the hard offset shadow were already the
+# house style; this is the same style with more of it, which is what "chunky"
+# means when the thing being described is a rectangle.
+sub("  .panel{background:var(--cream);border:4px solid var(--line);border-radius:20px;box-shadow:0 6px 0 var(--line);}",
+    "  .panel{background:var(--cream);border:5px solid var(--line);border-radius:28px;box-shadow:0 9px 0 var(--line);}" + chr(10)
+    + "  /* Every panel arrives with a bounce. It overshoots to 1.03 and settles,"
+    + " which is the whole difference between a menu appearing and a menu"
+    + " being put in front of you. */" + chr(10)
+    + "  @keyframes popIn{ 0%{transform:scale(0.86);opacity:0;} 62%{transform:scale(1.03);opacity:1;} 100%{transform:scale(1);opacity:1;} }" + chr(10)
+    + "  .panel{animation:popIn .26s cubic-bezier(.34,1.56,.64,1) both;}" + chr(10)
+    + "  @media (prefers-reduced-motion: reduce){ .panel{animation:none;} }",
+    "chunkier panels, and a bounce on each")
+sub("""    font-family:'Fredoka',sans-serif;font-weight:700;font-size:1.1rem;color:var(--line);background:var(--teal);
+    border:4px solid var(--line);border-radius:16px;padding:14px 30px;cursor:pointer;box-shadow:0 6px 0 var(--line);
+    transition:transform .08s ease, filter .1s;""",
+    """    font-family:'Fredoka',sans-serif;font-weight:700;font-size:1.22rem;letter-spacing:0.4px;color:var(--line);background:var(--teal);
+    border:5px solid var(--line);border-radius:22px;padding:17px 36px;cursor:pointer;box-shadow:0 8px 0 var(--line);
+    transition:transform .08s ease, filter .1s;""",
+    "bigger colour-blocked buttons")
+sub("  button.btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--line);}",
+    "  button.btn:active{transform:translateY(6px);box-shadow:0 2px 0 var(--line);}",
+    "buttons press further")
+
+# ---- the round title is stamped, and says what the round wants
+# A name on its own tells you where you are. It does not tell you what you are
+# meant to do, which for a survival round is the whole of the information.
+sub('<div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>',
+    '<div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(2.2rem,9vw,4rem);'
+    + 'line-height:1.05;color:#fff;-webkit-text-stroke:3px var(--line);text-shadow:0 8px 0 var(--line);'
+    + 'transform:rotate(-2.5deg);animation:stampIn .34s cubic-bezier(.2,1.7,.5,1) both;"></div>' + chr(10)
+    + '  <div id="mapIntroGoal" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(0.95rem,3vw,1.4rem);'
+    # Gold on a pale course is unreadable, and this line is the one thing on the
+    # card a new player has to take in, so it goes on a dark pill.
+    + 'letter-spacing:1.5px;margin-top:16px;color:var(--gold);background:rgba(26,16,51,0.78);'
+    + 'padding:7px 20px;border-radius:999px;border:3px solid var(--line);'
+    + 'animation:stampIn .34s .09s cubic-bezier(.2,1.7,.5,1) both;"></div>',
+    "stamped round title plus its objective")
+sub("  @keyframes popIn{",
+    "  /* A stamp lands: oversized, rotated a touch, and slammed down. */" + chr(10)
+    + "  @keyframes stampIn{ 0%{transform:rotate(-2.5deg) scale(2.1);opacity:0;} 70%{transform:rotate(-2.5deg) scale(0.94);opacity:1;} 100%{transform:rotate(-2.5deg) scale(1);opacity:1;} }" + chr(10)
+    + "  @keyframes popIn{",
+    "the stamp keyframes")
+
 # the qualified badge is the map's teal, and goes gold when the cut is full
 sub("  .badge.time{background:var(--red);} .badge.rank{background:var(--purple);}",
     "  .badge.time{background:var(--red);} .badge.rank{background:var(--purple);}" + chr(10)

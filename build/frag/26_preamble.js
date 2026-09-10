@@ -13,6 +13,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const THREE = Object.assign({}, R160);
 THREE.RoomEnvironment = RoomEnvironment;
@@ -23,6 +24,20 @@ THREE.GTAOPass = GTAOPass;
 THREE.UnrealBloomPass = UnrealBloomPass;
 THREE.OutputPass = OutputPass;
 THREE.SMAAPass = SMAAPass;
+THREE.RoundedBoxGeometry = RoundedBoxGeometry;
+
+// §3: nothing has a hard edge. A rounded box costs a few hundred more vertices
+// than a cube and no extra draw call, so the only thing worth guarding against
+// is rounding a plate thinner than the radius -- which turns it into a pillow.
+// The radius is a share of the smallest side, capped, and a very thin slab
+// falls back to a plain box because a bevel on it would be a shape change
+// rather than a softened edge.
+function roundedBox(w, h, d, seg){
+  const m = Math.min(w, h, d);
+  if(m < 6) return new R160.BoxGeometry(w, h, d);
+  return new THREE.RoundedBoxGeometry(w, h, d, seg || 2, Math.min(m*0.22, 9));
+}
+THREE.RoundedBox = roundedBox;
 
 // §4.2 -- everything you can touch is glossy plastic. Parameters the old
 // materials carried and this one has no use for are dropped rather than
@@ -36,10 +51,24 @@ function _apply(mat, params){
   mat.setValues(ok);
   return mat;
 }
-class PlasticMaterial extends R160.MeshPhysicalMaterial {
+// §4.2 was glossy plastic with a clearcoat on everything. v24 §3 wants the
+// other thing: saturated flat colour on chunky shapes, soft simple lighting,
+// no photoreal fuss. A clearcoat is photoreal fuss -- it is a second specular
+// lobe whose whole job is to say "this is a lacquered surface", and on a
+// hazard it reads as a highlight the player has to look past. So the default
+// material loses it and becomes a plain standard material at roughness 0.75.
+class PlasticMaterial extends R160.MeshStandardMaterial {
   constructor(params){
-    super({ roughness:0.45, metalness:0.0, clearcoat:0.6, clearcoatRoughness:0.25,
-            envMapIntensity:0.75 });
+    super({ roughness:0.75, metalness:0.0, envMapIntensity:0.55 });
+    _apply(this, params);
+  }
+}
+// The two things that are genuinely wet or polished keep it. Ice without a
+// clearcoat is a pale floor; the clearcoat is what says you cannot stand on it.
+class GlossMaterial extends R160.MeshPhysicalMaterial {
+  constructor(params){
+    super({ roughness:0.22, metalness:0.0, clearcoat:0.85, clearcoatRoughness:0.10,
+            envMapIntensity:0.9 });
     _apply(this, params);
   }
 }
@@ -48,7 +77,7 @@ class PlasticMaterial extends R160.MeshPhysicalMaterial {
 // and the floor is the surface the hazards have to read against.
 class FloorMaterial extends R160.MeshStandardMaterial {
   constructor(params){
-    super({ roughness:0.8, metalness:0.0, envMapIntensity:0.55 });
+    super({ roughness:0.88, metalness:0.0, envMapIntensity:0.35 });
     _apply(this, params);
   }
 }
@@ -56,6 +85,7 @@ THREE.MeshLambertMaterial = PlasticMaterial;
 THREE.MeshPhongMaterial   = PlasticMaterial;
 THREE.MeshToonMaterial    = PlasticMaterial;
 THREE.MeshFloorMaterial   = FloorMaterial;
+THREE.MeshGlossMaterial   = GlossMaterial;
 
 // §4.5 -- the composer's state lives out here, at module scope, rather than
 // with the functions that use it. applySettings() runs earlier in the module

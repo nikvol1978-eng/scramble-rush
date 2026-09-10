@@ -161,6 +161,24 @@ Working through `docs/CLAUDE-CODE-BRIEF-v24.md` in order.
   deliberate wait is not a stall, the same lesson respawn walk-backs taught
   them in v23.
 
+- **§3 look (done).** The default material loses its clearcoat and becomes a
+  standard material at roughness 0.75 -- a clearcoat is a second specular lobe
+  whose job is to say "lacquer", and on a hazard it reads as a highlight the
+  player has to look past. Ice and water keep it, because a wet highlight is
+  how ice says you cannot stand on it. Sixty boxes across the course are
+  bevelled (a rounded box that would be thinner than its own radius falls back
+  to a plain box rather than becoming a pillow). Floors keep more colour
+  (saturation cap 0.70 → 0.75); occlusion at half strength; bloom pushed up
+  past everything but a white-hot particle, so confetti glows and the course
+  does not. A merged low-poly skyline per theme -- hills, towers or peaks --
+  for one draw call. Panels are thicker and arrive with a bounce, buttons are
+  bigger, and a round now opens with its name stamped across the screen and a
+  one-line objective under it.
+
+  **No gameplay number moved.** The whole §3 diff over `build/` contains no
+  gameplay constant, and the only changed lines in the two course files are the
+  geometry swap and the floor material. Suite 49/49 with the acceptance.
+
 ## v24 candidates
 
 - **A GitHub remote.** Everything through v23 is committed locally only.

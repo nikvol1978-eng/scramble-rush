@@ -169,6 +169,7 @@
     raceTime=0;
     $('mapIntroName').textContent=currentMap.name.toUpperCase();
     $('mapIntroTip').textContent=currentMap.tip;
+    $('mapIntroGoal').textContent=objectiveOf(currentMap);
     $('roundBadge').textContent=roundLabel(n);
     $('hud').classList.add('hidden'); $('pauseBtn').classList.add('hidden');   // the flyover owns the screen first
     if(settings.hints) $('hint').classList.remove('hidden');
