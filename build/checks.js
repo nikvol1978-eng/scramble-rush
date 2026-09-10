@@ -2278,12 +2278,16 @@
 
   function checkAccept(){
     const bad = [], report = {};
-    const RACES = ['sunny','cannonc','slide','neon'];
+    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope'];
     const SURVIVE = ['lava','doors','tiles','shrink'];
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
-    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4 };
-    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5 };
+    // Hop & Duck is bars and nothing else, so a racer who reads them is not
+    // hurt much and never falls at all -- there is nowhere to fall to. Slime
+    // Slope shoves rather than hits, and the falling it does cause is over the
+    // edges of its gaps.
+    const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2 };
+    const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8 };
 
     function playThrough(key){
       begin(key);
@@ -2700,7 +2704,12 @@
   const GAP_HARD_LO = 110, GAP_HARD_HI = 130, GAP_SAFE = 80, GAP_CAP = 140;
   function checkCourseGaps(){
     const bad = [], rep = {};
-    for(const key of ['sunny','cannonc','slide','neon']){
+    // Hop & Duck is not in this list, and that is a decision rather than an
+    // oversight. It is rows of bars and nothing else: the dive is used on it
+    // constantly, to go *under* a high bar, which is not a thing a gap check
+    // can see. Putting a disc field on it to satisfy this rule would muddy the
+    // one question the round asks. Every other race is held to the rule.
+    for(const key of ['sunny','cannonc','slide','neon','slimeslope']){
       const seen = [];
       // three layouts a map: the sections are authored but their gaps are not
       // all fixed, and one unlucky roll should not pass a map that is wrong.

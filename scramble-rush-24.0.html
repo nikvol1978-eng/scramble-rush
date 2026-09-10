@@ -1264,6 +1264,21 @@ const QUALITY = {
     { key:'neon', name:'Neon Nightrun', tip:'Jump a beat early on spinning bars — it is harder to judge in the dark.', ground:'#2b2140', groundAlt:'#241a37', wall:'#1a1033', wallTop:'#23e6c9', skyTop:'#1a0b2e', skyMid:'#3d1a5b', skyBot:'#ff4fa3', accent:'#23e6c9',
       round1Total:10300, forcedGap:false, obstacles:['spinbar','pusher','gate','beam','pendulum','fork','narrow'] },
 
+    // ---- v24 §4 --------------------------------------------------------
+    // Three more races, built out of section types that already exist and are
+    // already checked. A round is a shape and a palette, not a new engine:
+    // Hop & Duck is rows of beams and nothing else, Slime Slope is the two
+    // surfaces §2 added, and Log Jam is the rolling logs off the shelf.
+    { key:'hopduck', name:'Hop & Duck', tip:'Low bars you jump, high bars you dive under. The rows come faster as you go.',
+      ground:'#ffb4d6', groundAlt:'#ff8ec3', wall:'#7a2a52', wallTop:'#23e6c9', skyTop:'#ffd9ec', skyMid:'#ff9ecb', skyBot:'#fff2d0', accent:'#23e6c9',
+      objective:'JUMP THE LOW ONES, DIVE THE HIGH ONES!',
+      round1Total:9200, forcedGap:false, obstacles:['beam','laserbar','narrow','gate'] },
+
+    { key:'slimeslope', name:'Slime Slope', tip:'The floor flows sideways. Aim upstream of where you want to land.',
+      ground:'#a7f3a0', groundAlt:'#6ee76a', wall:'#14532d', wallTop:'#ffcb3d', skyTop:'#d9fbd6', skyMid:'#5ec95a', skyBot:'#fdf6c0', accent:'#ffcb3d',
+      objective:'RACE TO THE FINISH!',
+      round1Total:9600, forcedGap:false, obstacles:['slime','bounce','gap','pillars','narrow'] },
+
   ];
   // Three saturated accents a map paints its hazards with. Anything that can
   // hurt you wears one of these, or a white-and-accent stripe; walls, floors
@@ -1385,6 +1400,47 @@ const QUALITY = {
     ],
     // Splash Slide: downhill all the way, boost pads chained down it, and one
     // big sweeping turn in the middle. It only ever goes down.
+    // Hop & Duck: rows of bars and nothing else, tightening as it goes. The
+    // only thing it asks is whether you read a bar's height in time, so
+    // nothing else is allowed on the course to muddy the answer -- one gate
+    // near the middle to break the rhythm up, and that is all.
+    hopduck: [
+      { type:'start',   len:700 },
+      { type:'beam',    len:760 },
+      { type:'beam',    len:720, turn:+18 },
+      { type:'beam',    len:700 },
+      { type:'gate',    len:640, turn:-22 },
+      { type:'beam',    len:680 },
+      { type:'beam',    len:660, turn:+20 },
+      { type:'narrow',  len:760, bias:110 },
+      { type:'beam',    len:640 },
+      { type:'beam',    len:620, turn:-18 },
+      { type:'beam',    len:600 },
+      { type:'beam',    len:580 },
+      { type:'finish',  len:560 }
+    ],
+
+    // Slime Slope: the two surfaces v24 added, on a course that drops the
+    // whole way. Every slime sheet is followed by something you have to be on
+    // a line for, so being shoved sideways costs you rather than just looking
+    // odd -- and the bounce pads sit over the gaps, which is what they are for.
+    slimeslope: [
+      { type:'start',   len:700,  drop:40 },
+      { type:'slime',   len:640,  drop:80 },
+      { type:'gap',     len:820,  drop:80 },
+      { type:'pillars', len:700,  turn:+24, drop:70 },
+      { type:'bounce',  len:520,  drop:60 },
+      { type:'slime',   len:660,  turn:-26, drop:80 },
+      { type:'narrow',  len:780,  drop:80, bias:95 },
+      { type:'bounce',  len:520,  drop:60 },
+      { type:'slime',   len:640,  turn:+22, drop:80 },
+      { type:'smallDiscs', len:1200, count:4, drop:90 },
+      { type:'gap',     len:800,  drop:70 },
+      { type:'pillars', len:680,  drop:60 },
+      { type:'bounce',  len:520,  turn:-20, drop:60 },
+      { type:'finish',  len:600,  drop:40 }
+    ],
+
     slide: [
       { type:'start',   len:800,  drop:60 },
       { type:'boost',   len:1100, drop:160 },
