@@ -930,7 +930,11 @@
             c.mesh.position.y = c.baseY + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
             if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hf.fuseTime*0.45 ? 0xff5a4d : 0xffd166);
           }
-          if(c.fuse<=0){ c.gone=true; c.drop=0; c.back=hf.respawnTime; spawnBurst3D(c.x,c.y,0xa78bfa,6); }
+          // Infinity, not a flag checked at the other end: the rebuild below
+          // counts this down, so a rung that is never coming back is one whose
+          // countdown never finishes.
+          if(c.fuse<=0){ c.gone=true; c.drop=0; c.back = c.noBack ? Infinity : hf.respawnTime;
+                         spawnBurst3D(c.x,c.y,0xa78bfa,6); }
         } else if(c.gone){
           if(c.drop<1){
             c.drop += dt*1.5;

@@ -582,6 +582,18 @@
       // rather than against either shape.
       case 'hexfield':
       case 'tilefield': {
+        // Both fields, one plan -- but only if it reads the right shape. This
+        // was mapped onto hexfield in v24 §4 on the strength of tileFloor()
+        // working against col.tiers either way, which it does; what does not is
+        // tileColumnAt(), which indexes by tileW and rowDepth. A hexfield has
+        // neither, so every look at the floor ahead came back empty, every
+        // sidestep was by `undefined`, and the plan fell through to "nothing
+        // ahead: back off the edge" on every frame. The pack walked up to Comb
+        // Collapse, read solid ground as a hole, and reversed -- for the whole
+        // round, every round, since the day it shipped.
+        const isHex   = o.type === 'hexfield';
+        const colAt   = (x,y)=> isHex ? hexColumnAt(o,x,y) : tileColumnAt(o,x,y);
+        const colPitch = isHex ? o.colW : o.tileW;
         // Tile Trap is an arena, not a course. Running the field end to end
         // bunched the whole pack at the far side, where they ate the tiles
         // around them and eleven of twelve drowned inside five seconds. They
@@ -627,7 +639,7 @@
         // it at all.
         const aheadY = r.y + step;
         const insideAhead = aheadY > o.yStart && aheadY < o.yEnd;
-        const front = tileFloor(tileColumnAt(o, r.x, aheadY));
+        const front = tileFloor(colAt(r.x, aheadY));
         // Not perfectly, and the quicker bots read it better. 94% works now
         // that a miss costs a storey rather than the round.
         const sees = Math.random() < 0.94 + ((r.speed||1) - 0.98) * 0.4;
@@ -636,8 +648,8 @@
         // three tiers -- so no bot missed anything and none of them descended.
         if(insideAhead && (!front || front.fuse >= 0) && sees){
           let side = null, sideD = 1e9;
-          for(const dx of [-o.tileW, o.tileW, -2*o.tileW, 2*o.tileW]){
-            const c = tileFloor(tileColumnAt(o, r.x + dx, r.y + step));
+          for(const dx of [-colPitch, colPitch, -2*colPitch, 2*colPitch]){
+            const c = tileFloor(colAt(r.x + dx, r.y + step));
             if(c && c.fuse < 0 && Math.abs(dx) < sideD){ sideD = Math.abs(dx); side = r.x + dx; }
           }
           if(side !== null) return set(side, thr * 0.7);

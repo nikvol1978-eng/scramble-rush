@@ -627,6 +627,9 @@
     { key:'beam', name:'Beam Team', tip:'Green sweeps low and you jump it. Pink sweeps high and you go under it. They speed up.',
       ground:'#4b5563', groundAlt:'#374151', wall:'#111827', wallTop:'#a3e635', skyTop:'#1f2937', skyMid:'#334155', skyBot:'#64748b', accent:'#a3e635',
       objective:'STAY ON THE DISC!', isMinigame:true, mode:'beam', knockout:true },
+    { key:'lastrung', name:'Last Rung', tip:'Two layers and no rebuilding the bottom one. Every hexagon anybody touches is one fewer for everybody.',
+      ground:'#a5b4fc', groundAlt:'#818cf8', wall:'#312e81', wallTop:'#fbbf24', skyTop:'#1e1b4b', skyMid:'#4338ca', skyBot:'#c7d2fe', accent:'#fbbf24',
+      objective:'LAST ONE STANDING!', isMinigame:true, mode:'hex', knockout:true, final:true },
     { key:'shrink', name:'Closing Circle', tip:'The ring never stops closing. Do not be the one still outside it.',
       ground:'#2dd4bf', groundAlt:'#0f766e', wall:'#065f46', wallTop:'#fde68a', skyTop:'#083344', skyMid:'#0e7490', skyBot:'#134e4a', accent:'#fde68a', isMinigame:true, mode:'shrink', knockout:true, final:true },
   ];

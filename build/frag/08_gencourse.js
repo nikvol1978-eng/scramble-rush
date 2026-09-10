@@ -89,22 +89,43 @@
     // four seconds, or a field of twenty-four would eat itself long before
     // the round timer ran out.
     if(mode==='hex'){
+      // Two rounds share this field. Comb Collapse is the survival version --
+      // four tiers, everything rebuilds, and the round is about not standing
+      // still. Last Rung is the final: two tiers, and the bottom one never
+      // comes back, so the floor is a resource the eight of them are spending
+      // between them and it runs out. That is what makes it end with one rather
+      // than run to a clock.
+      const isFinal = !!currentMap.final;
       // A shorter field on purpose: every hex is two meshes, and the whole point
       // is the drop, not the distance.
-      const yStart=420, yEnd=yStart+3300;
+      const yStart=420, yEnd=yStart+(isFinal?2600:3300);
       const hexR=76, colW=hexR*1.5, rowH=hexR*Math.sqrt(3);
-      const cols=Math.max(3, Math.floor(TRACK_W/colW)-1);
+      // Four columns, not three. The -1 threw away a whole column and left a
+      // field so narrow that twenty-four racers were forced onto the same
+      // hexes: the difference between a round that lasts and one that eats
+      // itself came down to a tenth of a second of rebuild time, which is not
+      // a round, it is a knife edge. An outer hex overhanging the track edge
+      // is fine -- x is clamped to the track, so the overhang is unreachable
+      // and the rest of the hex is floor.
+      const cols=Math.max(3, Math.floor(TRACK_W/colW));
       const rows=Math.max(6, Math.floor((yEnd-yStart)/rowH));
-      const TIERS=[0,-42,-84,-126];
+      // Three rungs for the final, not two. Two meant a racer was out after
+      // two mistakes and eight of them went to one in nine seconds, which is
+      // not a showdown, it is a coin toss. Three, with only the bottom one
+      // spent for good, is the brief's round -- the floor still runs down,
+      // it just takes long enough to watch.
+      const TIERS = isFinal ? [0,-46,-92] : [0,-42,-84,-126];
       const cells=[], columns=[];
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
         const x = colW*0.9 + c*colW;
         const y = yStart + r*rowH + (c%2?rowH/2:0);
-        if(x<hexR || x>TRACK_W-hexR || y>yEnd) continue;
+        if(x<hexR*0.5 || x>TRACK_W-hexR*0.5 || y>yEnd) continue;
         const tiers=[];
         for(let ti=0; ti<TIERS.length; ti++){
           const missing = ti>0 && Math.random() < 0.09*ti;
           const cell={x, y, r:hexR, tier:ti, hy:TIERS[ti],
+                      // the bottom rung of the final is spent for good
+                      noBack: isFinal && ti===TIERS.length-1,
                       touched:false, fuse:-1, gone:missing, drop:missing?1:0, back:missing?3:0};
           tiers.push(cell); cells.push(cell);
         }
@@ -112,7 +133,26 @@
       }
       // tiers rebuild, or a crowded field would strand everyone before the line
       obs.push({type:'hexfield', yStart, yEnd, y0:yStart, y1:yEnd, cells, columns, tiers:TIERS,
-                fuseTime: hard?1.0:1.3, respawnTime: 4.0});
+                // the bot plan steps sideways by a column to look for floor,
+                // and it should not have to know the shape to do it
+                hexR, colW, rowH,
+                // The final's fuse is shorter and its rebuild slower: eight
+                // racers arm a lot less of a field than twenty-four do, so the
+                // survival numbers would have left them standing on a floor
+                // that never noticed them.
+                // Comb Collapse's numbers are v24 §4 numbers re-measured: the
+                // first set were tuned against a round where the bots never got
+                // on the field, so a fuse of 1.0 and a four-second rebuild read
+                // as calm when they were simply never being used. With the pack
+                // actually walking on it, that pair ate the field in six
+                // seconds. These are Panel Drop's shape -- a fuse you can beat
+                // and a rebuild that keeps up with twenty-four of them.
+                fuseTime: isFinal ? 1.6 : (hard?1.4:1.7),
+                // The final's top rung comes back quicker than the survival
+                // round's, not slower: with only two rungs and the lower one
+                // spent for good, a slow rebuild on top of that took eight
+                // racers down to two in under six seconds.
+                respawnTime: isFinal ? 2.0 : 1.7});
       arenaEnd = yEnd-60; trackLength = yEnd+4000;
       return obs;
     }

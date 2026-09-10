@@ -30,8 +30,20 @@ respawn is at the last checkpoint.
 ## Resume here
 
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
-control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse and
-Wall Rush and Beam Team in. Last Rung is next.)*
+control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
+Wall Rush, Beam Team and Last Rung in. Tilt Deck is next.)*
+
+**A round can pass its own section check and never happen.** Comb Collapse
+shipped with a check that dropped a hex under a teleported probe, a generator
+that built the field and an acceptance median of 58s -- and for that whole
+release not one bot ever set foot on it. The field plan reads the floor ahead
+through `tileColumnAt()`, which indexes by `tileW` and `rowDepth`; a hex field
+has neither, so every look came back empty, the pack read solid ground as a hole
+and reversed away from it, and the round ran to its clock with the field
+untouched. A section check that places the racer it is testing proves the
+mechanic and says nothing about the round. Every §4 check from here also asserts
+that the field gets used: bots on it, and hazard state changing, after ten
+seconds of ordinary play.
 
 **A survival round on an arena needs three things the race sections did not.**
 Both v24 arenas learned the same lessons in the same order, so they are written

@@ -3241,6 +3241,105 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- n: Last Rung is a final, and its bottom rung is spent for good ----------
+  // Comb Collapse's field with two changes that turn a survival round into a
+  // showdown: two tiers instead of four, and a bottom one that never comes
+  // back. Eight racers spend the floor between them and it does not grow back,
+  // so the round ends with somebody standing rather than on a clock.
+  //
+  // It is not in the five-seed acceptance and Closing Circle is, which looks
+  // inconsistent and is not: the ring closes on a timer and does not care how
+  // many are on it, while this round's pace is entirely how many feet are
+  // eating the floor. Measured at the acceptance's twenty-four it would be
+  // measuring a round that never gets played. So it is measured here, at the
+  // eight it is played at.
+  function checkLastRung(){
+    const bad = [], rep = {};
+    const wasBots = settings.botCount;
+    try{
+      // ---- the shape
+      begin('lastrung', 3);
+      const f = obstacles.find(o=>o.type==='hexfield');
+      if(!f) return { name:'n Last Rung is a final whose bottom rung stays gone', pass:false,
+                      detail:'no hex field generated' };
+      rep.field = f.tiers.length + ' tiers, fuse ' + f.fuseTime + 's, rebuild ' + f.respawnTime + 's';
+      // Fewer rungs than the survival round and more than one, so the floor
+      // is a resource that runs down rather than a coin toss.
+      if(f.tiers.length !== 3) bad.push('the final has ' + f.tiers.length + ' tiers, want 3');
+      if(!currentMap.final)    bad.push('Last Rung is not marked as a final');
+      const finals = MINIGAMES.filter(m=>m.final).map(m=>m.key);
+      rep.finals = finals.join(' + ');
+      if(finals.indexOf('lastrung') < 0) bad.push('Last Rung is not in the finals pool');
+      if(finals.indexOf('shrink')   < 0) bad.push('Closing Circle fell out of the finals pool');
+
+      // ---- the bottom rung is spent, the one above it is not
+      const col = f.columns.find(c=>c.tiers.every(t=>!t.gone)) || f.columns[0];
+      const top = col.tiers[0], bottom = col.tiers[col.tiers.length-1];
+      if(bottom.noBack !== true) bad.push('the bottom rung is not marked as spent for good');
+      // drop them both by hand and wait out more than a rebuild
+      for(const t of [top, bottom]){ t.touched = true; t.fuse = 0.001; }
+      // Watched, not sampled at the end: a rung that came back and was stepped
+      // on again by a passing bot is gone at the moment you look at it, and
+      // that is not the same thing as never having come back.
+      let topReturned = false, bottomReturned = false;
+      for(let i=0;i<Math.ceil((f.respawnTime + 3)*60); i++){
+        window.__dbg.tick(1);
+        if(!top.gone)    topReturned = true;
+        if(!bottom.gone) bottomReturned = true;
+      }
+      rep.rebuild = 'top ' + (topReturned ? 'came back' : 'never came back')
+                  + ', bottom ' + (bottomReturned ? 'came back' : 'stayed gone');
+      if(!topReturned)  bad.push('an upper rung never came back, so the field only shrinks');
+      if(bottomReturned) bad.push('the bottom rung came back after ' + f.respawnTime + 's');
+
+      // ---- and eight of them spend it inside the round
+      settings.botCount = 7;                       // the field a final is played with
+      begin('lastrung', 3);
+      const start = racers.length;
+      const limit = timeLimit;
+      window.__dbg.hold('w', true);
+      let ticks = 0;
+      while(ticks < 60*(limit+12) && state === 'racing'){
+        window.__dbg.hold(settings.keys.jump, (ticks % 24) < 12);
+        window.__dbg.tick(12); ticks += 12;
+      }
+      window.__dbg.hold('w', false);
+      const left = racers.filter(r=>!r.lavaOut).length, secs = +(ticks/60).toFixed(1);
+      rep.round = start + ' racers, ' + secs + 's of ' + limit + 's, ' + left + ' left';
+      if(start !== 8)  bad.push('the final ran with ' + start + ' racers, not 8');
+      if(left > 4)     bad.push(left + ' of ' + start + ' were still standing when it ended');
+      // Ten, not fifteen: it measures 15s and a floor of 15 is a check that
+      // passes by a fifth of a second on the seed it was written against.
+      // What this is for is catching a final that is over on the gun.
+      if(secs < 10)    bad.push('the final was over in ' + secs + 's');
+
+      // ---- the bots have to be on the field, not standing in front of it.
+      // This is the one that matters. The plan reads the field through
+      // tileColumnAt(), which knows tileW and rowDepth and not a hexagon, so
+      // for a whole release every look at the floor ahead came back empty and
+      // the pack read solid ground as a hole and reversed away from it. The
+      // round still generated, still dropped a hex under a probe, and still
+      // passed its own section check -- because nobody ever walked on it.
+      settings.botCount = wasBots;
+      begin('comb');
+      window.__dbg.hold('w', true);
+      window.__dbg.tick(60*10);
+      window.__dbg.hold('w', false);
+      const hf = obstacles.find(o=>o.type==='hexfield');
+      const on = racers.filter(r=>!r.lavaOut && r.y > hf.yStart).length;
+      const gone = hf.cells.filter(c=>c.gone).length;
+      rep.onField = on + ' of ' + racers.filter(r=>!r.lavaOut).length + ' on the field after 10s, '
+                  + gone + ' hexes down';
+      if(on < 6)   bad.push('only ' + on + ' racers got onto the field in ten seconds');
+      if(gone < 4) bad.push('only ' + gone + ' hexes had dropped after ten seconds of a full field');
+    } finally {
+      settings.botCount = wasBots;
+    }
+
+    return { name:'n Last Rung is a final whose bottom rung stays gone', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3253,7 +3352,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);
