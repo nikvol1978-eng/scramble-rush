@@ -3890,6 +3890,72 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- q: the match draws from the three pools the roster names ----------
+  // A round that is in the game but in no pool is a round nobody will ever be
+  // dealt, and nothing else would notice: the acceptance forces its map by key
+  // and the suite forces its map by key, so both would keep passing on a round
+  // the match can no longer reach.
+  function checkPools(){
+    const bad = [], rep = {};
+    const keys = a=>a.map(m=>m.key).sort().join(' ');
+
+    rep.race    = RACE_POOL.length + ': ' + keys(RACE_POOL);
+    rep.survive = SURVIVE_POOL.length + ': ' + keys(SURVIVE_POOL);
+    rep.finals  = FINALS_POOL.length + ': ' + keys(FINALS_POOL);
+
+    if(RACE_POOL.length !== 8)     bad.push('the race pool has ' + RACE_POOL.length + ' maps, want the eight races');
+    if(keys(SURVIVE_POOL) !== 'beam comb walls')
+      bad.push('the survival pool is [' + keys(SURVIVE_POOL) + '], want [beam comb walls]');
+    if(keys(FINALS_POOL) !== 'lastrung shrink')
+      bad.push('the finals pool is [' + keys(FINALS_POOL) + '], want [lastrung shrink]');
+    for(const m of RACE_POOL)    if(m.isMinigame) bad.push(m.key + ' is a minigame in the race pool');
+    for(const m of SURVIVE_POOL) if(m.final)      bad.push(m.key + ' is a final in the survival pool');
+
+    // every pooled map has the things a round needs
+    for(const m of [...RACE_POOL, ...SURVIVE_POOL, ...FINALS_POOL]){
+      if(!m.name || !m.tip) bad.push(m.key + ' has no name or no tip');
+      if(!m.accent)         bad.push(m.key + ' has no accent colour');
+    }
+
+    // and what the match actually deals, over enough matches to see the shape
+    {
+      const seen = { 1:{}, 2:{}, 3:{} };
+      const wasForced = window.__forceMap;
+      for(let i=0;i<180;i++){
+        for(let n=1;n<=ROUNDS;n++){
+          window.__forceMap = null;
+          currentMap = null;
+          const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
+          // the same three lines startRound uses, without building a course
+          let m;
+          if(n >= ROUNDS && FINALS_POOL.length) m = pick(FINALS_POOL);
+          else m = (Math.random()<chance) ? pick(SURVIVE_POOL) : pick(RACE_POOL);
+          seen[n][m.key] = (seen[n][m.key]||0) + 1;
+        }
+      }
+      window.__forceMap = wasForced;
+      const r1 = Object.keys(seen[1]), r3 = Object.keys(seen[3]);
+      rep.dealt = 'r1 ' + r1.length + ' races, r2 ' + Object.keys(seen[2]).length
+                + ' maps, r3 ' + r3.length + ' finals';
+      if(r1.some(k=>!RACE_POOL.find(m=>m.key===k)))
+        bad.push('round one dealt something that is not a race: ' + r1.join(' '));
+      if(r3.some(k=>!FINALS_POOL.find(m=>m.key===k)))
+        bad.push('round three dealt something that is not a final: ' + r3.join(' '));
+      // round two has to reach both kinds, or the coin toss is not one
+      const r2 = Object.keys(seen[2]);
+      if(!r2.some(k=>RACE_POOL.find(m=>m.key===k)))    bad.push('round two never dealt a race');
+      if(!r2.some(k=>SURVIVE_POOL.find(m=>m.key===k))) bad.push('round two never dealt a survival');
+      // and every map in every pool comes up: a pooled map nobody is dealt is
+      // the bug this check exists for
+      for(const m of RACE_POOL)    if(!seen[1][m.key] && !seen[2][m.key]) bad.push(m.key + ' was never dealt in 180 matches');
+      for(const m of SURVIVE_POOL) if(!seen[2][m.key]) bad.push(m.key + ' was never dealt in 180 matches');
+      for(const m of FINALS_POOL)  if(!seen[3][m.key]) bad.push(m.key + ' was never dealt in 180 matches');
+    }
+
+    return { name:'q the match draws from the three pools the roster names', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3902,7 +3968,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

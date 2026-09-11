@@ -11,6 +11,18 @@
   // Round 1 is always a race so everyone learns the controls; round 2 is a
   // coin flip; round 3 is always the Closing Circle.
   const MINIGAME_CHANCE = {1:0, 2:0.5};
+  // v24 §4: the three pools a match draws from, named rather than filtered out
+  // of one list at the point of use. Round one is always a race, round two is
+  // a coin toss between a race and a survival, and the last round is always a
+  // final -- which is what MINIGAME_CHANCE above says, now said once.
+  //
+  // Magma Chase, Paper Run and Panel Drop are deliberately not in the survival
+  // pool: the §4 roster names Comb Collapse, Wall Rush and Beam Team and no
+  // others. They stay in MINIGAMES so the acceptance still plays them and
+  // __forceMap still reaches them, but the match does not draw them.
+  const RACE_POOL    = MAPS;
+  const SURVIVE_POOL = MINIGAMES.filter(m=>!m.final && ['comb','walls','beam'].indexOf(m.key)>=0);
+  const FINALS_POOL  = MINIGAMES.filter(m=>m.final);
   let loadTimer = 0;
   // How many actually lined up for round one. The ladder scales off this, not
   // off however many are left in the round being cut: scaling off the round's
@@ -130,13 +142,11 @@
     round=n;
     if(mp.role!=='client'){
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
-      const finals = MINIGAMES.filter(m=>m.final);
       if(currentMap && currentMap.__forced){ /* a test picked it */ }
-      else if(n >= ROUNDS && finals.length){
-        currentMap = pick(finals);                 // the showdown, always
+      else if(n >= ROUNDS && FINALS_POOL.length){
+        currentMap = pick(FINALS_POOL);            // the showdown, always
       } else {
-        const pool = MINIGAMES.filter(m=>!m.final);
-        currentMap = (Math.random()<chance) ? pick(pool) : pick(MAPS);
+        currentMap = (Math.random()<chance) ? pick(SURVIVE_POOL) : pick(RACE_POOL);
       }
     }
     obstacles=genCourse(n);

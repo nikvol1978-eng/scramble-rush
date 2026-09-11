@@ -32,7 +32,15 @@ respawn is at the last checkpoint.
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
 Wall Rush, Beam Team, Last Rung, Tilt Deck and Log Jam in. Splash Slide's
-hoop finish in. The twelve-round pools are next, then cut 24.0.)*
+hoop finish and the round pools in. Cutting 24.0 is all that is left.)*
+
+**Three rounds are in the game and in no pool.** The §4 roster names eight
+races, three survivals and two finals, and the pools are wired to it exactly.
+Magma Chase, Paper Run and Panel Drop are older survival rounds that the
+roster does not name, so the match no longer deals them. They are still in
+MINIGAMES, the acceptance still plays all three every run, and `__forceMap`
+still reaches them -- one line in `SURVIVE_POOL` puts them back. Flagged
+rather than decided.
 
 **Two guards that read `undefined` and three more like them.** `baseRacer()`
 initialises `stumbleT` but not `tumbleT` or `getUpT`, so `r.tumbleT <= 0` on a

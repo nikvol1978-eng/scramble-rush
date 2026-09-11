@@ -16,7 +16,9 @@ OUT = os.path.join(ROOT, "__debug.html")
 
 s = io.open(SRC, encoding="utf-8").read()
 
-old = "      const finals = MINIGAMES.filter(m=>m.final);"
+# v24 §4 named the pools, so `const finals = ...` is gone from startRound and
+# this anchors on the line that replaced it.
+old = "      if(currentMap && currentMap.__forced){ /* a test picked it */ }"
 new = ("      if(window.__forceMap){ currentMap = [...MAPS,...MINIGAMES].find(x=>x.key===window.__forceMap);\n"
        "                             // A key naming no map used to leave currentMap alone, so the check\n"
        "                             // quietly measured whatever happened to be loaded, under the wrong\n"
@@ -24,7 +26,7 @@ new = ("      if(window.__forceMap){ currentMap = [...MAPS,...MINIGAMES].find(x=
        "                             if(!currentMap) throw new Error('__forceMap: no map named ' + window.__forceMap);\n"
        "                             currentMap.__forced = true; }\n"
        "      else if(currentMap) currentMap.__forced = false;\n"
-       "      const finals = MINIGAMES.filter(m=>m.final);")
+       "      if(currentMap && currentMap.__forced){ /* a test picked it */ }")
 assert s.count(old) == 1, "map-pick anchor: %d" % s.count(old)
 s = s.replace(old, new)
 
