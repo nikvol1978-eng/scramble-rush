@@ -368,6 +368,25 @@
         // both lines span exactly the same y, so the only thing being traded
         // is difficulty for time.
         const HARD_GAP = 120, SAFE_GAP = 66;
+        // SAFE_GAP is a target, not the gap you get. The span comes from the
+        // hard line, the safe line divides that span into whole discs, and what
+        // is left over is the gap -- so the reachable safe gaps are a ladder,
+        // and asking for a number between two rungs is asking for nothing.
+        // At dr = 86 and hardSteps = 4 (span 1168):
+        //
+        //     4 safe discs -> 217     6 safe discs ->  62
+        //     5 safe discs -> 120     7 safe discs ->  23
+        //
+        // Fewer discs is a bigger gap, not a smaller one. To move between rungs
+        // change the section's `count`, which sets hardSteps and so the span:
+        // count 4 gives span 876, five safe discs and a 47 gap, with the hard
+        // line still at exactly 120.
+        //
+        // And dr cannot grow to close the gap instead. At a fixed disc count
+        // the safe gap is 96 - 0.4*dr, so 50 would want dr = 115 -- but the two
+        // lines sit at cx +/- TRACK_W*0.185, which is 192 apart, and two discs
+        // of radius 115 are 230 across. They would overlap and merge the safe
+        // and hard routes into one blob, which is the whole two-route design.
         // Sixteen racers land on the same disc at the same moment, so a disc
         // that only fits three abreast turns the section into a shoving match
         // and most of the field goes over the side. Wide enough for the pack,

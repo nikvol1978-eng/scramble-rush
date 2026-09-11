@@ -2378,6 +2378,20 @@
     for(const key of RACES){
       const runs = [];
       for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key, true));
+
+      // A map whose median lands within one bot of the floor is a map whose
+      // verdict is being settled by which ten layouts came up rather than by
+      // the course: Sunny read 17.5 and 18.5 on two independent ten-seed probes
+      // of the same build. So the borderline ones -- and only those -- get
+      // another ten and are judged on all twenty. Topping every map up would
+      // double a run that already takes half an hour to answer a question only
+      // one map is asking.
+      let seedsUsed = ACCEPT_SEEDS;
+      if(Math.abs(median(runs.map(r=>r.wouldFinish)) - HOME_MIN) <= 1){
+        for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key, true));
+        seedsUsed = runs.length;
+      }
+
       const gapless = !runs.some(()=>false) && (MAPS.find(m=>m.key===key)||{}).forcedGap === false;
       const hurtIn   = runs.filter(r=>r.hurt >= 2).length;
       const medFalls = median(runs.map(r=>r.worstBotFalls));
@@ -2386,16 +2400,18 @@
       const medStill = median(runs.map(r=>r.stillest));
       const wonAny   = runs.filter(r=>r.rank === 1).length;
       const medFin   = median(runs.map(r=>r.medFinish===null ? 999 : r.medFinish));
-      report[key] = 'hurt '+hurtIn+'/'+ACCEPT_SEEDS+(gapless?' (no forced hole)':'')+', worst-bot falls med '+medFalls
+      report[key] = 'hurt '+hurtIn+'/'+seedsUsed+(gapless?' (no forced hole)':'')+', worst-bot falls med '+medFalls
                     +' (max '+Math.max(...runs.map(r=>r.worstBotFalls))+'), '+medHome+' would finish ('+medAtEnd
-                    +' home at the round end), still '+medStill+'s, field home at '+medFin+'s';
-      if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+ACCEPT_SEEDS);
+                    +' home at the round end), still '+medStill+'s, field home at '+medFin+'s'
+                    +(seedsUsed > ACCEPT_SEEDS ? ' [borderline: judged on '+seedsUsed+' seeds]' : '');
+      if(wonAny > 0)   bad.push(key+': hold-forward player won '+wonAny+' of '+seedsUsed);
       // The per-map minimums were written against five seeds; they are shares
-      // of the seeds, not counts, so they scale rather than getting stricter.
-      const seedScale = (n)=>Math.round(n*ACCEPT_SEEDS/5);
+      // of the seeds, not counts, so they scale rather than getting stricter --
+      // including when a borderline map is topped up to twenty.
+      const seedScale = (n)=>Math.round(n*seedsUsed/5);
       const needHurt = seedScale(HURT_MIN[key]===undefined ? 4 : HURT_MIN[key]);
       const capFalls = FALL_MAX[key]===undefined ? 5 : FALL_MAX[key];
-      if(hurtIn < needHurt)   bad.push(key+': hurt in only '+hurtIn+' of '+ACCEPT_SEEDS+', want '+needHurt);
+      if(hurtIn < needHurt)   bad.push(key+': hurt in only '+hurtIn+' of '+seedsUsed+', want '+needHurt);
       if(medFalls > capFalls) bad.push(key+': median worst-bot falls '+medFalls+', cap '+capFalls);
       // 18 of 23, on the course rather than on the round-end rule
       if(medHome < HOME_MIN) bad.push(key+': median '+medHome+' of 23 would finish, want '+HOME_MIN);

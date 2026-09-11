@@ -113,9 +113,22 @@ Wall Rush replaces it.
 pane reports 0 x 0, which would make it pass by testing nothing, so it refuses to
 run instead. Size the tab (1280x720) before running the suite.
 
-**Sunny Sprint is under the home floor, and the cause is the course.** On the
-"would finish" metric over ten seeds it reads 15.5 of 23 against a floor of 18.
-Everything else clears it. What the bots are failing at, measured:
+**Sunny Sprint sits at the floor within sampling noise.** On the "would finish"
+metric it reads 17.5 of 23 against a floor of 18 -- and 17.5 and 18.5 on two
+independent ten-seed probes of the same build, so which side of the line it
+lands on is partly which ten layouts came up. Accepted there. The acceptance now
+tops any map within +/-1 of the floor up to twenty seeds and judges it on those,
+so the borderline is settled on a steadier sample without doubling a run that
+already takes half an hour for the fourteen maps that are not asking.
+
+It got there from 15.5 by taking the disc field one rung down the gap ladder --
+`count: 5 -> 4` on its smallDiscs section, which is span 876, five safe discs at
+a 47 gap and four hard at exactly 120, with the map's length and the field's
+position untouched. The next rung (seven safe discs, a 23 gap) would clear the
+floor outright and was declined: a trivial safe line costs more than half a bot
+on a noisy sample.
+
+The original diagnosis, kept because it is what the rungs are for:
 
     discField@8332-9500   essentially every fall on the map
     safe line (col0)      6 discs, gaps of 62, a 36-unit zig each hop
@@ -133,11 +146,12 @@ attempts made it worse or made no difference:
     line up within 12, not 26     worse: 18 home -> 15
     full throttle inside 58       no better, and noisier
 
-That is the signature of a course at the edge of what the movement model can do,
-not of a plan that can be taught. Sunny is also the longest map (10,300 against
+That was the signature of a course at the edge of what the movement model can
+do, not of a plan that could be taught -- and the gap ladder is how a course at
+that edge gets moved off it. Sunny is also the longest map (10,300 against
 8,600-9,600) and carries that field in its last twelve per cent, so a fall there
-costs a respawn, a section of push-back from the repeat-fall rule, and the round.
-Left alone pending a decision.
+costs a respawn, a section of push-back from the repeat-fall rule, and the
+round.
 
 ## How "no gameplay number moved" is proved
 

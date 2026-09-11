@@ -474,7 +474,12 @@
       { type:'bounce',  len:420 },
       { type:'fork',    len:1180 },
       { type:'ramp',    len:820, turn:+24 },
-      { type:'smallDiscs', len:1300, count:5 },
+      // count 4, not 5. At 5 this field was 1168 long with six safe discs at a
+      // 62 gap, and it was where Sunny lost its field -- essentially every fall
+      // on the map, at a median of two units past the rim. See the gap ladder in
+      // the smallDiscs generator: 47 is the next rung down and 4 is how you get
+      // there.
+      { type:'smallDiscs', len:1300, count:4 },
       { type:'crumble', len:760, turn:-20 },
       { type:'finish',  len:580 }
     ],
