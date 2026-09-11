@@ -116,70 +116,11 @@ launch forward. The core game stays about movement and obstacles.
 
 | v22 | A playtest pass. Being knocked over no longer means being knocked over again: you cannot be tumbled while already down, and standing up buys you a moment nothing can touch — a spin bar could hold a racer for four unbroken seconds, and nearly seven during a FRENZY. The dive is worth pressing: it costs nothing in distance now instead of 12%, and the whole of it is invulnerable, so it is how you go through a hazard. Splash Slide actually slides — ice keeps your momentum, your boots do not bite sideways, the bean banks into the skid, and the channels and bridges widened to suit the surface. A shorter, wider, big-headed character. The locker is lit, and the character is in it rather than behind the card | **Corrected in v23:** the neutral-floor rule was capping saturation and lightness in three's *linear* working space, which v21 had switched on without anyone noticing, so every map came out khaki; the physical sky read as white paper from a chase camera; respawn put you back on the lip of the hazard you fell into; the camera boom collapsed on anything it could also fade; and the v20 fix for the round-reward toast had been deleted at build time every build since, so it had never once run |
 
-| v23 | A fix pass on v22, from an independent play-through. Floors keep their colour and hazards earn contrast by being darker rather than by the floor being drab. The sky carries each map's own blue instead of haze. Falling sends you back a full section with a beat to gather yourself, and nothing can loop you at one hazard more than three times in twenty seconds. The camera fades gate walls and netting instead of shoving past them. Keyboard players get keyboard prompts, and the lobby frames the character rather than the podium |
+| v23 | A fix pass on v22, from an independent play-through. Floors keep their colour and hazards earn contrast by being darker rather than by the floor being drab. The sky carries each map's own blue instead of haze. Falling sends you back a full section with a beat to gather yourself, and nothing can loop you at one hazard more than three times in twenty seconds. The camera fades gate walls and netting instead of shoving past them. Keyboard players get keyboard prompts, and the lobby frames the character rather than the podium | **Corrected in v24:** `baseRacer()` never initialised `tumbleT`, and `undefined <= 0` is false, so six guards written the natural way round had never once opened -- among them the ice skid lean this pass added, which had therefore never been seen |
 
-## v24, in progress
+| v24 | Play like the genre's best. Twenty-four racers on the pad on a stated ladder -- 24 to 16 to 8 -- paid for by a skinned rig that costs two draw calls a racer instead of thirteen. A rebuilt handling model with one friction constant at the root of it and acceleration, ice drive and slope pull all solved from it, so momentum carries, you slide where you land, and a jump into a dive clears gaps a plain jump cannot -- and courses sized so it matters, with a hard route and a safe one. A bright, chunky, low-poly look. Seven new rounds: Hop & Duck, Slime Slope, Tilt Deck, Log Jam, Comb Collapse, Wall Rush and Beam Team, plus Last Rung as a second final, each with its own geometry, collision, bot plan, section check and place in the acceptance. Splash Slide finishes through a ring. Five menu screens -- a shared tab strip, the lobby, the locker, the shop and a season pass -- rebuilt to reference proportions, with the character rendered live into every item tile. The match now draws from three named pools and a check deals a hundred and eighty matches to prove it |
 
-Working through `docs/CLAUDE-CODE-BRIEF-v24.md` in order.
-
-- **Naming (done, ff3a343).** Every round has a name of its own.
-- **§1 match structure (done).** Twenty-four on the pad, cut to sixteen after
-  round one and to eight after round two. The cut is written down as a ladder
-  rather than derived from a ratio, and the HUD says QUALIFIED n/16 so you can
-  see what you are racing for. The start pad is a grid of eight columns three
-  rows deep, on an apron that now reaches back behind the line, because
-  twenty-five racers in one row would have started inside one another.
-  The bean rig is skinned: **2.0 draw calls a racer, down from 13.5**, which
-  takes a busy course from 580 draws to 138–226 and finally clears the 300
-  the brief asks for. Two fixes fell out of it — `botLook()` had been landing
-  on the survivors line, so every racer including the player was reskinned at
-  the start of rounds two and three; and sixteen survivors would have lined up
-  from x=-55 to x=815 on a 760-wide track.
-- **§2 movement (done).** Momentum carries, you slide where you land, the jump
-  is one tap and one arc, and a jump chained into a dive is the signature move
-  -- 94 units for a jump, 148 for a jump into a dive, and it measures the same
-  whenever in the arc you press it. Knockback is physical: the speed the hazard
-  closes on you at, resolved onto the direction it throws you, so a spin bar's
-  tip flings you and its hub barely moves you. A dive knocks people over and a
-  walk still only shoves. Two new surfaces -- slime that carries you and bounce
-  pads that reach the same height at any speed -- and checkpoint flags that
-  replace "one section back".
-- **§2 addendum: the courses use the dive.** The small-disc zigzag and the grid
-  disc field each run two lines down the same stretch -- a safe one in hops
-  under 80 that a plain jump clears, and a hard one at exactly 120 that needs
-  the jump chained into a dive. The hard line buys something real: fewer hops
-  and no sideways shuffling on the zigzag, and no sweeping arm on the grid. A
-  pit now carries a fixed island, two 120-unit hops against waiting for a
-  platform. Every race map has both kinds of gap and nothing over 140. Bots
-  pick a line before the first hop, hold it, chain the dive when the hop needs
-  one, and stop trying after two falls there.
-- **Closed:** check `h`. It held at 3 over twelve Splash Slide seeds, then
-  reopened when the pit changed that map's layout, and was closed properly by
-  the waiting rule: a bot that has fallen twice at a channel holds at its mouth
-  until the traffic in front has gone, for up to four seconds. Nothing was
-  widened. Both check `r` and the acceptance run had to be taught that a
-  deliberate wait is not a stall, the same lesson respawn walk-backs taught
-  them in v23.
-
-- **§3 look (done).** The default material loses its clearcoat and becomes a
-  standard material at roughness 0.75 -- a clearcoat is a second specular lobe
-  whose job is to say "lacquer", and on a hazard it reads as a highlight the
-  player has to look past. Ice and water keep it, because a wet highlight is
-  how ice says you cannot stand on it. Sixty boxes across the course are
-  bevelled (a rounded box that would be thinner than its own radius falls back
-  to a plain box rather than becoming a pillow). Floors keep more colour
-  (saturation cap 0.70 → 0.75); occlusion at half strength; bloom pushed up
-  past everything but a white-hot particle, so confetti glows and the course
-  does not. A merged low-poly skyline per theme -- hills, towers or peaks --
-  for one draw call. Panels are thicker and arrive with a bounce, buttons are
-  bigger, and a round now opens with its name stamped across the screen and a
-  one-line objective under it.
-
-  **No gameplay number moved.** The whole §3 diff over `build/` contains no
-  gameplay constant, and the only changed lines in the two course files are the
-  geometry swap and the floor material. Suite 49/49 with the acceptance.
-
-## v24 candidates
+## v25 candidates
 
 - **A GitHub remote.** Everything through v23 is committed locally only.
 

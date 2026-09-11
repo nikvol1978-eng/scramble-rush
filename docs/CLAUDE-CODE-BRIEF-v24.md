@@ -32,7 +32,7 @@ respawn is at the last checkpoint.
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
 Wall Rush, Beam Team, Last Rung, Tilt Deck and Log Jam in. Splash Slide's
-hoop finish and the round pools in. Cutting 24.0 is all that is left.)*
+hoop finish and the round pools in. 24.0 is cut. v24 is complete.)*
 
 **Three rounds are in the game and in no pool.** The §4 roster names eight
 races, three survivals and two finals, and the pools are wired to it exactly.

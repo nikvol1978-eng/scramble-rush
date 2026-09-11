@@ -182,8 +182,8 @@
     // speed up for as long as the round lasts.
     //
     // Nothing here is new: the disc, the arms, their mesh, their contact and
-    // their sync were all built for v20's Carousel and Laser Tracer and shelved
-    // with them. What Beam Team adds is the pairing and the ramp.
+    // their sync were all built for the two v20 rounds this one replaces, and
+    // shelved with them. What Beam Team adds is the pairing and the ramp.
     if(mode==='beam'){
       // Small enough that being thrown matters. At 860 the rim was four hundred
       // units past where anyone stood and a knockdown was a inconvenience.
