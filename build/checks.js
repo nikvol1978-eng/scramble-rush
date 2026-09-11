@@ -3795,6 +3795,101 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- o: Splash Slide finishes through a hoop, not at one ----------
+  // The ring is a flourish with a rim. It has to be wide enough that the line
+  // everybody takes goes through the hole -- otherwise it is a wall at the end
+  // of a race and the map stops finishing -- and solid enough that coming in
+  // hugging a wall, or flying over the top of it, costs a beat.
+  function checkHoop(){
+    const bad = [], rep = {};
+    begin('slide');
+    const o = obstacles.find(x=>x.type==='hoop');
+    if(!o) return { name:'o Splash Slide finishes through a hoop, not at one', pass:false,
+                    detail:'no hoop generated' };
+    rep.hoop = 'r' + o.r + ' tube' + o.tube + ' at y' + Math.round(o.y)
+             + ', ' + Math.round(trackLength - o.y) + ' before the line';
+
+    // (a) it stands across the track and in front of the line
+    if(o.y >= trackLength)        bad.push('the hoop is past the finish line');
+    if(o.r*2 < TRACK_W - 60)      bad.push('the hoop is only ' + Math.round(o.r*2) + ' across a ' + TRACK_W + ' track');
+    if(o.r*2 > TRACK_W + 60)      bad.push('the hoop is wider than the track it stands in');
+
+    const p = player();
+    const bots = racers.filter(r=>!r.isPlayer);
+    const park = ()=>{ bots.forEach((r,i)=>{ r.x = 20 + (i%4)*8; r.y = o.y - 2600 - i*12;
+                                             r.vx = 0; r.vy = 0; r.falling = false; }); };
+    // Drive a line at the ring and report how it went through -- or did not.
+    const run = (x, h0)=>{
+      // An airborne racer has no ground to push off and sheds speed fast, so it
+      // starts nearer and gets longer. At a run-up of 190 and a hundred and ten
+      // frames it never reached the ring at all, and the check read that as the
+      // ring not catching it.
+      Object.assign(p, { x, y:o.y - (h0 ? 110 : 190), h:h0||0, vx:0, vy:4.4, vh:0, floorH:0,
+                         falling:false, stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0,
+                         lavaOut:false, finished:false, finishTime:0 });
+      resetLook();
+      window.__dbg.hold('w', true);
+      // And the ground runs stop short of the line. At a hundred and seventy
+      // frames the first probe ran the whole way home, came back finished, and
+      // a finished racer is not one the next probe can knock over.
+      let back = 0, stumbled = false, last = p.y;
+      for(let i=0, n=(h0?170:110); i<n; i++){
+        park();
+        // Held up there, and held still: pinning h alone lets vh run away
+        // negative, and within the tick the racer is at h + vh -- thirty-five
+        // units lower by the time it reached the ring, which is under it.
+        if(h0){ p.h = h0; p.vh = 0; }
+        window.__dbg.tick(1);
+        if(p.y < last - 0.5) back += (last - p.y);
+        if(p.stumbleT > 0) stumbled = true;
+        last = p.y;
+      }
+      window.__dbg.hold('w', false);
+      return { through: p.y > o.y + o.tube, gained: Math.round(p.y - (o.y - (h0 ? 110 : 190))), back:Math.round(back), stumbled };
+    };
+
+    // (b) the middle goes straight through, untouched
+    {
+      const m = run(o.cx, 0);
+      rep.middle = m.through ? ('through, ' + m.gained + ' gained') : 'stopped at the ring';
+      if(!m.through)  bad.push('a racer down the middle did not get through the hoop');
+      if(m.stumbled)  bad.push('a racer down the middle was caught by the rim');
+      if(m.back > 4)  bad.push('a racer down the middle was pushed back ' + m.back);
+    }
+
+    // (c) the wall line clips the rim
+    {
+      const onRim = o.cx - Math.sqrt(Math.max(0, o.r*o.r - RADIUS*RADIUS));   // where the ring meets the floor
+      const w = run(onRim + 6, 0);
+      rep.wall = w.stumbled ? ('clipped, pushed back ' + w.back) : 'walked through the rim untouched';
+      if(!w.stumbled) bad.push('the rim at the floor did not catch a racer running into it');
+    }
+
+    // (d) and so does flying over the top of it
+    {
+      const t = run(o.cx, o.r - RADIUS - 10);
+      rep.overTop = t.stumbled ? 'clipped the top' : 'flew over the top untouched';
+      if(!t.stumbled) bad.push('a racer level with the top of the ring passed through it');
+    }
+
+    // (e) the pack still finishes -- a ring at the end of a race must not be a
+    // wall at the end of a race
+    {
+      begin('slide');
+      window.__dbg.hold('w', true);
+      window.__dbg.tick(60*70);
+      window.__dbg.hold('w', false);
+      const home = racers.filter(r=>!r.isPlayer && r.y >= trackLength).length;
+      const stuck = racers.filter(r=>!r.isPlayer && r.y > o.y - 260 && r.y < o.y).length;
+      rep.field = home + ' of 23 home, ' + stuck + ' still at the ring';
+      if(home < 14) bad.push('only ' + home + ' of 23 got home with the hoop in');
+      if(stuck > 3) bad.push(stuck + ' racers were still stacked up at the ring at the end');
+    }
+
+    return { name:'o Splash Slide finishes through a hoop, not at one', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   window.__checks = {
     run(opts){
       opts = opts||{};
@@ -3807,7 +3902,7 @@
         ['Y',checkY],['Z',checkZ],['1',check1],
         ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['z',checkHitTest]
+        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
       if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);

@@ -207,6 +207,20 @@
           c.mesh=g; c.topMat=top.material; c.baseY=g.position.y;
         }
 
+      } else if(o.type==='hoop'){
+        // A torus in the XY plane already has its hole facing down the course,
+        // because scene z is the course. No rotation needed.
+        const g = new THREE.Group();
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(o.r, o.tube, 10, 44),
+          new THREE.MeshPhongMaterial({color:accent.getHex(), shininess:40}));
+        ring.castShadow = true; g.add(ring); registerFadeable(ring);
+        const inner = new THREE.Mesh(new THREE.TorusGeometry(o.r, o.tube*0.42, 8, 44),
+          new THREE.MeshBasicMaterial({color:0xffffff}));
+        inner.position.z = o.tube*0.8; g.add(inner);
+        placeAt(g, o.cx, o.y, o.hc);
+        courseGroup.add(g);
+        o.mesh = g;
+
       } else if(o.type==='plate'){
         // The floor, and the two things a player has to be able to read at a
         // glance: the sides are solid, and the near end is not.
@@ -1357,6 +1371,28 @@
                 if(r.isPlayer){ SFX.hit(); camShake=5; } }
               r.vx += (r.x < it.x ? -1 : 1)*5.2;   // deflect toward a gap instead of sticking
             }
+          }
+        }
+
+      } else if(o.type==='hoop'){
+        if(Math.abs(r.y - o.y) < o.tube + RADIUS){
+          // Where the racer is on the ring's own plane: across the track, and
+          // up it. Measured from the middle of the bean rather than its feet,
+          // or ducking would be a way through the bottom of a ring that is
+          // buried in the floor.
+          const dx = r.x - o.cx, dh = (r.h + RADIUS) - o.hc;
+          const d = Math.hypot(dx, dh);
+          if(Math.abs(d - o.r) < o.tube + RADIUS*0.55){
+            const side = Math.sign(r.y - o.y) || -1;
+            r.y = o.y + side*(o.tube + RADIUS);
+            if(side < 0 && r.vy > 0){
+              r.vy = -Math.abs(r.vy)*0.40 - 1;
+              r.stumbleT = Math.max(r.stumbleT, 380); r.invuln = Math.max(r.invuln, 320);
+              spawnBurst3D(r.x, o.y, 0xffd54f, 10);
+              if(r.isPlayer){ SFX.hit(); camShake = Math.max(camShake, 5); }
+            }
+            // and shoved back toward the hole, which is always inward
+            r.vx -= Math.sign(dx)*2.2;
           }
         }
 

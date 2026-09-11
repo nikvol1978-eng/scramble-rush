@@ -396,6 +396,13 @@
         return best === null ? false : set(best, 0.5);
       }
 
+      case 'hoop': {
+        // The hole is most of the track, so this is not a hazard to solve --
+        // it is a reason not to arrive at the line hugging a wall. Straight
+        // down the middle and through.
+        return set(o.cx, 1);
+      }
+
       case 'logroll': {
         // Lean into the turn and jump what comes up. A bot that aims at the
         // crown is already losing -- by the time it gets there the log has

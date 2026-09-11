@@ -452,6 +452,16 @@
                     thickness: 26, turnstile:true, y0:ty-170, y1:ty+170});
         }
         cursor = yEnd2 + 80;
+    } else if(type==='hoop'){
+      // A ring standing in the floor, wide enough that the line down the middle
+      // goes straight through the hole. Only the rim is solid, and at floor
+      // level the rim is out at the track walls -- so you finish through it
+      // rather than at it, and the only way to clip it is to come in hugging a
+      // wall or flying over the top of it.
+      const R = 236;
+      obs.push({type:'hoop', y:cursor + gap + 90, cx, r:R, tube:14, hc:0,
+                y0:cursor + gap + 40, y1:cursor + gap + 140});
+      cursor = cursor + gap + 140;
     } else if(type==='logroll'){
       // A log lying along the course, not across it: you run down the top of it
       // and it turns underneath you, which pushes you sideways off the crown

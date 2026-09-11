@@ -606,6 +606,10 @@
       { type:'narrow',  len:1000, drop:150, bias:95 },
       { type:'crumble', len:1000, drop:150 },
       { type:'boost',   len:1100, drop:160 },
+      // v24 §4: the slide finishes through a ring rather than over a line, and
+      // it arrives at it off the last boost pad, which is the point -- you go
+      // through the hole at the fastest the map ever goes.
+      { type:'hoop',    len:320,  drop:60 },
       { type:'finish',  len:700,  drop:80 }
     ],
     // Neon Nightrun: tight, dark, and it bends four times. Spinners and lasers.

@@ -32,7 +32,7 @@ respawn is at the last checkpoint.
 *(§5 complete, plus a menu-only fix pass: check `z` now hit-tests every menu
 control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
 Wall Rush, Beam Team, Last Rung, Tilt Deck and Log Jam in. Splash Slide's
-hoop finish is next, then the twelve-round pools, then cut 24.0.)*
+hoop finish in. The twelve-round pools are next, then cut 24.0.)*
 
 **Two guards that read `undefined` and three more like them.** `baseRacer()`
 initialises `stumbleT` but not `tumbleT` or `getUpT`, so `r.tumbleT <= 0` on a
