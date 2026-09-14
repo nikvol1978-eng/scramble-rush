@@ -16,12 +16,12 @@
   // a coin toss between a race and a survival, and the last round is always a
   // final -- which is what MINIGAME_CHANCE above says, now said once.
   //
-  // Magma Chase, Paper Run and Panel Drop are deliberately not in the survival
-  // pool: the §4 roster names Comb Collapse, Wall Rush and Beam Team and no
-  // others. They stay in MINIGAMES so the acceptance still plays them and
-  // __forceMap still reaches them, but the match does not draw them.
+  // Every survival round is in the pool. The §4 roster named only the three it
+  // added, which read for one commit as a decision to retire Magma Chase, Paper
+  // Run and Panel Drop -- they are older rounds the roster simply did not list.
+  // Six is the pool.
   const RACE_POOL    = MAPS;
-  const SURVIVE_POOL = MINIGAMES.filter(m=>!m.final && ['comb','walls','beam'].indexOf(m.key)>=0);
+  const SURVIVE_POOL = MINIGAMES.filter(m=>!m.final);
   const FINALS_POOL  = MINIGAMES.filter(m=>m.final);
   let loadTimer = 0;
   // How many actually lined up for round one. The ladder scales off this, not

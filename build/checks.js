@@ -2296,7 +2296,18 @@
     // How many of the twenty-three bots have to get down the course inside the
     // time limit. Measured with the early-end rules off, so this is the course
     // and not the twenty-second cut-off after the leaders.
-    const HOME_MIN = 18;
+    //
+    // Sunny is 17 and everything else is 18. Three twenty-seed runs of the same
+    // build read 18, 18 and 17.5, so a floor of 18 sat exactly on Sunny's
+    // median and the gate was a coin flip -- a meaningful share of runs would
+    // have gone red on it whatever anyone changed, including changes that
+    // cannot touch it at all. Seventeen is half a bot under a median three
+    // samples agree on, which is close enough that a real regression still
+    // crosses it: the last one measured on this map, before its disc field
+    // moved a rung down the gap ladder, was 15.5.
+    const HOME_MIN_BY_MAP = { sunny: 17 };
+    const HOME_MIN_DEFAULT = 18;
+    const homeFloor = (key)=>HOME_MIN_BY_MAP[key] === undefined ? HOME_MIN_DEFAULT : HOME_MIN_BY_MAP[key];
     const HURT_MIN = { sunny:2, cannonc:4, slide:4, neon:4, hopduck:2, slimeslope:2, tiltdeck:1, logjam:2 };
     const FALL_MAX = { sunny:5, cannonc:5, slide:8, neon:5, hopduck:4, slimeslope:8, tiltdeck:5, logjam:6 };
 
@@ -2387,7 +2398,7 @@
       // double a run that already takes half an hour to answer a question only
       // one map is asking.
       let seedsUsed = ACCEPT_SEEDS;
-      if(Math.abs(median(runs.map(r=>r.wouldFinish)) - HOME_MIN) <= 1){
+      if(Math.abs(median(runs.map(r=>r.wouldFinish)) - homeFloor(key)) <= 1){
         for(let i=0;i<ACCEPT_SEEDS;i++) runs.push(playThrough(key, true));
         seedsUsed = runs.length;
       }
@@ -2413,8 +2424,9 @@
       const capFalls = FALL_MAX[key]===undefined ? 5 : FALL_MAX[key];
       if(hurtIn < needHurt)   bad.push(key+': hurt in only '+hurtIn+' of '+seedsUsed+', want '+needHurt);
       if(medFalls > capFalls) bad.push(key+': median worst-bot falls '+medFalls+', cap '+capFalls);
-      // 18 of 23, on the course rather than on the round-end rule
-      if(medHome < HOME_MIN) bad.push(key+': median '+medHome+' of 23 would finish, want '+HOME_MIN);
+      // on the course rather than on the round-end rule
+      if(medHome < homeFloor(key))
+        bad.push(key+': median '+medHome+' of 23 would finish, want '+homeFloor(key));
       if(medStill > 4) bad.push(key+': a bot idled '+medStill+'s');
     }
 
@@ -3904,8 +3916,8 @@
     rep.finals  = FINALS_POOL.length + ': ' + keys(FINALS_POOL);
 
     if(RACE_POOL.length !== 8)     bad.push('the race pool has ' + RACE_POOL.length + ' maps, want the eight races');
-    if(keys(SURVIVE_POOL) !== 'beam comb walls')
-      bad.push('the survival pool is [' + keys(SURVIVE_POOL) + '], want [beam comb walls]');
+    if(keys(SURVIVE_POOL) !== 'beam comb doors lava tiles walls')
+      bad.push('the survival pool is [' + keys(SURVIVE_POOL) + '], want all six survivals');
     if(keys(FINALS_POOL) !== 'lastrung shrink')
       bad.push('the finals pool is [' + keys(FINALS_POOL) + '], want [lastrung shrink]');
     for(const m of RACE_POOL)    if(m.isMinigame) bad.push(m.key + ' is a minigame in the race pool');

@@ -9,7 +9,11 @@ Each version is one self-contained HTML file.
 
 | File | Version | Notes |
 |---|---|---|
-| `scramble-rush-20.0.html` | **20.0 (current)** | Jumping and diving no longer beat running, a taller toon-shaded bean, courses that read like the reference, the lobby and the "NEXT UP IS…" reveal |
+| `scramble-rush-24.0.html` | **24.0 (current)** | Twenty-four racers cut 24 to 16 to 8, a rebuilt handling model, a bright low-poly look, seven new rounds, five menu screens, and three named round pools |
+| `scramble-rush-23.0.html` | 23.0 | A fix pass on v22: floors keep their colour, the sky carries the map's blue, respawn goes back a section, the camera fades walls |
+| `scramble-rush-22.0.html` | 22.0 | A playtest pass: no tumbling while down, a dive worth pressing, and Splash Slide that actually slides |
+| `scramble-rush-21.0.html` | 21.0 | Authored courses built from named sections, six new section types, and Three.js r160 |
+| `scramble-rush-20.0.html` | 20.0 | Jumping and diving no longer beat running, a taller toon-shaded bean, courses that read like the reference, the lobby and the "NEXT UP IS…" reveal |
 | `scramble-rush-19.0.html` | 19.0 | Eight rounds that work, Fall Guys movement, bots that race you, layered Panel Drop, per-map acceptance test |
 | `scramble-rush-18.0.html` | 18.0 | The last "everything" build: 13 race maps and 11 minigames, kept as the reference for the maps cut in v19 |
 | `index.html` | 5.0 | The original two-round build. The build system splices every release out of this file, so it is never modified |
@@ -52,25 +56,42 @@ WebRTC via PeerJS, which needs a real `http://` origin rather than `file://`.
 
 ## Rounds
 
-Round 1 is always a race. Round 2 is a coin flip between a race and a minigame.
-Round 3 is always the Closing Circle final.
+Sixteen rounds, drawn from three pools. Round 1 is always a race. Round 2 is a
+coin flip between a race and a survival. Round 3 is always a final. Twenty-four
+racers start; the cut is 24 to 16 to 8.
 
-Since v21 the four race courses are **authored**, not shuffled: each map has an
+| Pool | Rounds |
+|---|---|
+| Race | Sunny Sprint, Boom Peak, Splash Slide, Neon Nightrun, Hop & Duck, Slime Slope, Tilt Deck, Log Jam |
+| Survival | Magma Chase, Paper Run, Panel Drop, Comb Collapse, Wall Rush, Beam Team |
+| Final | Closing Circle, Last Rung |
+
+Since v21 the race courses are **authored**, not shuffled: each map has an
 ordered list of named sections, and each section carries its own turn and climb.
 Every race map bends at least twice by 25° or more, so you can see the route
 change ahead of you rather than running down a corridor. The obstacles inside a
-section are still generated, so no two layouts are identical.
+section are still generated, so no two layouts are identical. Each race carries
+at least one gap in the 110–130 band, which needs a jump into a dive, alongside
+a safe line that a plain jump clears.
 
 | Round | Kind | Signature |
 |---|---|---|
 | Sunny Sprint | race | a chequered start pad, hammers and pillars, a field of turning discs with sweeping arms, a hole down the middle, then a zigzag of small discs and a crumbling bridge |
 | Boom Peak | race | a stepped climb with cannons that fire on a rhythm, and a chevron-painted slope walled in netting with turnstiles across it |
-| Splash Slide | race | a descent on real ice: your momentum carries, your boots do not bite sideways, and the bean banks into the skid. Boost pads, crumbling bridges, a shortcut lane |
+| Splash Slide | race | a descent on real ice: your momentum carries, your boots do not bite sideways, and the bean banks into the skid. Boost pads, crumbling bridges, a shortcut lane, and a finish through a ring off the last boost pad |
 | Neon Nightrun | race | spin bars and laser beams in the dark, and a plank bridge with a hammer swinging across it |
-| Magma Chase | minigame | the lava chases the pack and never lets a total wipe happen |
-| Paper Run | minigame | six doors a row, two are paper |
-| Panel Drop | knockout | three floors of tiles; fall through one and you land on the next, fall through the bottom and you are out |
-| Closing Circle | final | a shrinking disc, last six standing to start, one to win |
+| Hop & Duck | race | rows of bars: the low ones you jump, the high ones you dive under, and the rows come faster as you go |
+| Slime Slope | race | a conveyor floor that flows against you, with bounce pads over the gaps. Aim upstream of where you want to land |
+| Tilt Deck | race | platforms that lean towards whoever is standing on them, and slide you towards the edge they lean to |
+| Log Jam | race | a log lying down the course: you run along the crown, it turns underneath you and takes you sideways, and pegs set into it come up over the top to be jumped |
+| Magma Chase | survival | the lava chases the pack and never lets a total wipe happen |
+| Paper Run | survival | six doors a row, two are paper |
+| Panel Drop | survival | three floors of tiles; fall through one and you land on the next, fall through the bottom and you are out |
+| Comb Collapse | survival | four tiers of hexagons that drop a beat after you touch them. The fuse shortens as the round runs and the bottom two tiers never rebuild, so the floor shrinks all the way through |
+| Wall Rush | survival | a plate over nothing, open on three sides, with walls sweeping across it. One gap a wall, a new gap every lap, and faster the longer the round lasts |
+| Beam Team | survival | one disc and two rings of sweeping arms: the low ones you jump, the high ones you go under |
+| Closing Circle | final | a shrinking disc, last eight standing to start, one to win |
+| Last Rung | final | eight racers on hexagons over a drop, and the bottom layer never comes back |
 
 Bots run at the player's speed, have a plan for every obstacle type on these
 maps, and have a fall-loop breaker so one unlucky pit does not cost a bot the

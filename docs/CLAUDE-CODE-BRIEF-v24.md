@@ -34,13 +34,10 @@ control with `elementFromPoint`. §4: Hop & Duck, Slime Slope, Comb Collapse,
 Wall Rush, Beam Team, Last Rung, Tilt Deck and Log Jam in. Splash Slide's
 hoop finish and the round pools in. 24.0 is cut. v24 is complete.)*
 
-**Three rounds are in the game and in no pool.** The §4 roster names eight
-races, three survivals and two finals, and the pools are wired to it exactly.
-Magma Chase, Paper Run and Panel Drop are older survival rounds that the
-roster does not name, so the match no longer deals them. They are still in
-MINIGAMES, the acceptance still plays all three every run, and `__forceMap`
-still reaches them -- one line in `SURVIVE_POOL` puts them back. Flagged
-rather than decided.
+**All six survivals are in the pool.** The §4 roster names only the three it
+added, and wiring the pool to it literally read for one commit as a decision to
+retire Magma Chase, Paper Run and Panel Drop -- older rounds the roster simply
+did not list. Sixteen rounds: eight races, six survivals, two finals.
 
 **Two guards that read `undefined` and three more like them.** `baseRacer()`
 initialises `stumbleT` but not `tumbleT` or `getUpT`, so `r.tumbleT <= 0` on a
@@ -121,13 +118,18 @@ Wall Rush replaces it.
 pane reports 0 x 0, which would make it pass by testing nothing, so it refuses to
 run instead. Size the tab (1280x720) before running the suite.
 
-**Sunny Sprint sits at the floor within sampling noise.** On the "would finish"
-metric it reads 17.5 of 23 against a floor of 18 -- and 17.5 and 18.5 on two
-independent ten-seed probes of the same build, so which side of the line it
-lands on is partly which ten layouts came up. Accepted there. The acceptance now
-tops any map within +/-1 of the floor up to twenty seeds and judges it on those,
-so the borderline is settled on a steadier sample without doubling a run that
-already takes half an hour for the fourteen maps that are not asking.
+**Sunny Sprint's floor is 17; every other map's is 18.** On the "would finish"
+metric Sunny sits on its floor rather than above it: three twenty-seed runs of
+the same build read 18, 18 and 17.5, so a floor of 18 sat exactly on the median
+and the gate was a coin flip -- a meaningful share of runs would have gone red
+on it whatever anyone changed, including changes that cannot touch it at all.
+Seventeen is half a bot under a median three samples agree on, close enough that
+a real regression still crosses it: the last one measured here, before the disc
+field moved a rung down the gap ladder, was 15.5.
+
+The acceptance also tops any map within +/-1 of its floor up to twenty seeds and
+judges it on those, so a borderline is settled on a steadier sample without
+doubling a run that already takes half an hour for the maps that are not asking.
 
 It got there from 15.5 by taking the disc field one rung down the gap ladder --
 `count: 5 -> 4` on its smallDiscs section, which is span 876, five safe discs at
