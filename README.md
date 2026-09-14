@@ -1,9 +1,12 @@
 # Scramble Rush 3D
 
-A 3D obstacle-course battle royale in the Fall Guys mould. Sixteen beans, three
-rounds: a race, then a race or a minigame, then a six-player final in the
-Closing Circle. The field is cut to twelve after round one and six after round
-two.
+> **This is the canonical Scramble Rush repository.** A subtree copy also lives
+> inside [`nikvol1978-eng/Haxball`](https://github.com/nikvol1978-eng/Haxball)
+> under `scramble-rush/`. Work here; that copy follows.
+
+A 3D obstacle-course battle royale in the Fall Guys mould. Twenty-four beans,
+three rounds: a race, then a race or a survival round, then an eight-player
+final. The field is cut to sixteen after round one and eight after round two.
 
 Each version is one self-contained HTML file.
 
