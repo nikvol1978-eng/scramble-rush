@@ -3,18 +3,30 @@
 
     python build/build.py
 
-Every version is spliced from `index.html` (v5.0), which is never modified. The
-output filename and the <title> version are both derived from VERSION below, and
-an existing release is never overwritten without --force. A stale VERSION quietly
-eating a released file is how v7 got clobbered, twice.
+Every version is spliced from `build/base.html` (v5.0), which is never modified.
+The output filename and the <title> version are both derived from VERSION below,
+and an existing release is never overwritten without --force. A stale VERSION
+quietly eating a released file is how v7 got clobbered, twice.
+
+The base used to live at the repo root as `index.html`. GitHub Pages serves the
+root, and what a visitor should get there is the current game rather than the v5
+original -- so the base moved in here, and the build now writes the release
+twice: once under its own version name, and once as `index.html` at the root for
+Pages to serve. Root `index.html` is a build output now, not a source file. Edit
+the fragments, not it.
 """
 import io, os, re, sys
 
 VERSION = 24                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
-BASE = os.path.join(ROOT, "index.html")
+BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base.html")
 OUT  = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
+# What GitHub Pages serves at the root. Always the current release, never
+# version-gated: --force guards the numbered file because overwriting a cut
+# release would lose it, and this one is only ever a copy of what that file
+# has just become.
+SITE = os.path.join(ROOT, "index.html")
 
 SHELF = os.path.join(FRAG, "25_shelved.js")
 WITH_SHELVED = "--with-shelved" in sys.argv
@@ -793,3 +805,7 @@ if errors:
 with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
     f.write(src)
 print("wrote %s (%d bytes, %d lines)" % (OUT, len(src.encode("utf-8")), src.count("\n")+1))
+
+with io.open(SITE, "w", encoding="utf-8", newline="\n") as f:
+    f.write(src)
+print("wrote %s (the copy Pages serves)" % SITE)

@@ -1,8 +1,11 @@
 # Scramble Rush 3D
 
+> **Play it: https://nikvol1978-eng.github.io/scramble-rush/**
+>
 > **This is the canonical Scramble Rush repository.** A subtree copy also lives
 > inside [`nikvol1978-eng/Haxball`](https://github.com/nikvol1978-eng/Haxball)
-> under `scramble-rush/`. Work here; that copy follows.
+> under `scramble-rush/`. Work here; that copy follows. Haxball's `Design/` and
+> `_to_delete/` folders are unrelated to this project and are not in this repo.
 
 A 3D obstacle-course battle royale in the Fall Guys mould. Twenty-four beans,
 three rounds: a race, then a race or a survival round, then an eight-player
@@ -19,7 +22,8 @@ Each version is one self-contained HTML file.
 | `scramble-rush-20.0.html` | 20.0 | Jumping and diving no longer beat running, a taller toon-shaded bean, courses that read like the reference, the lobby and the "NEXT UP IS…" reveal |
 | `scramble-rush-19.0.html` | 19.0 | Eight rounds that work, Fall Guys movement, bots that race you, layered Panel Drop, per-map acceptance test |
 | `scramble-rush-18.0.html` | 18.0 | The last "everything" build: 13 race maps and 11 minigames, kept as the reference for the maps cut in v19 |
-| `index.html` | 5.0 | The original two-round build. The build system splices every release out of this file, so it is never modified |
+| `index.html` | — | **Build output.** A copy of the current release, written by `build/build.py`, so GitHub Pages serves the game at the site root. Edit the fragments, not this |
+| `build/base.html` | 5.0 | The original two-round build. The build system splices every release out of this file, so it is never modified |
 
 Versions 6.0–17.0 were removed from the working tree in September 2026; every one
 is still in git history (`git log --oneline -- scramble-rush-13.0.html`, then
@@ -31,8 +35,8 @@ is still in git history (`git log --oneline -- scramble-rush-13.0.html`, then
 npm run dev
 ```
 
-- current: http://localhost:5173/scramble-rush-20.0.html
-- v19: http://localhost:5173/scramble-rush-19.0.html
+- current: http://localhost:5173/ (the root is a copy of the current release)
+- a specific version: http://localhost:5173/scramble-rush-19.0.html
 - v18 reference: http://localhost:5173/scramble-rush-18.0.html
 
 Live reload is on — save the file and the browser refreshes.

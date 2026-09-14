@@ -1,0 +1,38 @@
+# Publish the repo root to GitHub Pages on every push to main.
+#
+# The root is the site: index.html is the current release, written there by
+# build/build.py alongside the numbered file, so a visitor gets the game and the
+# numbered releases stay reachable by name. Nothing is built here -- the game is
+# one self-contained HTML file and the checkout is already the site.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a newer push wins: a queued deploy of an older
+# commit has nothing to say once main has moved on.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
