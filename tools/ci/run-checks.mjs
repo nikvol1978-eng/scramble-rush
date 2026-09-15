@@ -32,6 +32,7 @@
 // it, and the check itself is untouched.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { writeSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
@@ -190,38 +191,74 @@ async function main() {
   console.log(`\nShard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: running ${mine.length} of ${ids.length} registered checks`);
   console.log(`  ids: ${mine.join(' ')}\n`);
 
-  // The shard is ONE evaluate and the page's JS is single-threaded, so nothing
-  // can report progress from inside it. Without a heartbeat the CI log is silent
-  // for tens of minutes and a live run is indistinguishable from a hung one --
-  // which is exactly how the first CI run read.
+  // ---- one check at a time, timed ------------------------------------------
+  // The shard used to be a single run() call over all its ids, which meant a job
+  // that hit its timeout printed NOTHING: results are only returned once the
+  // whole set finishes, so four shards died at 35 minutes and told us only that
+  // they had died. Driving the ids one at a time through the suite's OWN
+  // selector gives a line per check as it happens, so even a shard that is
+  // killed still says which checks completed, how long each took, and which one
+  // it was inside. run({only:id}) is the same entry point as before; no check
+  // logic is duplicated out here.
+  //
+  // fs.writeSync rather than console.log, because stdout is a pipe under Actions
+  // and Node buffers pipe writes asynchronously. A job killed at its timeout can
+  // lose exactly the lines this exists to produce -- the same trap that once
+  // made this suite's own tally read zero.
+  const say = (s) => { try { writeSync(1, s + '\n'); } catch { console.log(s); } };
+
+  const timings = [];
+  const failures = [];
+  let passed = 0, failed = 0;
   const started = Date.now();
-  const beat = setInterval(() => {
-    console.log(`  ... still running, ${((Date.now() - started) / 1000).toFixed(0)}s elapsed`);
-  }, 60000);
-  let out;
-  try {
-    // `only` is the suite's own selector; it splits on characters, which is why
-    // every id is one character. No test logic is duplicated out here.
-    out = await page.evaluate(
-      `JSON.stringify(window.__checks.run({ only: ${JSON.stringify(mine.join(''))} }))`,
-    );
-  } finally {
-    clearInterval(beat);
+
+  for (const id of mine) {
+    say(`START [${id}]`);
+    const t0 = Date.now();
+    // names the check, so a heartbeat during a long one says where we are
+    const beat = setInterval(() => {
+      say(`  ... still on [${id}], ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    }, 60000);
+    let r;
+    try {
+      const raw = await page.evaluate(
+        `JSON.stringify(window.__checks.run({ only: ${JSON.stringify(id)} }))`,
+      );
+      r = JSON.parse(raw);
+    } finally {
+      clearInterval(beat);
+    }
+    const secs = (Date.now() - t0) / 1000;
+    const line = (r.results && r.results[0]) || `(no result returned for ${id})`;
+    const ok = r.failed === 0 && r.passed > 0;
+    // "PASS  <name>  [detail]" -> the name alone keeps the timing line readable
+    const name = line.replace(/^(PASS|FAIL)\s+/, '').replace(/\s+\[[\s\S]*$/, '');
+    timings.push({ id, name, secs, ok });
+    if (ok) passed += 1; else { failed += 1; failures.push(line); }
+    say(`${ok ? 'PASS ' : 'FAIL '} [${id}] ${name} — ${secs.toFixed(1)}s`);
+    if (!ok) say(`       ${line}`);
   }
-  const res = JSON.parse(out);
 
-  const ran = res.passed + res.failed;
-  if (ran !== mine.length) {
-    console.log(`\nWARNING: shard asked for ${mine.length} checks and ${ran} ran.`);
+  const total = passed + failed;
+  const totalSecs = (Date.now() - started) / 1000;
+  const res = { passed, failed, results: timings.map((t) => `${t.ok ? 'PASS  ' : 'FAIL  '}${t.name}`) };
+
+  if (total !== mine.length) say(`\nWARNING: shard asked for ${mine.length} checks and ${total} ran.`);
+
+  // ---- the profile ---------------------------------------------------------
+  say('');
+  say(`${total} checks in ${totalSecs.toFixed(1)}s`);
+  const slow = [...timings].sort((a, b) => b.secs - a.secs).slice(0, 10);
+  const slowSum = slow.reduce((s, t) => s + t.secs, 0);
+  say(`slowest ${slow.length} account for ${((slowSum / Math.max(totalSecs, 0.001)) * 100).toFixed(0)}% of the shard:`);
+  for (const t of slow) {
+    say(`  ${t.secs.toFixed(1).padStart(8)}s  ${((t.secs / Math.max(totalSecs, 0.001)) * 100).toFixed(1).padStart(5)}%  [${t.id}] ${t.name}`);
   }
-  console.log(`suite finished in ${((Date.now() - started) / 1000).toFixed(0)}s\n`);
 
-  for (const line of res.results) console.log(line);
-
-  const total = res.passed + res.failed;
   const shardTag = SHARD_TOTAL > 1 ? `shard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: ` : '';
-  const summary = `${shardTag}${res.passed}/${total} checks passed, ${res.failed} failed`;
-  console.log(`\n${summary}`);
+  const summary = `${shardTag}${passed}/${total} checks passed, ${failed} failed`;
+  say(`\n${summary}`);
+  if (failures.length) { say('\nfailures:'); for (const f of failures) say(`  ${f}`); }
 
   if (pageErrors.length) {
     console.log(`\n${pageErrors.length} page error(s) during the run:`);
@@ -230,7 +267,7 @@ async function main() {
 
   // The job summary panel, when running under Actions.
   if (process.env.GITHUB_STEP_SUMMARY) {
-    const failed = res.results.filter((r) => r.startsWith('FAIL'));
+    const failedLines = failures;
     const md = [
       `### Scramble Rush checks`,
       '',
