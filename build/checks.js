@@ -1745,7 +1745,15 @@
     reset();
     window.__dbg.hold('w', false);
     for(let i=0;i<30;i++) window.__dbg.tick(1);
+    // MEASURE THE MODEL, NOT WHICHEVER FRAME OF THE IDLE LOOP IS RUNNING.
+    // neutral() puts the rig back into its documented rest pose and clears the
+    // breath, the weight shift, the lean and the squash keyframe. Without it
+    // this ratio read 1.49 on one run and 1.52 on the next against a ceiling of
+    // 1.55 -- a number that moves with animation phase is not a proportion, and
+    // a ceiling judged against one is not really a ceiling.
     const yaw0 = m.group.rotation.y;
+    if(m.neutral) m.neutral();
+    else bad.push('the rig exposes no neutral() pose to measure');
     m.group.rotation.y = 0; m.group.updateMatrixWorld(true);
     const body = box(m.body), feet = box(m.feet[0]).union(box(m.feet[1]));
     const height = body.max.y - feet.min.y, width = body.max.x - body.min.x, ratio = height/width;
@@ -1833,42 +1841,44 @@
   // surface is taken off the lathe's own vertices and the parts off their probe
   // meshes, so a change to RIG that breaks the face is caught rather than
   // followed.
+  // The lathe's radius at a height, read off the body geometry. Hoisted out
+// of check5b so the squashed-state check measures the head with the very
+// same sampler rather than with a second copy of the idea. The rings sit
+  // at the profile's y values and the rendered surface runs straight between
+  // them, so straight-line interpolation between rings IS the surface.
+  function latheProfile(bodyGeo){
+    const pos = bodyGeo.attributes.position, rings = new Map();
+    for(let i=0;i<pos.count;i++){
+      const y = Math.round(pos.getY(i)*100)/100;
+      const r = Math.hypot(pos.getX(i), pos.getZ(i));
+      rings.set(y, Math.max(rings.get(y) || 0, r));
+    }
+    const ys = [...rings.keys()].sort((a,b)=>a-b);
+    return {
+      at(y){
+        if(y <= ys[0]) return rings.get(ys[0]);
+        if(y >= ys[ys.length-1]) return rings.get(ys[ys.length-1]);
+        for(let i=0;i<ys.length-1;i++){
+          if(y >= ys[i] && y <= ys[i+1]){
+            const t = (y - ys[i]) / (ys[i+1] - ys[i]);
+            return rings.get(ys[i]) + t*(rings.get(ys[i+1]) - rings.get(ys[i]));
+          }
+        }
+        return NaN;
+      },
+      widestY(){
+        let best = ys[0], bestR = -1;
+        for(const y of ys){ if(rings.get(y) > bestR){ bestR = rings.get(y); best = y; } }
+        return best;
+      },
+      topY(){ return ys[ys.length-1]; },
+      maxR(){ return Math.max(...rings.values()); }
+    };
+  }
+
   function check5b(){
     const bad = [], notes = [];
     const V = () => new THREE.Vector3();
-
-    // The lathe's radius at a height, read off the body geometry. The rings sit
-    // at the profile's y values and the rendered surface runs straight between
-    // them, so straight-line interpolation between rings IS the surface.
-    function latheProfile(bodyGeo){
-      const pos = bodyGeo.attributes.position, rings = new Map();
-      for(let i=0;i<pos.count;i++){
-        const y = Math.round(pos.getY(i)*100)/100;
-        const r = Math.hypot(pos.getX(i), pos.getZ(i));
-        rings.set(y, Math.max(rings.get(y) || 0, r));
-      }
-      const ys = [...rings.keys()].sort((a,b)=>a-b);
-      return {
-        at(y){
-          if(y <= ys[0]) return rings.get(ys[0]);
-          if(y >= ys[ys.length-1]) return rings.get(ys[ys.length-1]);
-          for(let i=0;i<ys.length-1;i++){
-            if(y >= ys[i] && y <= ys[i+1]){
-              const t = (y - ys[i]) / (ys[i+1] - ys[i]);
-              return rings.get(ys[i]) + t*(rings.get(ys[i+1]) - rings.get(ys[i]));
-            }
-          }
-          return NaN;
-        },
-        widestY(){
-          let best = ys[0], bestR = -1;
-          for(const y of ys){ if(rings.get(y) > bestR){ bestR = rings.get(y); best = y; } }
-          return best;
-        },
-        topY(){ return ys[ys.length-1]; },
-        maxR(){ return Math.max(...rings.values()); }
-      };
-    }
 
     // A character built to be measured, never added to a scene. Yaw zeroed: the
     // face points down +z in the model's own frame and that is the frame these
@@ -2018,6 +2028,186 @@
 
     return { name:'5b the face is outside the head, and no hat covers it', pass: bad.length===0,
              detail: bad.length ? bad.join('; ') : notes.join(', ') };
+  }
+
+  // ---------- 5c: the field still costs two draws a racer ----------
+  // v24 §1 merged twenty-odd meshes per racer into two -- a skinned bean and a
+  // skinned trim mesh -- because twenty-four racers at thirteen draws each put
+  // the field alone over the budget for the whole frame. v25 then added a knee,
+  // an ankle, an elbow, a wrist, a shoe, a sole, a cuff, a thumb, a collar, a
+  // belt and a chest badge to every one of them.
+  //
+  // Every one of those is a PART, merged into the same trim buffer and bound to
+  // a bone, so none of them is a draw. This check exists to keep that true: it
+  // measures the cost the way the renderer sees it, by drawing the scene with
+  // the field shown and again with it hidden, rather than by counting meshes
+  // and trusting that the count means something.
+  function check5c(){
+    const bad = [], rep = {};
+    begin('sunny');
+    window.__dbg.tick(120);
+    clearParticles();
+    const n = racers.length;
+    if(n < 20) bad.push('only ' + n + ' racers in the field');
+
+    // THE INVULNERABILITY FLASH IS NOT PART OF A RACER'S COST. syncRacers shows
+    // the outline mesh while invuln > 0, on a 14Hz blink, so whether a racer
+    // draws two meshes or three depends on what time it is. That made this
+    // check report 49 draws on one run and 54 on the next for identical
+    // geometry. Clearing invuln measures the racer the field actually spends
+    // its life as, and makes the number mean the same thing every run.
+    for(const r of racers){
+      r.invuln = 0;
+      if(r.mesh && r.mesh.outline) r.mesh.outline.visible = false;
+    }
+
+    renderer.render(scene, camera);
+    const shown = renderer.info.render.calls;
+    for(const r of racers) if(r.mesh) r.mesh.group.visible = false;
+    renderer.render(scene, camera);
+    const hidden = renderer.info.render.calls;
+    for(const r of racers) if(r.mesh) r.mesh.group.visible = true;
+
+    const field = shown - hidden, per = field / n;
+    rep.field = n + ' racers cost ' + field + ' draws, ' + per.toFixed(2) + ' each';
+    // Two is the design. The allowance is for the player's own marker and for
+    // an invulnerability outline that may be showing on a survivor.
+    if(per > 2.5) bad.push('a racer costs ' + per.toFixed(2) + ' draws, want about 2');
+
+    // and the rig itself: one skeleton, and the parts really are merged
+    const m0 = racers[0].mesh;
+    let meshes = 0;
+    m0.group.traverse(o => { if(o.isMesh && o.visible) meshes++; });
+    rep.meshes = meshes + ' visible meshes on a racer';
+    if(meshes > 3) bad.push(meshes + ' visible meshes on one racer, want 2');
+    rep.bones = m0.skeleton.bones.length + ' bones';
+    // TRIANGLES, because draws are not the whole cost. Two draws a racer says
+    // nothing about how much geometry is inside them, and the vertex work is
+    // what a Medium frame actually spends its time on with twenty-four of them
+    // on screen. Reported, not capped: the cap that matters is the frame time
+    // in check 3c, and this is the number that explains it when it moves.
+    let tris = 0;
+    m0.group.traverse(o => {
+      if(!o.isMesh || !o.visible || !o.geometry) return;
+      const g = o.geometry;
+      tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    });
+    rep.tris = Math.round(tris) + ' triangles';
+    // the joints the animation contract promises
+    for(const k of ['legPivots','kneePivots','footPivots','armPivots','elbowPivots','handPivots'])
+      if(!m0[k] || m0[k].length !== 2) bad.push('the rig exposes no ' + k + ' pair');
+
+    // The measurement is reported whether or not the check passes: a draw-call
+    // number is the thing being watched, and a failure that hides it forces the
+    // next person to re-run the whole check by hand to find out what it was.
+    return { name:'5c the field still costs two draws a racer', pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ') + ' | ' : '')
+               + rep.field + ', ' + rep.meshes + ', ' + rep.bones + ', ' + rep.tris };
+  }
+
+  // ---------- 5d: the hat still clears the head while the racer is squashed ----------
+  // Check 5b judges the hats with the racer standing still. The racer spends a
+  // lot of its life not standing still: scale.y 0.90 falling, 0.82 for the 90ms
+  // landing keyframe, 0.84 through a stumble. This measures the same
+  // relationship in those states.
+  //
+  // Two things could move a hat into a head, and only one of them can:
+  //   * group.scale -- CANNOT. Uniform or not, it is one affine map applied to
+  //     the hat and the head alike, and an affine map cannot turn a point that
+  //     was outside a surface into one that is inside it.
+  //   * the breath -- CAN. breathe() scales the bean, which is bound to
+  //     BONE.body, while every hat hangs off BONE.head. Those two diverge.
+  // Both are applied here, and the measurement is taken in the bean's own bind
+  // frame against the lathe it is actually built from, so whichever is
+  // responsible the number is a real distance on the real model.
+  //
+  // The bar is the rig's own rest clearance, not a number chosen to pass: a
+  // squashed state may not be WORSE than the same hat at rest.
+  function check5d(){
+    const bad = [], notes = [];
+    const V = () => new THREE.Vector3();
+    const build = (hat)=>{
+      const m = makeCharacter({ skin:skinOf('cream'), pattern:patternOf('none'),
+                                hat:hat||'none', eyes:'round' });
+      m.group.rotation.y = 0; m.group.updateMatrixWorld(true);
+      return m;
+    };
+    // the squash keyframes syncRacers writes, and the breath poseCharacter is
+    // running underneath each of them
+    const STATES = [
+      ['rest',    [1.00, 1.00, 1.00], [-0.013, 0, 0.013]],
+      ['fall',    [1.07, 0.90, 1.07], [-0.02]],
+      ['landing', [1.12, 0.82, 1.12], [-0.013, 0, 0.013]],
+      ['stumble', [1.14, 0.84, 1.14], [0.015]],
+    ];
+    // the largest amplitude breathe() is ever called with, straight off the
+    // poses in 12_charanim.js: the airborne descent uses -0.02 and nothing
+    // exceeds it. 0.85 is breathe()'s own x/z coefficient.
+    const MAX_BREATH = 0.02, BREATH_REACH = RIG.maxR * MAX_BREATH * 0.85;
+    const gauge = build('none');
+    if(!gauge.neutral || !gauge.bodyBone || !gauge.RIG)
+      return { name:'5d the hat clears the head under squash', pass:false,
+               detail:'the rig exposes no neutral()/bodyBone/RIG to drive' };
+    const prof = latheProfile(gauge.body.geometry);
+
+    const table = {};
+    for(const [id] of HATS){
+      if(id === 'none') continue;
+      const m = build(id);
+      if(!(m.hatProbes && m.hatProbes.length)){ bad.push(id+': no hat probes to measure'); continue; }
+      table[id] = {};
+      for(const [sname, sc, breaths] of STATES){
+        let worst = 1e9;
+        for(const e of breaths){
+          m.neutral();
+          m.bodyBone.scale.set(1 + e*0.85, 1 + e*0.30, 1 + e*0.85);
+          m.head.position.y = m.RIG.faceY*e*0.30;
+          m.group.scale.set(sc[0], sc[1], sc[2]);
+          m.group.updateMatrixWorld(true);
+          const toBean = new THREE.Matrix4().copy(m.bodyBone.matrixWorld).invert();
+          const mw = new THREE.Matrix4();
+          for(const hp of m.hatProbes){
+            hp.updateMatrixWorld(true);
+            mw.multiplyMatrices(toBean, hp.matrixWorld);
+            const g = hp.geometry.attributes.position;
+            for(let i=0;i<g.count;i++){
+              const v = V().fromBufferAttribute(g, i).applyMatrix4(mw);
+              const shell = prof.at(v.y);
+              if(!isFinite(shell)) continue;
+              worst = Math.min(worst, Math.hypot(v.x, v.z) - shell);
+            }
+          }
+        }
+        table[id][sname] = worst;
+      }
+      const rest = table[id].rest;
+      for(const [sname] of STATES){
+        const w = table[id][sname], d = w - rest;
+        notes.push(id+' '+sname+' '+w.toFixed(2)+(sname==='rest' ? '' : ' ('+(d>=0?'+':'')+d.toFixed(2)+')'));
+        if(sname === 'rest') continue;
+        // WHAT THE NUMBER IS. Every hat but the halo reads deeply negative at
+        // rest -- a crown's band, a party hat's cone, the roots of the horns
+        // all sit INSIDE the head on purpose, and that is invisible and normal.
+        // So the absolute depth is not the defect; a CHANGE in it is. The bar
+        // is therefore the rest reading, and the allowance is not a number
+        // picked to pass: it is the largest radial distance the breath can
+        // move the shell, computed from the rig -- the head's own widest radius
+        // times the breath's largest amplitude times the coefficient breathe()
+        // applies in x and z. Anything bigger means something other than the
+        // breath moved a hat, which is exactly the regression worth catching.
+        if(d < -BREATH_REACH)
+          bad.push(id+': '+sname+' clearance '+w.toFixed(2)+' is '+(-d).toFixed(2)
+                   +' worse than at rest '+rest.toFixed(2)
+                   +', beyond the breath\'s reach of '+BREATH_REACH.toFixed(2));
+        // and a hat that stands clear of the head standing still has to stay
+        // clear when the racer is squashed
+        if(rest > 0 && w <= 0)
+          bad.push(id+': clears the head at rest ('+rest.toFixed(2)
+                   +') but touches it in '+sname+' ('+w.toFixed(2)+')');
+      }
+    }
+    return { name:'5d the hat clears the head under squash', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') + ' | ' + notes.join(', ') : notes.join(', ') };
   }
 
   // ---------- 8: no free speed ----------
@@ -4209,7 +4399,7 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],['e',check5c],['u',check5d],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
       ];
