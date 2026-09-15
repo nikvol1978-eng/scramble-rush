@@ -3,21 +3,28 @@
 # The game is one self-contained HTML file spliced together from build/frag/* by
 # build/build.py, so CI builds from the FRAGMENTS rather than testing the
 # committed release: the fragments are the source, and a change to one of them
-# is exactly what this is here to catch. The released .html files are not
-# rebuilt in the repository by this job -- the checkout is a scratch copy and
-# nothing is committed or published from here.
+# is exactly what this is here to catch. Nothing is committed or published from
+# this job -- the checkout is a scratch copy.
 #
-# WHAT THIS DOES AND DOES NOT COVER. It runs the deterministic functional
-# suite: gameplay and physics behaviour, course generation, bot routing, the rig
-# proportions, the draw-call budget, hat clearance, the renderer's draw counts.
-# It does NOT judge real-time frame budgets. Those are hardware- and
-# load-sensitive -- the same build measures 13ms on a quiet desktop and 21ms on
-# a busy one, and canonical main fails the budget under load exactly as a
-# feature branch does -- so a shared GitHub-hosted runner is the last place that
-# should hold the verdict. SR_NORENDER is the game's own switch for this and is
-# used here rather than inventing a second test mode; the frame-budget check
-# itself is untouched, its threshold is unchanged, and it stays validated
-# locally on known hardware.
+# SHARDED, BECAUSE A RUNNER HAS NO GPU. SwiftShader does all the drawing here,
+# and the full suite measured 89 minutes in one job against about eight on a
+# desktop. It is split four ways instead. The shards are NOT listed here: the
+# runner asks the game for its registry (window.__checks.list()) and takes every
+# Nth id, then proves on every run that each registered check lands in exactly
+# one shard. A check added to checks.js therefore enters a shard by itself, with
+# no workflow to edit and no way to be silently dropped.
+#
+# WHAT THIS DOES AND DOES NOT COVER. It runs the deterministic functional suite:
+# gameplay and physics behaviour, course generation, bot routing, rig
+# proportions, triangle and draw counts, the face cap, hat clearance. It does
+# NOT judge real-time frame budgets. Those are hardware- and load-sensitive --
+# the same build measures 13ms on a quiet desktop and 21ms on a busy one, and
+# canonical main misses the budget under load exactly as a feature branch does --
+# so a shared runner is the last place that should hold that verdict.
+# SR_NORENDER is the game's own switch for this and is used rather than
+# inventing a second test mode; the frame-budget check itself is untouched,
+# FRAME_CAP_MEDIUM is unchanged, and that budget stays validated locally on
+# known hardware.
 name: Checks
 
 on:
@@ -37,13 +44,17 @@ permissions:
 
 jobs:
   checks:
-    name: game checks
+    name: game checks (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    # The suite steps sixty-one checks through a headless browser with no GPU,
-    # so SwiftShader does the drawing and it takes tens of minutes -- about eight
-    # on a desktop with a real GPU, comfortably past thirty here. A stuck-job
-    # guard, not a target.
-    timeout-minutes: 100
+    # A quarter of a suite that takes 89 minutes whole, with headroom for an
+    # uneven split. A stuck-job guard, not a target: if a shard needs more than
+    # this, find out which checks dominate rather than raising the number.
+    timeout-minutes: 35
+    strategy:
+      # one red shard should not hide the state of the other three
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
@@ -65,8 +76,24 @@ jobs:
           python build/build.py --force
           python build/mkdebug.py
 
-      - name: Run the game's check suite
+      - name: Run this shard of the game's check suite
         run: npm run ci:checks
         env:
           SR_NORENDER: '1'
           SR_QUALITY: low
+          CI_SHARD_INDEX: ${{ matrix.shard }}
+          CI_SHARD_TOTAL: '4'
+
+  # One obvious overall answer for the PR, and the branch-protection handle if
+  # it is ever wanted. It runs no browser: it exists only to be red when any
+  # shard is red, including when a shard was cancelled or skipped.
+  suite:
+    name: CI suite
+    runs-on: ubuntu-latest
+    needs: checks
+    if: always()
+    steps:
+      - name: Report the shard result
+        run: |
+          echo "shards: ${{ needs.checks.result }}"
+          test "${{ needs.checks.result }}" = "success"

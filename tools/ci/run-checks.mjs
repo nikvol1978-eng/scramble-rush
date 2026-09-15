@@ -16,8 +16,10 @@
 // suite across short-lived browsers because it runs with RENDERING ON, and the
 // shadow map, the composer targets and the GPU copy of every course mesh add up
 // over sixty-one begin() calls. With rendering off the peak stays flat and the
-// whole suite fits in one page, which is measurably true -- 61 checks, one page,
-// no chunking -- and it is the reason this file is short.
+// whole suite fits in one page. CI then shards that suite across parallel jobs
+// by asking the game for its registry and taking every Nth id, because a
+// GPU-less runner drives SwiftShader and the full set does not fit one job's
+// budget -- 89 minutes, measured, against about eight on a desktop.
 //
 // SR_NORENDER (default 1) is the game's OWN mechanism for exactly this, added so
 // the acceptance could run on a memory-constrained machine. It changes what is
@@ -39,6 +41,10 @@ const PAGE = process.env.SR_PAGE || '__debug.html';
 const NORENDER = process.env.SR_NORENDER !== '0';
 const QUALITY = process.env.SR_QUALITY || 'low';
 const BOOT_TIMEOUT = Number(process.env.SR_BOOT_TIMEOUT || 120000);
+// Sharding. The default is one shard of one -- the whole suite -- so running
+// this by hand needs no arguments. CI sets these per matrix job.
+const SHARD_TOTAL = Number(process.env.CI_SHARD_TOTAL || 1);
+const SHARD_INDEX = Number(process.env.CI_SHARD_INDEX || 0);
 // Generous, because a GitHub runner has no GPU and falls back to SwiftShader,
 // which makes every begin() and every draw-call measurement far slower than the
 // same suite on a desktop: about eight minutes there, comfortably past thirty
@@ -141,27 +147,80 @@ async function main() {
   if (QUALITY) await page.evaluate(`window.__dbg.quality(${JSON.stringify(QUALITY)})`);
   console.log(`quality ${QUALITY}${NORENDER ? ', rendering off (SR_NORENDER)' : ', rendering on'}\n`);
 
-  // The whole suite is ONE evaluate and the page's JS is single-threaded, so
-  // nothing can report progress from inside it. Without a heartbeat the CI log
-  // is silent for the better part of an hour and a live run is indistinguishable
-  // from a hung one -- which is exactly how the first CI run read.
+  // ---- discover the suite, then take this shard's slice of it ---------------
+  // The ids come from the GAME, never from the workflow. A check added to
+  // checks.js therefore lands in a shard on its own, with no CI file to edit --
+  // which is the whole reason list() exists.
+  const ids = await page.evaluate('window.__checks.list()');
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new Error('the check registry is empty — window.__checks.list() returned nothing');
+  }
+  const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+  if (dupes.length) {
+    throw new Error(`duplicate check ids in the registry: ${[...new Set(dupes)].join(', ')}`);
+  }
+  if (!Number.isInteger(SHARD_TOTAL) || SHARD_TOTAL < 1
+      || !Number.isInteger(SHARD_INDEX) || SHARD_INDEX < 0 || SHARD_INDEX >= SHARD_TOTAL) {
+    throw new Error(`bad shard configuration: index ${SHARD_INDEX} of total ${SHARD_TOTAL}`);
+  }
+
+  // Assign EVERY id to a shard, not just this one, so the split can be proved
+  // exhaustive here rather than assumed across four jobs that never meet.
+  const buckets = Array.from({ length: SHARD_TOTAL }, () => []);
+  ids.forEach((id, i) => buckets[i % SHARD_TOTAL].push(id));
+  const assigned = buckets.flat();
+  const seen = new Set();
+  for (const id of assigned) {
+    if (seen.has(id)) throw new Error(`coverage: ${id} was assigned to more than one shard`);
+    seen.add(id);
+  }
+  if (assigned.length !== ids.length) {
+    throw new Error(`coverage: ${assigned.length} assigned against ${ids.length} registered`);
+  }
+  for (const id of ids) {
+    if (!seen.has(id)) throw new Error(`coverage: ${id} was assigned to no shard`);
+  }
+  console.log(`coverage: ${ids.length} registered ids, each in exactly one of ${SHARD_TOTAL} shard(s)`);
+  console.log(`registry: ${ids.join('')}`);
+
+  const mine = buckets[SHARD_INDEX];
+  if (mine.length === 0) {
+    throw new Error(`shard ${SHARD_INDEX + 1}/${SHARD_TOTAL} got no checks from a registry of ${ids.length}`);
+  }
+  console.log(`\nShard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: running ${mine.length} of ${ids.length} registered checks`);
+  console.log(`  ids: ${mine.join(' ')}\n`);
+
+  // The shard is ONE evaluate and the page's JS is single-threaded, so nothing
+  // can report progress from inside it. Without a heartbeat the CI log is silent
+  // for tens of minutes and a live run is indistinguishable from a hung one --
+  // which is exactly how the first CI run read.
   const started = Date.now();
   const beat = setInterval(() => {
     console.log(`  ... still running, ${((Date.now() - started) / 1000).toFixed(0)}s elapsed`);
   }, 60000);
   let out;
   try {
-    out = await page.evaluate('JSON.stringify(window.__checks.run({}))');
+    // `only` is the suite's own selector; it splits on characters, which is why
+    // every id is one character. No test logic is duplicated out here.
+    out = await page.evaluate(
+      `JSON.stringify(window.__checks.run({ only: ${JSON.stringify(mine.join(''))} }))`,
+    );
   } finally {
     clearInterval(beat);
   }
   const res = JSON.parse(out);
+
+  const ran = res.passed + res.failed;
+  if (ran !== mine.length) {
+    console.log(`\nWARNING: shard asked for ${mine.length} checks and ${ran} ran.`);
+  }
   console.log(`suite finished in ${((Date.now() - started) / 1000).toFixed(0)}s\n`);
 
   for (const line of res.results) console.log(line);
 
   const total = res.passed + res.failed;
-  const summary = `${res.passed}/${total} checks passed, ${res.failed} failed`;
+  const shardTag = SHARD_TOTAL > 1 ? `shard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: ` : '';
+  const summary = `${shardTag}${res.passed}/${total} checks passed, ${res.failed} failed`;
   console.log(`\n${summary}`);
 
   if (pageErrors.length) {
@@ -176,6 +235,8 @@ async function main() {
       `### Scramble Rush checks`,
       '',
       `**${summary}** — rendering ${NORENDER ? 'off' : 'on'}, quality \`${QUALITY}\`.`,
+      '',
+      `Registry: ${ids.length} checks. This shard ran: \`${mine.join(' ')}\``,
       '',
       failed.length
         ? ['Failures:', '', '```', ...failed, '```'].join('\n')

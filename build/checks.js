@@ -4389,24 +4389,38 @@
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // THE REGISTRY, IN ONE PLACE. run() and list() both read this, so the two can
+  // never disagree about what exists. CI shards the suite by asking list() for
+  // the real ids rather than keeping a copy of them in a workflow file, which is
+  // what stops a check added here from silently never running in CI.
+  function checkRegistry(opts){
+    opts = opts||{};
+    const all = [
+      ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
+      ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
+      ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
+      ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
+      ['Y',checkY],['Z',checkZ],['1',check1],
+      ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],['e',check5c],['u',check5d],
+      ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
+      ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
+    ];
+    // slow: five layouts a map, so only when asked for
+    if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
+    // slower still: twenty seeds a map, so only when asked for
+    if(opts.bots || (opts.only && opts.only.indexOf('*')>=0)) all.push(['*',checkBots20]);
+    return all;
+  }
+
   window.__checks = {
+    // Read-only. The registered ids, in registration order. Runs nothing and
+    // touches no game state; it exists so a runner can discover the suite
+    // instead of being told what is in it.
+    list(opts){ return checkRegistry(opts).map(entry => entry[0]); },
     run(opts){
       opts = opts||{};
       const only = opts.only ? new Set(opts.only.split('')) : null;
-      const all = [
-        ['A',checkA],['B',checkB],['C',checkC],['D',checkD],
-        ['E',checkE],['F',checkF],['G',()=>checkG(opts.half)],['H',checkH],
-        ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
-        ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
-        ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],['e',check5c],['u',check5d],
-        ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
-        ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
-      ];
-      // slow: five layouts a map, so only when asked for
-      if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
-      // slower still: twenty seeds a map, so only when asked for
-      if(opts.bots || (opts.only && opts.only.indexOf('*')>=0)) all.push(['*',checkBots20]);
+      const all = checkRegistry(opts);
       const results = [];
       for(const [id,fn] of all){
         if(only && !only.has(id)) continue;
