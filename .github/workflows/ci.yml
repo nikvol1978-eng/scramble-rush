@@ -1,0 +1,71 @@
+# Run the game's own check suite on every pull request into main.
+#
+# The game is one self-contained HTML file spliced together from build/frag/* by
+# build/build.py, so CI builds from the FRAGMENTS rather than testing the
+# committed release: the fragments are the source, and a change to one of them
+# is exactly what this is here to catch. The released .html files are not
+# rebuilt in the repository by this job -- the checkout is a scratch copy and
+# nothing is committed or published from here.
+#
+# WHAT THIS DOES AND DOES NOT COVER. It runs the deterministic functional
+# suite: gameplay and physics behaviour, course generation, bot routing, the rig
+# proportions, the draw-call budget, hat clearance, the renderer's draw counts.
+# It does NOT judge real-time frame budgets. Those are hardware- and
+# load-sensitive -- the same build measures 13ms on a quiet desktop and 21ms on
+# a busy one, and canonical main fails the budget under load exactly as a
+# feature branch does -- so a shared GitHub-hosted runner is the last place that
+# should hold the verdict. SR_NORENDER is the game's own switch for this and is
+# used here rather than inventing a second test mode; the frame-budget check
+# itself is untouched, its threshold is unchanged, and it stays validated
+# locally on known hardware.
+name: Checks
+
+on:
+  # opened, reopened, and synchronize (new commits pushed to an open PR)
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer commit on the same PR wins: a queued run of an older commit has
+# nothing useful to say once the branch has moved on.
+concurrency:
+  group: checks-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: game checks
+    runs-on: ubuntu-latest
+    # The suite steps sixty-one checks through a headless browser with no GPU,
+    # so it is minutes rather than seconds; this is a stuck-job guard, not a
+    # target.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci, not npm install: the lockfile is the point. This also fetches
+      # the Chromium build pinned by the puppeteer version in that lockfile.
+      - run: npm ci
+
+      - name: Build the debug build from the fragments
+        run: |
+          python build/build.py --force
+          python build/mkdebug.py
+
+      - name: Run the game's check suite
+        run: npm run ci:checks
+        env:
+          SR_NORENDER: '1'
+          SR_QUALITY: low
