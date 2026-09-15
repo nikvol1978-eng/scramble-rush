@@ -236,8 +236,18 @@
     g.scale.set(sx, sy, sz);
 
     // eyes + mouth respond to the act
-    for(const pu of b.pupils){ pu.position.x = pu.userData.baseX !== undefined ? pu.userData.baseX : (pu.userData.baseX = pu.position.x); }
-    b.pupils.forEach(pu=>{ pu.position.x = pu.userData.baseX + pupilX; pu.position.y = 5 + pupilY; });
+    // REST POSITION FROM THE RIG, NOT A LITERAL. This set `position.y = 5`,
+    // which put the lobby's pupils five units above the face bone whatever the
+    // rig had decided -- fine while the plate was a flat disc most of the head
+    // tall, and wrong the moment the face became a cap centred on the widest
+    // line, where y 5 is the plate's top rim. The x offset already worked this
+    // way; the y now does too, so the idle nudges the eyes from wherever the
+    // rig puts them instead of from a number that has to be kept in step.
+    for(const pu of b.pupils){
+      if(pu.userData.baseX === undefined) pu.userData.baseX = pu.position.x;
+      if(pu.userData.baseY === undefined) pu.userData.baseY = pu.position.y;
+    }
+    b.pupils.forEach(pu=>{ pu.position.x = pu.userData.baseX + pupilX; pu.position.y = pu.userData.baseY + pupilY; });
     b.scleras.forEach(sc=>{ sc.scale.y = (custom.eyes==='happy'||custom.eyes==='sleepy'? (custom.eyes==='happy'?0.55:0.5) : 1) * (1 - squint*0.55); });
     b.tongue.scale.setScalar(tongue ? 1 : 0.0001);
   }
