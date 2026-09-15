@@ -91,6 +91,16 @@
   // One place the whole game renders through, so the debug build and the
   // release take exactly the same path.
   function renderFrame(){
+    // A HEADLESS CHECK RUN HAS NOTHING TO LOOK AT. The simulation is stepped by
+    // hand and is identical whether or not a frame is drawn, so drawing one is
+    // pure cost -- and it is the expensive half: the shadow map, the composer's
+    // render targets, and the GPU-side copy of every course mesh.
+    //
+    // This exists because the fifteen-map acceptance could not finish in one
+    // page on a 16GB machine. One map per page with this on and the peak stays
+    // flat. It changes what is DRAWN and nothing that is MEASURED, which is
+    // what makes the per-map medians mergeable into the same table.
+    if(window.__noRender) return;
     if(qualityNow === null) applyQuality(settings.quality || 'medium');
     if(composer && QUALITY[qualityNow].composer) composer.render();
     else renderer.render(scene, camera);

@@ -29,10 +29,36 @@
   // keeps the skin material with all its patterns, rim light and shader work,
   // and everything else -- limbs, face, eyes, hat -- shares one plastic
   // material and carries its colour in the vertices. Two draws a racer.
+  // v24 §6: THE FACE IS A CAP ON THE HEAD, NOT A DISC INSIDE IT.
+  //
+  // v22 widened the head bulge to maxR 12.4 at y 8.6 and the face kept v20's
+  // placement -- faceZ 6.8 with a plate squashed to 0.52 in z, so the plate's
+  // front sat at z 10.96 against a skin at radius 12.29. It was 1.33 units
+  // UNDER the surface: a plain pink head with two dots grazing it, which is
+  // what the lobby actually showed. Pushing faceZ out on its own does not fix
+  // that, it only floats the middle of a flat disc off a round head and leaves
+  // the edges hanging in the air.
+  //
+  // So the plate is now a SPHERICAL CAP concentric with the head, of radius
+  // (head radius at faceY + facePROUD). Every point on it is therefore the same
+  // small distance off a curved surface -- it hugs the head by construction
+  // rather than by a number somebody tuned -- and the cap's angular size is
+  // derived from the width and height the face is supposed to have.
   const RIG = {
     topY:18.6, bottomY:-9.2, maxR:12.4,
-    // the face sits on the head bulge, and is bigger for it
-    faceY:10.2, faceZ:6.8, faceR:8.0,
+    // ON THE WIDEST LINE OF THE HEAD, not up by the crown. At 10.2 the plate's
+    // top edge reached y 18.04 against a topY of 18.6, which is why there was
+    // no pink left for a hat to sit on and every hat landed on the face.
+    faceY:8.6,
+    // everything ON the face -- eyes, pupils, mouth, cheeks -- scales off this
+    faceR:8.0,
+    // how far the plate stands off the skin. 0.6-1.0 is the brief; 0.7 in the
+    // middle keeps the whole cap inside that band once the head curves away.
+    facePROUD:0.7,
+    // the plate's half-extents. Width is about 1.5x the eye spacing (2*eyeX,
+    // and eyeX is faceR*0.45, so 1.5x is 5.4); height is about 0.6 of the head
+    // bulge, which runs from the waist pinch at 2.2 to topY 18.6.
+    faceHalfW:5.4, faceHalfH:4.9,
     hipY:-8.6, legLen:4.2, legR:3.0, legX:5.2,
     footR:4.1, footY:-12.8,
     // arms hang from the waist pinch, under the head, and end at the hip
@@ -51,6 +77,42 @@
     [11.7,  5.2], [12.4,  8.6], [12.2, 11.6],
     [11.2, 14.2], [9.2, 16.4], [5.6, 17.9], [0.0, 18.6]
   ];
+  // The head's radius at a height, straight off the profile the lathe is built
+  // from. The face reads this rather than carrying its own copy of 12.4, so a
+  // head that changes shape takes its face with it instead of swallowing it --
+  // which is exactly the regression v22 shipped.
+  function beanRadiusAt(y){
+    const p = BEAN_PROFILE;
+    for(let i=0;i<p.length-1;i++){
+      const [r0,y0] = p[i], [r1,y1] = p[i+1];
+      if(y >= Math.min(y0,y1) && y <= Math.max(y0,y1)){
+        const t = (y - y0) / (y1 - y0);
+        return r0 + t*(r1 - r0);
+      }
+    }
+    return RIG.maxR;
+  }
+  // The cap's radius, and the angles that give it the width and height asked
+  // for. asin because the half-extent is a chord across a sphere of that radius.
+  const FACE_R3 = beanRadiusAt(RIG.faceY) + RIG.facePROUD;
+  const FACE_DPHI   = Math.asin(Math.min(0.95, RIG.faceHalfW / FACE_R3));
+  const FACE_DTHETA = Math.asin(Math.min(0.95, RIG.faceHalfH / FACE_R3));
+  // A cap centred on +z at the head's widest line. `grow` widens the angles for
+  // the dark rim behind the white plate.
+  function faceCapGeometry(radius, grow){
+    const dphi = FACE_DPHI*(grow||1), dth = FACE_DTHETA*(grow||1);
+    return new THREE.SphereGeometry(radius, 26, 20,
+      Math.PI/2 - dphi, dphi*2, Math.PI/2 - dth, dth*2);
+  }
+  // Where a feature at height `dy` above the cap's centre sits ON the cap, and
+  // how far to pitch it so it lies flat against the curve there. One helper, so
+  // an eye, a mouth and a cheek cannot each drift off the surface differently.
+  const faceOn = (dy, dx, out)=>{
+    const r = FACE_R3 + (out||0);
+    const z = Math.sqrt(Math.max(0.01, r*r - dy*dy - (dx||0)*(dx||0)));
+    return { y:dy, z, pitch:Math.asin(Math.max(-1, Math.min(1, -dy/r))) };
+  };
+
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
     if(!_beanGeo){
@@ -173,22 +235,36 @@
     const faceGroup = bone(BONE.face, BONE.head, 0, RIG.faceY, 0);
 
     const FS = RIG.faceR/7.0;                       // everything on the face scales with it
-    const ez = RIG.faceZ + RIG.faceR*0.52 - 0.6;
     const eyeX = RIG.faceR*0.45;
     const eyes = opts.eyes||'round';
-    const scleras = [ bone(BONE.scleraL, BONE.face, -eyeX, 0.5*FS, ez-0.3),
-                      bone(BONE.scleraR, BONE.face,  eyeX, 0.5*FS, ez-0.3) ];
+    // EYES JUST ABOVE THE PLATE'S CENTRE, MOUTH BELOW IT. Every one of these
+    // sits ON the cap: `faceOn` gives the z that puts a feature on the curve at
+    // that height, so nothing is left floating in front of the middle of the
+    // face or sunk into its edge.
+    const EYE_DY = 1.35*FS, MOUTH_DY = -2.45*FS;
+    const eyeAt = faceOn(EYE_DY, eyeX);
+    const scleras = [ bone(BONE.scleraL, BONE.face, -eyeX, EYE_DY, eyeAt.z-0.25),
+                      bone(BONE.scleraR, BONE.face,  eyeX, EYE_DY, eyeAt.z-0.25) ];
     // the pupil sits where its expression puts it; the locker's look-at moves
     // it from there, so the bone has to stand at the rest position
-    const pupilY = eyes==='happy' ? 1.0*FS : eyes==='sleepy' ? 0.3*FS : 0.6*FS;
-    const pupils = [ bone(BONE.pupilL, BONE.face, -eyeX, pupilY, ez),
-                     bone(BONE.pupilR, BONE.face,  eyeX, pupilY, ez) ];
-    const tongue = bone(BONE.tongue, BONE.face, 0, -3.2*FS, ez-0.15);
+    const pupilDY = EYE_DY + (eyes==='happy' ? 0.40*FS : eyes==='sleepy' ? -0.30*FS : 0);
+    const pupilAt = faceOn(pupilDY, eyeX);
+    const pupils = [ bone(BONE.pupilL, BONE.face, -eyeX, pupilDY, pupilAt.z),
+                     bone(BONE.pupilR, BONE.face,  eyeX, pupilDY, pupilAt.z) ];
+    const tongueAt = faceOn(MOUTH_DY - 1.5*FS, 0);
+    const tongue = bone(BONE.tongue, BONE.face, 0, tongueAt.y, tongueAt.z - 0.15);
     tongue.scale.setScalar(0.0001);                 // only the locker's gurn shows it
 
     const hat = opts.hat||'none';
     const hatGroup = bone(BONE.hat, BONE.head, 0, RIG.topY - 1.2, 0);
     hatGroup.scale.setScalar(RIG.hatScale);
+    // THE CROWN LEANS BACK. Its five points are the one hat that reads as
+    // pointing INTO the face from the lobby camera even with the band clear
+    // above the plate, because the camera looks slightly down. A small pitch
+    // takes the points away from the eyes and looks worn rather than balanced.
+    // Set before the bind pose is taken, so it is baked in with everything else
+    // rather than being a rotation the animation code has to remember.
+    if(hat==='crown') hatGroup.rotation.x = -0.15;
     // the only hat with a moving part of its own
     const hatSpin = bone(BONE.hatSpin, BONE.hat, 0, hat==='prop' ? 8.7 : 0, 0);
 
@@ -211,6 +287,22 @@
     };
     const DARK = new THREE.Color(0x1a1033), WHITE = new THREE.Color(0xfdfdff),
           RIM  = new THREE.Color(0x2b1a4d);
+
+    // A hidden copy of a part, in the same place, so a check can still take a
+    // bounding box round something that has been merged away. Same trick the
+    // feet and hands already use, and the same reason: after the merge there is
+    // one geometry for the whole trim mesh and no way to ask it where the face
+    // is. Clone BEFORE `at` touches the geometry — `at` bakes the transforms
+    // into it in place, so a probe made afterwards would be double-transformed.
+    const probeOf = (boneIndex, geo, local)=>{
+      const p = new THREE.Mesh(geo.clone(), limbMat);
+      if(local) p.applyMatrix4(local);
+      p.visible = false;
+      bones[boneIndex].add(p);
+      return p;
+    };
+    const hatProbes = [];
+    let mouthProbe = null;
 
     // ---- legs: short stubs on two small rounded pads that lift on each step
     const feet = [];
@@ -245,10 +337,14 @@
     //      The dark hairline behind it used to be a back-facing shell; in one
     //      merged mesh every triangle faces the same way, so it is now a
     //      slightly larger plate set far enough back to show only at the edge.
-    at(BONE.face, new THREE.SphereGeometry(RIG.faceR*1.04, 18, 14), RIM,
-       xf(0, 0, RIG.faceZ - 0.55, 1.22, 0.98, 0.52));
-    at(BONE.face, new THREE.SphereGeometry(RIG.faceR, 20, 16), WHITE,
-       xf(0, 0, RIG.faceZ, 1.22, 0.98, 0.52));
+    // The dark rim: the same cap a shade smaller in radius and a shade wider in
+    // angle, so it shows as a thin outline round the plate and closes the seam
+    // at a grazing angle. It cannot float, because it is concentric with the
+    // plate rather than pushed back along z.
+    at(BONE.face, faceCapGeometry(FACE_R3 - 0.10, 1.075), RIM);
+    const plateGeo = faceCapGeometry(FACE_R3, 1);
+    const facePlate = probeOf(BONE.face, plateGeo);
+    at(BONE.face, plateGeo, WHITE);
 
     // ---- eyes: two dots on the plate, shaped by the chosen expression
     const dotScale = eyes==='happy'  ? [1.30, 0.50, 0.45]
@@ -257,46 +353,103 @@
     [[BONE.scleraL, BONE.pupilL, -1],[BONE.scleraR, BONE.pupilR, 1]].forEach(([sb,pb,s],i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
       at(sb, new THREE.SphereGeometry(2.5*FS, 10, 8), WHITE, xf(0,0,0, 1,1,0.3));
-      at(pb, new THREE.SphereGeometry(2.0*FS, 12, 10), DARK,
+      // A little bigger than v22's 2.0: at tile size the old dot read as a
+      // pinprick, and the highlight below needs something to sit on.
+      at(pb, new THREE.SphereGeometry(2.25*FS, 12, 10), DARK,
          xf(0,0,0, dotScale[0], dotScale[1], dotScale[2]));
-      if(eyes==='angry')
+      // OUR OWN EYE, not a copy of anyone's: one small catchlight, top-left on
+      // both eyes because a single light source does not mirror itself. On the
+      // pupil bone, so it tracks the locker's look-at instead of sliding off.
+      at(pb, new THREE.SphereGeometry(2.25*FS*0.35, 8, 6), WHITE,
+         xf(-0.62*FS, 0.62*FS, 1.05*FS));
+      if(eyes==='angry'){
+        const browAt = faceOn(2.9*FS, s*eyeX);
         at(BONE.face, new THREE.BoxGeometry(3.4*FS, 1.0*FS, 0.7), DARK,
-           xf(s*eyeX, 2.6*FS, ez-0.15, 1,1,1, i===0 ? -0.42 : 0.42));
+           xf(s*eyeX, browAt.y, browAt.z - 0.15, 1,1,1, i===0 ? -0.42 : 0.42));
+      }
     });
-    // A bean's face is just eyes. The tongue only shows in the locker's gurn.
+
+    // ---- the mouth. A curved bar lying on the cap, shaped by the expression:
+    //      a small smile at rest, a wide grin for happy, a nearly flat line for
+    //      sleepy, and the one case that turns over -- angry frowns.
+    //      A torus arc rather than a painted texture, because the whole face is
+    //      geometry on one merged mesh and a second material would be a third
+    //      draw call per racer.
+    const MOUTH = eyes==='happy'  ? { r:2.95*FS, tube:0.42*FS, arc:Math.PI*1.00, down:true }
+                : eyes==='sleepy' ? { r:5.00*FS, tube:0.30*FS, arc:Math.PI*0.30, down:true }
+                : eyes==='angry'  ? { r:2.40*FS, tube:0.38*FS, arc:Math.PI*0.62, down:false }
+                :                   { r:2.05*FS, tube:0.36*FS, arc:Math.PI*0.78, down:true };
+    {
+      const mAt = faceOn(MOUTH_DY, 0, 0.10);
+      // TorusGeometry draws its arc from angle 0, which is the UPPER half of the
+      // ring. Turning it half a turn about z brings that arc to the bottom and
+      // makes it a smile; leaving it alone is a frown, which is the whole of
+      // `down`.
+      const mm = new THREE.Matrix4()
+        .makeTranslation(0, mAt.y, mAt.z)
+        .multiply(new THREE.Matrix4().makeRotationX(mAt.pitch))
+        .multiply(new THREE.Matrix4().makeRotationZ(MOUTH.down ? Math.PI : 0))
+        // the arc is centred on the face rather than starting at one corner
+        .multiply(new THREE.Matrix4().makeRotationZ(-MOUTH.arc/2 + Math.PI/2));
+      const mouthGeo = new THREE.TorusGeometry(MOUTH.r, MOUTH.tube, 7, 18, MOUTH.arc);
+      const mouth = probeOf(BONE.face, mouthGeo, mm);
+      at(BONE.face, mouthGeo, DARK, mm);
+      mouthProbe = mouth;
+    }
+
+    // ---- cheeks: the skin colour a step darker, blended most of the way into
+    //      the plate so it reads as a blush rather than a sticker. There is no
+    //      opacity to spend -- one opaque merged mesh -- so the 60% is mixed
+    //      into the vertex colour instead.
+    {
+      const cheekCol = WHITE.clone().lerp(limbCol.clone().multiplyScalar(0.82), 0.60);
+      for(const s of [-1, 1]){
+        const cAt = faceOn(MOUTH_DY + 0.55*FS, s*3.55*FS, 0.06);
+        at(BONE.face, new THREE.SphereGeometry(1.05*FS, 10, 8), cheekCol,
+           xf(s*3.55*FS, cAt.y, cAt.z, 1, 0.78, 0.30));
+      }
+    }
+
+    // The tongue only shows in the locker's gurn.
     at(BONE.tongue, new THREE.SphereGeometry(1.3*FS,10,8),
        new THREE.Color(0xff4fa3), xf(0,0,0, 1,0.65,0.45));
 
     // ---- hat, on the crown. Scaled down: these were sized for a separate head.
     const GOLD = new THREE.Color(0xffcb3d);
+    // Every hat part is probed as it is added, so check 5b can box each one
+    // against the face without knowing which hat is on.
+    const atHat = (boneIndex, geo, color, local, colorAt)=>{
+      hatProbes.push(probeOf(boneIndex, geo, local));
+      return at(boneIndex, geo, color, local, colorAt);
+    };
     if(hat==='crown'){
-      at(BONE.hat, new THREE.CylinderGeometry(7,5.8,6,5,1,false), GOLD, xf(0,3.0,0));
+      atHat(BONE.hat, new THREE.CylinderGeometry(7,5.8,6,5,1,false), GOLD, xf(0,3.0,0));
       for(let i=0;i<5;i++){
         const a=i/5*Math.PI*2;
-        at(BONE.hat, new THREE.ConeGeometry(2,5.2,4), GOLD, xf(Math.cos(a)*6.6,8.2,Math.sin(a)*6.6));
+        atHat(BONE.hat, new THREE.ConeGeometry(2,5.2,4), GOLD, xf(Math.cos(a)*6.6,8.2,Math.sin(a)*6.6));
       }
-      at(BONE.hat, new THREE.SphereGeometry(1.9,8,6), new THREE.Color(0xff4fa3), xf(0,3.8,7));
+      atHat(BONE.hat, new THREE.SphereGeometry(1.9,8,6), new THREE.Color(0xff4fa3), xf(0,3.8,7));
     } else if(hat==='party'){
       // The stripes were a texture; on the shared material they are painted
       // into the vertices instead, which is why the cone gained segments.
       const teal = new THREE.Color(0x23e6c9), pink = new THREE.Color(0xff4fa3);
-      at(BONE.hat, new THREE.ConeGeometry(5.6,16,12,10), null, xf(0,7.4,0),
+      atHat(BONE.hat, new THREE.ConeGeometry(5.6,16,12,10), null, xf(0,7.4,0),
          (c,g,i)=>{ c.copy(Math.floor(g.attributes.uv.getY(i)*7) % 2 ? pink : teal); });
-      at(BONE.hat, new THREE.SphereGeometry(2.4,8,6), GOLD, xf(0,15.6,0));
+      atHat(BONE.hat, new THREE.SphereGeometry(2.4,8,6), GOLD, xf(0,15.6,0));
     } else if(hat==='halo'){
-      at(BONE.hat, new THREE.TorusGeometry(7.0,1.3,8,20), new THREE.Color(0xfff2a8),
+      atHat(BONE.hat, new THREE.TorusGeometry(7.0,1.3,8,20), new THREE.Color(0xfff2a8),
          xf(0,7.4,0, 1,1,1).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2)));
       hatGroup.userData.float = true; hatGroup.userData.floatBase = RIG.topY - 1.2;
     } else if(hat==='horns'){
       [-1,1].forEach(s=>{
-        at(BONE.hat, new THREE.ConeGeometry(2.4,8,8), new THREE.Color(0xff5a4d),
+        atHat(BONE.hat, new THREE.ConeGeometry(2.4,8,8), new THREE.Color(0xff5a4d),
            xf(s*5.8,2.6,0, 1,1,1, -s*0.5));
       });
     } else if(hat==='prop'){
-      at(BONE.hat, new THREE.SphereGeometry(7.0,14,9,0,Math.PI*2,0,Math.PI/2),
+      atHat(BONE.hat, new THREE.SphereGeometry(7.0,14,9,0,Math.PI*2,0,Math.PI/2),
          new THREE.Color(0x60a5fa), xf(0,-1.4,0));
-      at(BONE.hat, new THREE.CylinderGeometry(0.65,0.65,4.4,6), DARK, xf(0,6.6,0));
-      at(BONE.hatSpin, new THREE.BoxGeometry(13,0.9,2.3), new THREE.Color(0xff5a4d));
+      atHat(BONE.hat, new THREE.CylinderGeometry(0.65,0.65,4.4,6), DARK, xf(0,6.6,0));
+      atHat(BONE.hatSpin, new THREE.BoxGeometry(13,0.9,2.3), new THREE.Color(0xff5a4d));
       hatGroup.userData.spin = hatSpin;
     }
 
@@ -347,6 +500,7 @@
     armL.rotation.z = -0.30; armR.rotation.z = 0.30;    // flare clear of the hips
     return {group, tilt, aura, bodyMat, partsMat, outMat, outline, body, trim, skeleton,
             head, faceGroup, hatGroup, pupils, scleras, tongue,
+            facePlate, hatProbes, mouth:mouthProbe,
             arms:armPivots, legs:legPivots, armPivots, legPivots, feet, hands};
   }
   // v6 name kept so nothing downstream breaks

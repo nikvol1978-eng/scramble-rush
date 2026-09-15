@@ -1814,6 +1814,212 @@
                  +', feet lift '+lift[0].toFixed(1)+'/'+lift[1].toFixed(1)+', stretch '+stretchY.toFixed(2)+', squash '+squashY.toFixed(2) };
   }
 
+  // ---------- 5b: the face is on the OUTSIDE, and no hat lands on it ----------
+  //
+  // Two failures this exists to catch, both of which shipped in v22 and neither
+  // of which any other check could see.
+  //
+  //  1. THE FACE WAS INSIDE THE HEAD. v22 widened the head bulge and the face
+  //     kept v20's placement, so the white plate's front sat about 1.3 units
+  //     UNDER the skin -- a pink head with two dots grazing the surface where a
+  //     face should be. Measured, not screenshotted: a picture of a buried face
+  //     and a picture of a flat one look the same at tile size.
+  //  2. A HAT LANDED ON IT. Hat and face never intersect in world space -- the
+  //     hat is above the head -- so a world-space test passes while the crown's
+  //     front points sit squarely over the eyes FROM THE LOBBY CAMERA. The
+  //     overlap is a property of the shot, so it is measured in the shot.
+  //
+  // Both halves are computed. Neither reads a constant out of the rig: the head
+  // surface is taken off the lathe's own vertices and the parts off their probe
+  // meshes, so a change to RIG that breaks the face is caught rather than
+  // followed.
+  function check5b(){
+    const bad = [], notes = [];
+    const V = () => new THREE.Vector3();
+
+    // The lathe's radius at a height, read off the body geometry. The rings sit
+    // at the profile's y values and the rendered surface runs straight between
+    // them, so straight-line interpolation between rings IS the surface.
+    function latheProfile(bodyGeo){
+      const pos = bodyGeo.attributes.position, rings = new Map();
+      for(let i=0;i<pos.count;i++){
+        const y = Math.round(pos.getY(i)*100)/100;
+        const r = Math.hypot(pos.getX(i), pos.getZ(i));
+        rings.set(y, Math.max(rings.get(y) || 0, r));
+      }
+      const ys = [...rings.keys()].sort((a,b)=>a-b);
+      return {
+        at(y){
+          if(y <= ys[0]) return rings.get(ys[0]);
+          if(y >= ys[ys.length-1]) return rings.get(ys[ys.length-1]);
+          for(let i=0;i<ys.length-1;i++){
+            if(y >= ys[i] && y <= ys[i+1]){
+              const t = (y - ys[i]) / (ys[i+1] - ys[i]);
+              return rings.get(ys[i]) + t*(rings.get(ys[i+1]) - rings.get(ys[i]));
+            }
+          }
+          return NaN;
+        },
+        widestY(){
+          let best = ys[0], bestR = -1;
+          for(const y of ys){ if(rings.get(y) > bestR){ bestR = rings.get(y); best = y; } }
+          return best;
+        },
+        topY(){ return ys[ys.length-1]; },
+        maxR(){ return Math.max(...rings.values()); }
+      };
+    }
+
+    // A character built to be measured, never added to a scene. Yaw zeroed: the
+    // face points down +z in the model's own frame and that is the frame these
+    // numbers belong in.
+    function rig(hat){
+      const m = makeCharacter({ skin:skinOf('cream'), pattern:patternOf('none'),
+                                hat:hat||'none', eyes:'round' });
+      m.group.rotation.y = 0;
+      m.group.updateMatrixWorld(true);
+      return m;
+    }
+
+    // ---- (a) the plate's front stands outside the skin, along the whole face
+    const m0 = rig('none');
+    const prof = latheProfile(m0.body.geometry);
+    if(!m0.facePlate){
+      bad.push('the rig exposes no facePlate probe to measure');
+      return { name:'5b the face is outside the head, and no hat covers it', pass:false,
+               detail: bad.join('; ') };
+    }
+    m0.facePlate.updateMatrixWorld(true);
+    const pg = m0.facePlate.geometry.attributes.position;
+    const pm = m0.facePlate.matrixWorld;
+    let front = -1e9, frontY = 0, minProud = 1e9, centreProud = null, plateTop = -1e9,
+        plateBot = 1e9, plateLeft = 1e9, plateRight = -1e9, cz = 0, n = 0;
+    for(let i=0;i<pg.count;i++){
+      const v = V().fromBufferAttribute(pg, i).applyMatrix4(pm);
+      cz += v.z; n++;
+      plateTop = Math.max(plateTop, v.y); plateBot = Math.min(plateBot, v.y);
+      plateLeft = Math.min(plateLeft, v.x); plateRight = Math.max(plateRight, v.x);
+    }
+    cz /= n;
+    for(let i=0;i<pg.count;i++){
+      const v = V().fromBufferAttribute(pg, i).applyMatrix4(pm);
+      // Only the FRONT of the plate is the face. A plate that is a closed
+      // sphere has a back half buried in the head by design, and judging that
+      // as "inside the skin" would be judging the wrong surface.
+      if(v.z < cz) continue;
+      const proud = Math.hypot(v.x, v.z) - prof.at(v.y);
+      minProud = Math.min(minProud, proud);
+      if(Math.abs(v.x) < 1.2 && v.z > front){ front = v.z; frontY = v.y; }
+    }
+    centreProud = front - prof.at(frontY);
+    notes.push('plate front z '+front.toFixed(2)+' vs skin '+prof.at(frontY).toFixed(2)
+               +' = '+(centreProud>=0?'+':'')+centreProud.toFixed(2)+' proud');
+    if(!(centreProud >= 0.5 && centreProud <= 1.4))
+      bad.push('face plate front stands '+centreProud.toFixed(2)+' off the skin, want 0.5-1.4'
+               +(centreProud < 0 ? ' (it is INSIDE the head)' : ''));
+    if(!(minProud > 0.05))
+      bad.push('part of the face is inside the skin: worst point '+minProud.toFixed(2));
+
+    // ---- (b) the face is centred on the head's widest line, not by the crown
+    const wy = prof.widestY(), pcy = (plateTop + plateBot)/2;
+    notes.push('plate centre y '+pcy.toFixed(2)+' vs widest line '+wy.toFixed(2));
+    if(Math.abs(pcy - wy) > 1.6)
+      bad.push('face centred at y '+pcy.toFixed(2)+', head is widest at '+wy.toFixed(2));
+
+    // ---- (c) it is a face, not a mask: clear skin above it for a hat
+    const topY = prof.topY();
+    notes.push('plate top y '+plateTop.toFixed(2)+' of topY '+topY.toFixed(2));
+    if(plateTop > topY - 3.0)
+      bad.push('face plate reaches y '+plateTop.toFixed(2)+', leaving no skin under a hat (topY '+topY.toFixed(2)+')');
+
+    // ---- (d) there is a mouth, and it is below the eyes
+    const eyeY = m0.pupils[0].getWorldPosition(V()).y;
+    const mouth = m0.mouth;
+    if(!mouth) bad.push('no mouth on the face');
+    else {
+      mouth.updateMatrixWorld(true);
+      const my = new THREE.Box3().setFromObject(mouth).getCenter(V()).y;
+      notes.push('mouth y '+my.toFixed(2)+' under eyes '+eyeY.toFixed(2));
+      if(!(my < eyeY - 0.8)) bad.push('the mouth sits at '+my.toFixed(2)+', not below the eyes at '+eyeY.toFixed(2));
+    }
+
+    // ---- (e) FROM THE LOBBY CAMERA, no hat's box touches the face's box.
+    // The lobby shot, copied from 05_profile.js: the character yawed Math.PI to
+    // face a camera that sits at negative z, 58-degree lens, looking just above
+    // the podium. Taking the real camera's aspect so the test is the shot the
+    // player gets rather than a square one nobody sees.
+    const cam = new THREE.PerspectiveCamera(58, camera.aspect || 16/9, 0.1, 4000);
+    cam.position.set(0, 34, -86);
+    cam.lookAt(0, 1, 0);
+    cam.updateMatrixWorld(true);
+    cam.updateProjectionMatrix();
+
+    // A projected bounding box, as a screen-space rectangle in NDC. Taking the
+    // box's eight corners is deliberately CONSERVATIVE -- the rectangle is at
+    // least as big as the part's silhouette -- so this can report an overlap
+    // that the eye would not quite see, and can never miss one that is there.
+    function ndcRect(obj){
+      const b = new THREE.Box3().setFromObject(obj);
+      if(b.isEmpty()) return null;
+      let x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
+      for(const sx of [b.min.x, b.max.x]) for(const sy of [b.min.y, b.max.y]) for(const sz of [b.min.z, b.max.z]){
+        const p = V().set(sx, sy, sz).project(cam);
+        x0=Math.min(x0,p.x); x1=Math.max(x1,p.x); y0=Math.min(y0,p.y); y1=Math.max(y1,p.y);
+      }
+      return {x0,x1,y0,y1};
+    }
+    const overlap = (a,b)=> a && b && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+    // The brim rule, stated as a height rather than left to the eye: nothing on
+    // a hat may hang below topY - 4.5, which is the band of skin the face's top
+    // edge has to stay clear of. Checked for every hat in the set, so a hat
+    // added later cannot quietly reach down over the face.
+    const brimFloor = topY - 4.5;
+    for(const [id] of HATS){
+      if(id === 'none') continue;
+      const mb = rig(id);
+      let low = 1e9;
+      for(const hp of (mb.hatProbes||[])){
+        hp.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(hp);
+        if(!b.isEmpty()) low = Math.min(low, b.min.y);
+      }
+      notes.push(id+' low y '+low.toFixed(2));
+      if(low < brimFloor)
+        bad.push(id+': hangs to y '+low.toFixed(2)+', below the brim floor '+brimFloor.toFixed(2));
+    }
+
+    for(const [id] of HATS){
+      if(id === 'none') continue;
+      const mh = rig(id);
+      mh.group.rotation.y = Math.PI;              // the lobby pose
+      mh.group.updateMatrixWorld(true);
+      const faceRect = ndcRect(mh.facePlate);
+      if(!(mh.hatProbes && mh.hatProbes.length)){
+        bad.push(id+': the rig exposes no hat probes to measure');
+        continue;
+      }
+      let worst = null;
+      for(const hp of mh.hatProbes){
+        hp.updateMatrixWorld(true);
+        const r = ndcRect(hp);
+        if(overlap(faceRect, r)){
+          // how far into the face it reaches, in screen heights, so the number
+          // says something about the picture rather than about units
+          const dy = Math.min(r.y1, faceRect.y1) - Math.max(r.y0, faceRect.y0);
+          if(!worst || dy > worst) worst = dy;
+        }
+      }
+      if(worst !== null)
+        bad.push(id+': a hat part covers the face from the lobby camera (overlap '
+                 +(worst*50).toFixed(1)+'% of screen height)');
+      else notes.push(id+' clear');
+    }
+
+    return { name:'5b the face is outside the head, and no hat covers it', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join(', ') };
+  }
+
   // ---------- 8: no free speed ----------
   // A player who held forward and alternated jump and dive used to out-run one
   // who just ran: the air kept nearly all of your speed while the ground took a
@@ -2279,10 +2485,33 @@
     return a.length % 2 ? a[(a.length-1)/2] : (a[a.length/2 - 1] + a[a.length/2])/2;
   }
 
-  function checkAccept(){
+  // `maps` narrows the run to the keys named, and changes nothing else.
+  //
+  // THIS IS THE SAME TEST, NOT A WEAKER ONE. Every gate in here is per-map: the
+  // seeds, the medians, the hurt and fall windows and the home floor are all
+  // indexed by map key, and no map's verdict reads another's. So running one
+  // map per page and merging the tables gives the same verdict as running all
+  // fifteen in one page -- what it does not do is hold fifteen maps' worth of
+  // course geometry in one heap, which is what made the single-page run
+  // unfinishable on a 16GB machine.
+  //
+  // An unknown key is refused rather than ignored: a typo that quietly measured
+  // nothing would report a green acceptance for a map that never ran.
+  function checkAccept(maps){
     const bad = [], report = {};
-    const RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope','tiltdeck','logjam'];
-    const SURVIVE = ['lava','doors','tiles','shrink','comb','walls','beam'];
+    const ALL_RACES = ['sunny','cannonc','slide','neon','hopduck','slimeslope','tiltdeck','logjam'];
+    const ALL_SURVIVE = ['lava','doors','tiles','shrink','comb','walls','beam'];
+    const want = (maps && maps.length) ? new Set(maps) : null;
+    if(want){
+      const known = new Set([...ALL_RACES, ...ALL_SURVIVE]);
+      const bogus = [...want].filter(k=>!known.has(k));
+      if(bogus.length)
+        return { name:'+ acceptance', pass:false,
+                 detail:'no such map in the acceptance: '+bogus.join(', ')
+                        +' (have '+[...known].join(' ')+')' };
+    }
+    const RACES = want ? ALL_RACES.filter(k=>want.has(k)) : ALL_RACES;
+    const SURVIVE = want ? ALL_SURVIVE.filter(k=>want.has(k)) : ALL_SURVIVE;
     // Per map, because the maps are not the same shape of problem: Sunny is
     // dense and forgiving, Splash Slide is ice and a bot cannot trim a line on it.
     // Hop & Duck is bars and nothing else, so a racer who reads them is not
@@ -2478,7 +2707,9 @@
     // The numbers print either way. A failing acceptance that shows only what
     // it objected to makes you re-run the whole thing to find out what the
     // other fourteen maps did.
-    return { name:'+ acceptance: '+ACCEPT_SEEDS+' layouts a map, judged on medians',
+    const ran = [...RACES, ...SURVIVE];
+    return { name:'+ acceptance: '+ACCEPT_SEEDS+' layouts a map, judged on medians'
+                  + (want ? ' ['+ran.join(',')+']' : ''),
              pass: bad.length===0,
              detail: (bad.length ? 'UNDER: '+bad.join('; ')+' | ' : '') + JSON.stringify(report) };
   }
@@ -3978,12 +4209,12 @@
         ['J',checkJ],['K',checkK],['L',checkL],['M',checkM],['N',checkN],['O',checkO],['P',checkP],['Q',checkQ],['R',checkR],['S',checkS],
         ['T',checkT],['U',checkU],['V',checkV],['W',checkW],['X',checkX],
         ['Y',checkY],['Z',checkZ],['1',check1],
-        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],
+        ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],
         ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
         ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
       ];
       // slow: five layouts a map, so only when asked for
-      if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',checkAccept]);
+      if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
       // slower still: twenty seeds a map, so only when asked for
       if(opts.bots || (opts.only && opts.only.indexOf('*')>=0)) all.push(['*',checkBots20]);
       const results = [];
