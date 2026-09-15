@@ -1,0 +1,64 @@
+# Time individual checks in isolation on a GitHub runner.
+#
+# MANUAL ONLY. workflow_dispatch and nothing else, so this never runs as part of
+# the pull-request gate and cannot make a PR red.
+#
+# Why it exists: the sharded PR suite has completed timings for 58 of the 61
+# checks, but three have never finished on a runner -- [w] Wall Rush, [h] no
+# looping, and [o] Hoop, which sat behind [h] and was never reached. Sharding
+# can only help if every individual check fits inside the guard; a check that
+# cannot fit on its own is not a packing problem. So each of the three gets a
+# job to itself, in the same environment as the real suite and against the same
+# 35-minute guard.
+#
+# It selects by id through the runner's CI_ONLY, which hands the id straight to
+# the suite's own __checks.run({only:id}). No check logic exists here.
+name: Profile checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: 'Check ids to time, one job each (space separated)'
+        default: 'w h o'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: profile [${{ matrix.id }}]
+    runs-on: ubuntu-latest
+    # The same guard the PR suite uses. The point of this run is to find out
+    # whether a single check fits inside it, so raising it would answer nothing.
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        id: [w, h, o]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the debug build from the fragments
+        run: |
+          python build/build.py --force
+          python build/mkdebug.py
+
+      - name: Time this check on its own
+        run: npm run ci:checks
+        env:
+          SR_NORENDER: '1'
+          SR_QUALITY: low
+          CI_ONLY: ${{ matrix.id }}

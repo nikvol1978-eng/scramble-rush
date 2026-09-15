@@ -44,6 +44,11 @@ const QUALITY = process.env.SR_QUALITY || 'low';
 const BOOT_TIMEOUT = Number(process.env.SR_BOOT_TIMEOUT || 120000);
 // Sharding. The default is one shard of one -- the whole suite -- so running
 // this by hand needs no arguments. CI sets these per matrix job.
+// CI_ONLY names explicit ids to run instead of taking a shard -- used by the
+// profiling workflow to time a single check in isolation. The ids are still
+// validated against the live registry, so a typo fails loudly rather than
+// quietly running nothing.
+const ONLY = (process.env.CI_ONLY || '').trim();
 const SHARD_TOTAL = Number(process.env.CI_SHARD_TOTAL || 1);
 const SHARD_INDEX = Number(process.env.CI_SHARD_INDEX || 0);
 // Generous, because a GitHub runner has no GPU and falls back to SwiftShader,
@@ -160,8 +165,8 @@ async function main() {
   if (dupes.length) {
     throw new Error(`duplicate check ids in the registry: ${[...new Set(dupes)].join(', ')}`);
   }
-  if (!Number.isInteger(SHARD_TOTAL) || SHARD_TOTAL < 1
-      || !Number.isInteger(SHARD_INDEX) || SHARD_INDEX < 0 || SHARD_INDEX >= SHARD_TOTAL) {
+  if (!ONLY && (!Number.isInteger(SHARD_TOTAL) || SHARD_TOTAL < 1
+      || !Number.isInteger(SHARD_INDEX) || SHARD_INDEX < 0 || SHARD_INDEX >= SHARD_TOTAL)) {
     throw new Error(`bad shard configuration: index ${SHARD_INDEX} of total ${SHARD_TOTAL}`);
   }
 
@@ -184,11 +189,21 @@ async function main() {
   console.log(`coverage: ${ids.length} registered ids, each in exactly one of ${SHARD_TOTAL} shard(s)`);
   console.log(`registry: ${ids.join('')}`);
 
-  const mine = buckets[SHARD_INDEX];
-  if (mine.length === 0) {
-    throw new Error(`shard ${SHARD_INDEX + 1}/${SHARD_TOTAL} got no checks from a registry of ${ids.length}`);
+  let mine;
+  if (ONLY) {
+    const want = [...ONLY].filter((c) => c.trim());
+    const unknown = want.filter((c) => !ids.includes(c));
+    if (unknown.length) throw new Error(`CI_ONLY names ids not in the registry: ${unknown.join(' ')}`);
+    mine = want;
+    console.log(`\nCI_ONLY: running ${mine.length} named check(s) of ${ids.length} registered`);
+  } else {
+    mine = buckets[SHARD_INDEX];
   }
-  console.log(`\nShard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: running ${mine.length} of ${ids.length} registered checks`);
+  if (mine.length === 0) {
+    throw new Error(ONLY ? 'CI_ONLY selected no checks'
+      : `shard ${SHARD_INDEX + 1}/${SHARD_TOTAL} got no checks from a registry of ${ids.length}`);
+  }
+  if (!ONLY) console.log(`\nShard ${SHARD_INDEX + 1}/${SHARD_TOTAL}: running ${mine.length} of ${ids.length} registered checks`);
   console.log(`  ids: ${mine.join(' ')}\n`);
 
   // ---- one check at a time, timed ------------------------------------------
