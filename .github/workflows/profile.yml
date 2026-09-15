@@ -15,13 +15,19 @@
 # the suite's own __checks.run({only:id}). No check logic exists here.
 name: Profile checks
 
+# workflow_dispatch alone cannot reach this: GitHub will only dispatch a
+# workflow that exists on the DEFAULT branch, and this one lives on a feature
+# branch by design. So it also runs on pushes to that branch. It is a separate
+# workflow from the PR gate ("Checks"), so it cannot turn that gate red; it can
+# surface as its own commit status on the PR, which is the price of being able
+# to run it at all without putting it on main first.
 on:
   workflow_dispatch:
-    inputs:
-      ids:
-        description: 'Check ids to time, one job each (space separated)'
-        default: 'w h o'
-        required: false
+  push:
+    branches: [v25-character-redesign]
+    paths:
+      - '.github/workflows/profile.yml'
+      - 'tools/ci/run-checks.mjs'
 
 permissions:
   contents: read
