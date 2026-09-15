@@ -40,9 +40,10 @@ jobs:
     name: game checks
     runs-on: ubuntu-latest
     # The suite steps sixty-one checks through a headless browser with no GPU,
-    # so it is minutes rather than seconds; this is a stuck-job guard, not a
-    # target.
-    timeout-minutes: 45
+    # so SwiftShader does the drawing and it takes tens of minutes -- about eight
+    # on a desktop with a real GPU, comfortably past thirty here. A stuck-job
+    # guard, not a target.
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
 

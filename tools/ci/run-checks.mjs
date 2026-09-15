@@ -40,9 +40,11 @@ const NORENDER = process.env.SR_NORENDER !== '0';
 const QUALITY = process.env.SR_QUALITY || 'low';
 const BOOT_TIMEOUT = Number(process.env.SR_BOOT_TIMEOUT || 120000);
 // Generous, because a GitHub runner has no GPU and falls back to SwiftShader,
-// which makes every begin() and every draw-call measurement much slower than
-// the same suite on a desktop.
-const RUN_TIMEOUT = Number(process.env.SR_RUN_TIMEOUT || 1800000);
+// which makes every begin() and every draw-call measurement far slower than the
+// same suite on a desktop: about eight minutes there, comfortably past thirty
+// here. The first CI run died on a 30-minute ceiling with no check having
+// failed, so this is sized for the slow path. A stuck-job guard, not a target.
+const RUN_TIMEOUT = Number(process.env.SR_RUN_TIMEOUT || 5400000);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -139,8 +141,20 @@ async function main() {
   if (QUALITY) await page.evaluate(`window.__dbg.quality(${JSON.stringify(QUALITY)})`);
   console.log(`quality ${QUALITY}${NORENDER ? ', rendering off (SR_NORENDER)' : ', rendering on'}\n`);
 
+  // The whole suite is ONE evaluate and the page's JS is single-threaded, so
+  // nothing can report progress from inside it. Without a heartbeat the CI log
+  // is silent for the better part of an hour and a live run is indistinguishable
+  // from a hung one -- which is exactly how the first CI run read.
   const started = Date.now();
-  const out = await page.evaluate('JSON.stringify(window.__checks.run({}))');
+  const beat = setInterval(() => {
+    console.log(`  ... still running, ${((Date.now() - started) / 1000).toFixed(0)}s elapsed`);
+  }, 60000);
+  let out;
+  try {
+    out = await page.evaluate('JSON.stringify(window.__checks.run({}))');
+  } finally {
+    clearInterval(beat);
+  }
   const res = JSON.parse(out);
   console.log(`suite finished in ${((Date.now() - started) / 1000).toFixed(0)}s\n`);
 
