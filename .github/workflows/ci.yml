@@ -6,10 +6,14 @@
 # is exactly what this is here to catch. Nothing is committed or published from
 # this job -- the checkout is a scratch copy.
 #
-# SHARDED, BECAUSE A RUNNER HAS NO GPU. SwiftShader does all the drawing here,
-# and the full suite measured 89 minutes in one job against about eight on a
-# desktop. It is split four ways instead. The shards are NOT listed here: the
-# runner asks the game for its registry (window.__checks.list()) and takes every
+# SHARDED, BECAUSE A RUNNER HAS NO GPU. SwiftShader does all the drawing here.
+# Per-check profiling put the whole suite at roughly 2.2-2.5 hours of runner
+# time against about eight minutes on a desktop, and the cost is not spread
+# evenly: one check alone ([N] Panel Drop) is 17 minutes, and the slowest ten
+# are 74% of the total. Four shards timed out; twelve puts the heaviest shard
+# near 25 minutes, inside the guard below, without anyone hand-placing a check.
+#
+# The shards are NOT listed here: the runner asks the game for its registry (window.__checks.list()) and takes every
 # Nth id, then proves on every run that each registered check lands in exactly
 # one shard. A check added to checks.js therefore enters a shard by itself, with
 # no workflow to edit and no way to be silently dropped.
@@ -44,17 +48,17 @@ permissions:
 
 jobs:
   checks:
-    name: game checks (shard ${{ matrix.shard }}/4)
+    name: game checks (shard ${{ matrix.shard }}/12)
     runs-on: ubuntu-latest
-    # A quarter of a suite that takes 89 minutes whole, with headroom for an
-    # uneven split. A stuck-job guard, not a target: if a shard needs more than
-    # this, find out which checks dominate rather than raising the number.
+    # A stuck-job guard, not a target. It has not moved while the shard count
+    # went 4 -> 12: the answer to a shard that will not fit is to find out what
+    # is slow in it, which is what the per-check timings are for.
     timeout-minutes: 35
     strategy:
-      # one red shard should not hide the state of the other three
+      # one red shard should not hide the state of the other eleven
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     steps:
       - uses: actions/checkout@v4
 
@@ -82,7 +86,7 @@ jobs:
           SR_NORENDER: '1'
           SR_QUALITY: low
           CI_SHARD_INDEX: ${{ matrix.shard }}
-          CI_SHARD_TOTAL: '4'
+          CI_SHARD_TOTAL: '12'
 
   # One obvious overall answer for the PR, and the branch-protection handle if
   # it is ever wanted. It runs no browser: it exists only to be red when any
