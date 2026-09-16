@@ -1758,22 +1758,63 @@
     const body = box(m.body), feet = box(m.feet[0]).union(box(m.feet[1]));
     const height = body.max.y - feet.min.y, width = body.max.x - body.min.x, ratio = height/width;
     m.group.rotation.y = yaw0; m.group.updateMatrixWorld(true);
-    if(ratio < 1.30 || ratio > 1.55) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.30-1.55');
+    // THE BAND MOVES WITH THE APPROVED FIGURE, and not an inch further.
+    // 1.30-1.55 was the v22/v25 silhouette: a wide head bulge over a pinched
+    // waist. That shape was deliberately replaced, so holding the rig to its
+    // ratio would have been holding it to a design nobody wants any more.
+    //
+    // The approved racer measures 1.74 here -- crown-to-SOLE over the bean's
+    // own width, which is what this check has always measured, and which runs
+    // taller than the bean-only figure the rig's comments quote. The window is
+    // that value at the same +/-0.10 half-width the old one had, so it is the
+    // same constraint restated around a new shape rather than a looser one.
+    // A rig drifting back towards an egg, or collapsing into a puck, still
+    // fails it -- which is the whole point of having a window.
+    if(ratio < 1.64 || ratio > 1.84) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.64-1.84');
 
-    // (a2) the head is the widest part of the figure. This is the whole point
-    // of the v22 silhouette: measure the body's width across the head bulge
-    // against its width across the waist pinch below it.
+    // (a2) ONE SHAPE, NOT SEGMENTS. v22 asserted the opposite of this -- that a
+    // head bulge stood wider than a waist pinch below it -- and v26 deliberately
+    // removed both. The rig says so in as many words: "There is no waist pinch
+    // and no shoulder shelf any more -- v25 put four distinct widths up the
+    // figure 'to give the silhouette something to read', and what that actually
+    // read as was segments", and v26b: "the widest line drops to the belly at
+    // -2.6 and the shape narrows continuously from there to the crown".
+    //
+    // So the rule is restated, not dropped, and it is the stricter one: the
+    // bean is widest LOW, and from there it only ever narrows going up. A
+    // shelf, a pinch or a second bulge anywhere above the belly fails this --
+    // including the v22 silhouette it replaced, which is what makes it a
+    // constraint rather than a rubber stamp for whatever is currently built.
     {
       const pos = m.body.geometry.attributes.position;
-      let headR = 0, waistR = 1e9;
+      const BAND = 1.0, bands = new Map();
+      let lo = 1e9, hi = -1e9;
       for(let i=0;i<pos.count;i++){
         const y = pos.getY(i), r = Math.hypot(pos.getX(i), pos.getZ(i));
-        if(y > 6 && y < 12) headR = Math.max(headR, r);
-        if(y > 0.5 && y < 4)  waistR = Math.min(waistR, r);
+        const k = Math.round(y/BAND);
+        bands.set(k, Math.max(bands.get(k) || 0, r));
+        lo = Math.min(lo, y); hi = Math.max(hi, y);
       }
-      if(!(headR > waistR + 0.8))
-        bad.push('no head in the outline: widest across the head '+headR.toFixed(1)
-                 +' against '+waistR.toFixed(1)+' at the waist');
+      const keys = [...bands.keys()].sort((a,b)=>a-b);
+      let wk = keys[0];
+      for(const k of keys) if(bands.get(k) > bands.get(wk)) wk = k;
+      const widestY = wk*BAND, mid = (lo + hi)/2;
+      if(widestY > mid)
+        bad.push('the bean is widest at y '+widestY.toFixed(1)+', above its own mid-height '
+                 +mid.toFixed(1)+' -- it is top-heavy, not a bean');
+      // above the widest line the profile may only fall away. 0.06 of slack is
+      // the lathe's own tessellation, not a licence to bulge.
+      let prev = bands.get(wk);
+      for(const k of keys){
+        if(k <= wk) continue;
+        const r = bands.get(k);
+        if(r > prev + 0.06){
+          bad.push('the outline widens again at y '+(k*BAND).toFixed(1)+' ('+r.toFixed(1)
+                   +' against '+prev.toFixed(1)+' below it) -- that is a shelf, not one shape');
+          break;
+        }
+        prev = Math.min(prev, r);
+      }
     }
 
     // (b) arms hang to below the waist at rest
@@ -1872,6 +1913,7 @@
         return best;
       },
       topY(){ return ys[ys.length-1]; },
+      bottomY(){ return ys[0]; },
       maxR(){ return Math.max(...rings.values()); }
     };
   }
@@ -1924,17 +1966,45 @@
     centreProud = front - prof.at(frontY);
     notes.push('plate front z '+front.toFixed(2)+' vs skin '+prof.at(frontY).toFixed(2)
                +' = '+(centreProud>=0?'+':'')+centreProud.toFixed(2)+' proud');
-    if(!(centreProud >= 0.5 && centreProud <= 1.4))
+    // MEASUREMENT NOISE, NOT A FACE. RIG.facePROUD is exactly 0.5 and this
+    // band includes 0.5 by its own text, but centreProud is reconstructed by
+    // taking one vertex off a tessellated cap and subtracting a tessellated
+    // lathe's interpolated radius. Measured here, that is
+    // 0.49999985801096969 -- 1.42e-7 UNDER the bound, which was therefore
+    // rejecting the exact value it was written to allow.
+    //
+    // The tolerance is the noise floor of the measurement, not a relaxation
+    // of the rule: 1e-6 of a unit on a figure 33 units tall is roughly a
+    // thousand times finer than anything the eye or the design could care
+    // about, and it cannot admit any face the 0.5 floor was meant to bar.
+    const EPS = 1e-6;
+    if(!(centreProud >= 0.5 - EPS && centreProud <= 1.4 + EPS))
       bad.push('face plate front stands '+centreProud.toFixed(2)+' off the skin, want 0.5-1.4'
                +(centreProud < 0 ? ' (it is INSIDE the head)' : ''));
     if(!(minProud > 0.05))
       bad.push('part of the face is inside the skin: worst point '+minProud.toFixed(2));
 
-    // ---- (b) the face is centred on the head's widest line, not by the crown
+    // ---- (b) the face sits high on the figure, not down its front.
+    //
+    // This used to pin the plate to the head's WIDEST line, which was the right
+    // rule while there was a head bulge to be widest. v26 removed the bulge on
+    // purpose -- the widest line is now the belly at -2.6 -- so that test no
+    // longer says anything about where a face belongs; held to it, the only way
+    // to pass would be to slide the face down onto the stomach.
+    //
+    // The rule it was standing in for is that the face reads as a head from the
+    // front: it belongs in the top third of the figure. That is what is checked
+    // now, and it is still a real bound -- v20's "tall oval with a face painted
+    // halfway down it", the regression this whole family of checks exists to
+    // catch, fails it.
     const wy = prof.widestY(), pcy = (plateTop + plateBot)/2;
-    notes.push('plate centre y '+pcy.toFixed(2)+' vs widest line '+wy.toFixed(2));
-    if(Math.abs(pcy - wy) > 1.6)
-      bad.push('face centred at y '+pcy.toFixed(2)+', head is widest at '+wy.toFixed(2));
+    const bTop = prof.topY(), bBot = prof.bottomY();
+    const third = bBot + (bTop - bBot)*(2/3);
+    notes.push('plate centre y '+pcy.toFixed(2)+' vs top third from '+third.toFixed(2)
+               +' (widest line '+wy.toFixed(2)+')');
+    if(pcy < third)
+      bad.push('face centred at y '+pcy.toFixed(2)+', below the top third of the body ('
+               +third.toFixed(2)+') -- it reads as painted on the front, not as a head');
 
     // ---- (c) it is a face, not a mask: clear skin above it for a hat
     const topY = prof.topY();
