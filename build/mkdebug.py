@@ -98,7 +98,17 @@ hook = """
       // seconds of race would otherwise pay for occlusion and bloom on every
       // one of its ticks, and none of them look at the result. Check 3c uses
       // renderFull() below, which is the real path.
-      renderer.render(scene,camera);
+      //
+      // Under window.__noRender the rasterising is skipped but the matrix
+      // update is NOT. render() quietly does scene.updateMatrixWorld() on its
+      // way through, and checks read world positions that come from it: drop
+      // the whole call and [5] measures feet 0.0 off the floor, [R] puts the
+      // camera nowhere and [h] simulates differently. Updating the matrices
+      // and skipping the draw keeps every world position identical and stops
+      // paying SwiftShader for a picture nobody looks at -- which is what put
+      // [i] bot dives at 34 minutes on a runner and timed its shard out.
+      if(window.__noRender){ scene.updateMatrixWorld(); camera.updateMatrixWorld(); }
+      else renderer.render(scene,camera);
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },

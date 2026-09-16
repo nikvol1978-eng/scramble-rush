@@ -1,0 +1,111 @@
+# Run the game's own check suite on every pull request into main.
+#
+# The game is one self-contained HTML file spliced together from build/frag/* by
+# build/build.py, so CI builds from the FRAGMENTS rather than testing the
+# committed release: the fragments are the source, and a change to one of them
+# is exactly what this is here to catch. Nothing is committed or published from
+# this job -- the checkout is a scratch copy.
+#
+# SHARDED, BECAUSE A RUNNER HAS NO GPU. SwiftShader does all the drawing here.
+# Per-check profiling put the whole suite at roughly 3.5 hours of runner time
+# against about eight minutes on a desktop, and the cost is not spread evenly:
+# [i] bot dives alone is 28 minutes, [8] no free speed is 18, [w] Wall Rush is
+# 15, and the slowest ten are most of the total.
+#
+# Twenty-five, not twelve. The count is not a taste: ids go round-robin, so the
+# shard a check lands in is its index mod N, and at twelve [8] (index 40) and
+# [w] (index 52) both landed in shard 4 -- 36 minutes against the 35-minute
+# guard, which is the shard that kept dying. Twenty-five separates them and
+# puts the worst shard at about 29 minutes, which is [i] on its own plus the
+# job's own start-up. [i] IS the floor: no shard count can beat a single check
+# that takes 28 minutes, which is why the count alone was never the whole fix.
+#
+# The shards are NOT listed here: the runner asks the game for its registry (window.__checks.list()) and takes every
+# Nth id, then proves on every run that each registered check lands in exactly
+# one shard. A check added to checks.js therefore enters a shard by itself, with
+# no workflow to edit and no way to be silently dropped.
+#
+# WHAT THIS DOES AND DOES NOT COVER. It runs the deterministic functional suite:
+# gameplay and physics behaviour, course generation, bot routing, rig
+# proportions, triangle and draw counts, the face cap, hat clearance. It does
+# NOT judge real-time frame budgets. Those are hardware- and load-sensitive --
+# the same build measures 13ms on a quiet desktop and 21ms on a busy one, and
+# canonical main misses the budget under load exactly as a feature branch does --
+# so a shared runner is the last place that should hold that verdict.
+# SR_NORENDER is the game's own switch for this and is used rather than
+# inventing a second test mode; the frame-budget check itself is untouched,
+# FRAME_CAP_MEDIUM is unchanged, and that budget stays validated locally on
+# known hardware.
+name: Checks
+
+on:
+  # opened, reopened, and synchronize (new commits pushed to an open PR)
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer commit on the same PR wins: a queued run of an older commit has
+# nothing useful to say once the branch has moved on.
+concurrency:
+  group: checks-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: game checks (shard ${{ matrix.shard }}/25)
+    runs-on: ubuntu-latest
+    # A stuck-job guard, not a target. It has not moved while the shard count
+    # went 4 -> 12: the answer to a shard that will not fit is to find out what
+    # is slow in it, which is what the per-check timings are for.
+    timeout-minutes: 35
+    strategy:
+      # one red shard should not hide the state of the other eleven
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci, not npm install: the lockfile is the point. This also fetches
+      # the Chromium build pinned by the puppeteer version in that lockfile.
+      - run: npm ci
+
+      - name: Build the debug build from the fragments
+        run: |
+          python build/build.py --force
+          python build/mkdebug.py
+
+      - name: Run this shard of the game's check suite
+        run: npm run ci:checks
+        env:
+          SR_NORENDER: '1'
+          SR_QUALITY: low
+          CI_SHARD_INDEX: ${{ matrix.shard }}
+          CI_SHARD_TOTAL: '25'
+
+  # One obvious overall answer for the PR, and the branch-protection handle if
+  # it is ever wanted. It runs no browser: it exists only to be red when any
+  # shard is red, including when a shard was cancelled or skipped.
+  suite:
+    name: CI suite
+    runs-on: ubuntu-latest
+    needs: checks
+    if: always()
+    steps:
+      - name: Report the shard result
+        run: |
+          echo "shards: ${{ needs.checks.result }}"
+          test "${{ needs.checks.result }}" = "success"
