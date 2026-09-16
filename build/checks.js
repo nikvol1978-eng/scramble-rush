@@ -2638,7 +2638,7 @@
         // twenty-second window can be checked rather than just the whole run
         const hist = [];
         for(let sec=0; sec<70 && state==='racing'; sec++){
-          for(let i=0;i<20;i++) window.__dbg.tick(3);       // one second
+          window.__dbg.tick(60);                            // one second
           hist.push(racers.map(r=>Object.assign({}, r.holeFalls||{})));
           const n = hist.length;
           if(n > 20){
