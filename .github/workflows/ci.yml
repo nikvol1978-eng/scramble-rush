@@ -7,11 +7,18 @@
 # this job -- the checkout is a scratch copy.
 #
 # SHARDED, BECAUSE A RUNNER HAS NO GPU. SwiftShader does all the drawing here.
-# Per-check profiling put the whole suite at roughly 2.2-2.5 hours of runner
-# time against about eight minutes on a desktop, and the cost is not spread
-# evenly: one check alone ([N] Panel Drop) is 17 minutes, and the slowest ten
-# are 74% of the total. Four shards timed out; twelve puts the heaviest shard
-# near 25 minutes, inside the guard below, without anyone hand-placing a check.
+# Per-check profiling put the whole suite at roughly 3.5 hours of runner time
+# against about eight minutes on a desktop, and the cost is not spread evenly:
+# [i] bot dives alone is 28 minutes, [8] no free speed is 18, [w] Wall Rush is
+# 15, and the slowest ten are most of the total.
+#
+# Twenty-five, not twelve. The count is not a taste: ids go round-robin, so the
+# shard a check lands in is its index mod N, and at twelve [8] (index 40) and
+# [w] (index 52) both landed in shard 4 -- 36 minutes against the 35-minute
+# guard, which is the shard that kept dying. Twenty-five separates them and
+# puts the worst shard at about 29 minutes, which is [i] on its own plus the
+# job's own start-up. [i] IS the floor: no shard count can beat a single check
+# that takes 28 minutes, which is why the count alone was never the whole fix.
 #
 # The shards are NOT listed here: the runner asks the game for its registry (window.__checks.list()) and takes every
 # Nth id, then proves on every run that each registered check lands in exactly
@@ -48,7 +55,7 @@ permissions:
 
 jobs:
   checks:
-    name: game checks (shard ${{ matrix.shard }}/12)
+    name: game checks (shard ${{ matrix.shard }}/25)
     runs-on: ubuntu-latest
     # A stuck-job guard, not a target. It has not moved while the shard count
     # went 4 -> 12: the answer to a shard that will not fit is to find out what
@@ -58,7 +65,8 @@ jobs:
       # one red shard should not hide the state of the other eleven
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +94,7 @@ jobs:
           SR_NORENDER: '1'
           SR_QUALITY: low
           CI_SHARD_INDEX: ${{ matrix.shard }}
-          CI_SHARD_TOTAL: '12'
+          CI_SHARD_TOTAL: '25'
 
   # One obvious overall answer for the PR, and the branch-protection handle if
   # it is ever wanted. It runs no browser: it exists only to be red when any
