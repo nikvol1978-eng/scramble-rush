@@ -2617,6 +2617,66 @@
   // What is left is one unlucky bot looping at one hazard, which is a respawn
   // problem, and is what the twenty-second rule below is for.
 
+  // ---------- deterministic sampling ----------
+  // [h] used to say `for(let seed=0; seed<3; seed++)` and then hand `seed` to
+  // nothing at all. begin() takes no seed, and the course, the bot routes and
+  // the lane a racer is put back on all come off an unseeded Math.random --
+  // eighty-nine call sites, twenty-two of them in the course generator. So the
+  // three "seeds" were three unrepeatable samples: a red run could not be
+  // reproduced, and a real loop was indistinguishable from bad luck.
+  //
+  // The clock matters as much as the draws. mkdebug starts window.__T from
+  // performance.now(), and obstacle phase is obsTime(__T), so the same course
+  // still had its platforms somewhere else on the next run. Both are pinned.
+  const H_T0 = 1000;                       // sim-clock origin, seconds
+  function seededRandom(a){
+    a = a >>> 0;
+    return function(){
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // Test-scoped on purpose: the game goes on calling Math.random exactly as it
+  // does in a real round, and only the source of the values is fixed. Both the
+  // generator and the clock go back in `finally`, so a throw cannot leave the
+  // next check running on a rigged random or a stopped clock.
+  function withSeed(seed, fn){
+    const realRandom = Math.random, realT = window.__T;
+    Math.random = seededRandom(seed);
+    window.__T = H_T0;
+    try { return fn(); }
+    finally { Math.random = realRandom; window.__T = realT; }
+  }
+
+  // begin(), with the random stream re-pinned once the round is built.
+  //
+  // Building a round does not consume a fixed number of draws: skin materials
+  // roll fresh parameters on a cold cache and skip them on a warm one, which
+  // measured 17375 draws on a page's first round against 17149 by its third --
+  // about seven per racer across twenty-four of them, and 02_skinmat.js has
+  // exactly seven. The course came out identical either way, but every draw
+  // after it had moved, including the aiRoute a bot is handed when it is put
+  // back on its feet -- so the same seed raced differently depending on how
+  // many rounds the page had already run, which is not a seed at all.
+  // Re-pinning here makes the race a function of the seed and the map, and of
+  // nothing else.
+  function beginSeeded(key, seed){
+    wipeRoundState();
+    window.__forceMap = key || null;
+    ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
+    startRound(1, null);
+    Math.random = seededRandom((seed ^ 0x5bf03635) >>> 0);
+    window.__dbg.tick(TO_RACING);
+  }
+
+  // Fixed, and not chosen for passing: 1048 is here because it is a real
+  // reproducer -- the seed that finds a bot looping at Splash Slide's first
+  // narrow -- and the others spread the sample across four different courses
+  // per map. A seed is only worth keeping if it can fail.
+  const H_SEEDS = [1001, 1048, 2002, 3003];
+
   // ---------- h: nobody loops at one hazard ----------
   // The failure this exists for: fall in, get put back on the lip of the thing
   // you fell into, arrive at it from a standstill with no run-up and no read
@@ -2629,10 +2689,17 @@
   // three failures inside it means they are stuck rather than unlucky.
   function checkNoLooping(){
     const bad = [], rep = {};
+    // One throwaway round before any sample is measured. A page's very first
+    // round is the one that builds the skin materials every later round finds
+    // cached, and that shifts the draws behind the bots' own setup; from the
+    // second round on, the same seed gives the same race. Without this the
+    // first map measured would be the odd one out.
+    withSeed(0, function(){ beginSeeded('slide', 0); });
     for(const key of ['sunny','slide','neon','cannonc']){
-      let worst = 0, worstAt = '', worstWho = '';
-      for(let seed=0; seed<3; seed++){
-        begin(key);
+      let worst = 0, worstAt = '', worstWho = '', worstSeed = 0;
+      for(const seed of H_SEEDS){
+        withSeed(seed, function(){
+        beginSeeded(key, seed);
         window.__dbg.hold('w', true);
         // snapshots of every racer's per-hazard tally, one per second, so any
         // twenty-second window can be checked rather than just the whole run
@@ -2646,16 +2713,19 @@
             for(let ri=0; ri<now.length; ri++){
               for(const k in now[ri]){
                 const d = now[ri][k] - (then[ri][k] || 0);
-                if(d > worst){ worst = d; worstAt = k; worstWho = racers[ri] && racers[ri].isPlayer ? 'the player' : 'a bot'; }
+                if(d > worst){ worst = d; worstAt = k; worstSeed = seed; worstWho = racers[ri] && racers[ri].isPlayer ? 'the player' : 'a bot'; }
               }
             }
           }
         }
         window.__dbg.hold('w', false);
+        });
       }
-      rep[key] = worst + ' in a 20s window' + (worstAt ? ' ('+worstAt+')' : '');
+      // The seed is in the report because it is now worth something: it is the
+      // one number that reproduces this exact run.
+      rep[key] = worst + ' in a 20s window' + (worstAt ? ' ('+worstAt+', seed '+worstSeed+')' : '');
       if(worst > 3)
-        bad.push(key+': '+worstWho+' fell '+worst+' times at '+worstAt+' inside twenty seconds');
+        bad.push(key+': '+worstWho+' fell '+worst+' times at '+worstAt+' inside twenty seconds (seed '+worstSeed+')');
     }
     return { name:'h nobody loops at one hazard', pass: bad.length===0,
              detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
