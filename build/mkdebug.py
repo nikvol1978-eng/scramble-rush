@@ -75,6 +75,27 @@ CHECKS = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "check
 
 hook = """
   // ---- debug hook (test build only) ----
+
+  // How far back a fall actually put a racer.
+  //
+  // respawnAfterFall IS the v23 section-back fix: before it, falling in left
+  // you ninety units before the thing you fell into, standing on its edge with
+  // no run-up, and one racer could collect twenty-five falls at a single hole.
+  // Check h was written to guard that, but it guards it by counting falls,
+  // which cannot tell "put back on the lip" from "ran the whole course again
+  // and failed again". Recording the distance lets it assert the fix itself.
+  //
+  // The knockout path returns without moving anyone, so nothing is recorded
+  // for a survival round -- there is no respawn there to measure.
+  const __respawnInner = respawnAfterFall;
+  respawnAfterFall = function(r){
+    const y0 = r.y, out0 = !!r.lavaOut;
+    __respawnInner(r);
+    if(!r.lavaOut && !out0){
+      (r.recoveries = r.recoveries || []).push(Math.round(y0 - r.y));
+    }
+  };
+
   window.__dbg = {
     start:(n,map)=>{ window.__forceMap=map||null; ['home','profile','results','gameover'].forEach(id=>$(id).classList.add('hidden')); startRound(n||1,null); },
     skip:()=>{ for(const r of racers) if(!r.isPlayer){ r.finished=true; r.finishTime=raceTime; } },
