@@ -98,7 +98,14 @@ hook = """
       // seconds of race would otherwise pay for occlusion and bloom on every
       // one of its ticks, and none of them look at the result. Check 3c uses
       // renderFull() below, which is the real path.
-      renderer.render(scene,camera);
+      //
+      // And under window.__noRender, not even that. The switch is the game's
+      // own, renderFull() has always honoured it, and CI sets it precisely to
+      // stop paying SwiftShader for pictures nobody looks at -- but this line
+      // ignored it, which is what put [i] bot dives at 34 minutes on a runner
+      // and timed the shard out. Every check that reads a draw count calls
+      // renderer.render() itself; none of them read this one.
+      if(!window.__noRender) renderer.render(scene,camera);
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
