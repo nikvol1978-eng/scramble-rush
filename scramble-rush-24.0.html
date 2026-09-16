@@ -2672,49 +2672,106 @@ const QUALITY = {
   // at a jog, a bigger swing than the hip's -- and our old leg had none, so it
   // scissored and slid its foot up rather than bending.
   const RIG = {
-    topY:18.6, bottomY:-8.4, maxR:12.0,
+    // v26: the body IS the character. 33.2 tall against 20.0 wide is 1.66:1,
+    // which is the proportion the reference reads at; v25 was 27 on 24, or
+    // 1.13, and no amount of limb work makes that silhouette soft. The crown
+    // and the sole stay where they were -- 18.6 and about -17.3 -- so the
+    // figure occupies the same space in the world and nothing downstream of it
+    // has to move. What changed is where that height goes: into the bean.
+    topY:18.6, bottomY:-14.6, maxR:10.5,
     // ON THE WIDEST LINE OF THE HEAD, not up by the crown. At 10.2 the plate's
     // top edge reached y 18.04 against a topY of 18.6, which is why there was
     // no pink left for a hat to sit on and every hat landed on the face.
-    faceY:8.8,
+    faceY:9.0,
     // everything ON the face -- eyes, pupils, mouth, cheeks -- scales off this
-    faceR:6.4,
+    // v26: bigger, and simpler on it. 14.4 across on a 20-wide body is 72% of
+    // the width -- the face is meant to be the thing you read first.
+    faceR:7.0,
     // how far the plate stands off the skin. 0.6-1.0 is the brief; 0.7 in the
     // middle keeps the whole cap inside that band once the head curves away.
-    facePROUD:0.7,
+    facePROUD:0.5,
     // the plate's half-extents. Width is about 1.5x the eye spacing (2*eyeX,
     // and eyeX is faceR*0.45, so 1.5x is 5.1); height is about 0.6 of the head
     // bulge, which runs from the waist pinch at 2.4 to topY 18.6.
-    faceHalfW:4.3, faceHalfH:3.7,
+    faceHalfW:5.45, faceHalfH:5.95,
 
-    // ---- legs: hip -> knee -> ankle -> shoe.
-    // Short and strong: 5.5 units of leg under a 28-unit body, so the figure
-    // still sits low and heavy. The segments are equal so a bent knee reads as
-    // a knee rather than as a broken shin. The sole lands just under -17, which
-    // with a crown at 18.6 and a 24.0-wide body measures 1.49 : 1.
-    hipY:-7.6, thighLen:3.2, shinLen:3.2, legX:4.4,
-    legR:3.15, kneeR:2.85, ankleR:2.55,
-    // The shoe is a separate chunky block, not the end of the leg: 6.9 across
-    // and 8.4 long against a 2.55 ankle, so it overhangs the leg on every side
-    // and reads as footwear. 19% of height wide, where the reference is 15%.
-    footR:3.0, footScale:[1.00, 0.73, 1.40], footDY:-0.05, footDZ:1.30,
+    // ---- legs: hip -> knee -> ankle -> foot.
+    // v26: almost none of this is visible. The hip sits at -12.0, deep inside
+    // the bean, and thigh and shin are 1.6 each, so 3.2 units of leg carry the
+    // body down to a sole at about -17.3 and the bean's own bottom at -14.6
+    // covers all but the last couple of units. The bones are still there and
+    // still bend -- the animation drives every one of them -- they are simply
+    // under the skin now instead of standing below it on show.
+    //
+    // The radii barely change down the leg (2.60 -> 2.55 -> 2.50) because a
+    // taper is what makes a limb read as two cylinders that meet. Held nearly
+    // constant it reads as one soft connector.
+    hipY:-12.0, thighLen:1.6, shinLen:1.6, legX:3.6,
+    legR:2.60, kneeR:2.55, ankleR:2.50,
+    // Short, broad, rounded, and carried forward of the ankle so the figure
+    // has a front. Not a shoe on an ankle -- a toy's foot.
+    // v26b: was 6.1 across and thrown 1.5 forward, which read as a shoe. Now
+    // 4.4 across and almost under the body, so it carries the bean without
+    // competing with it.
+    footR:1.70, footScale:[1.00, 0.52, 1.10], footDY:-0.10, footDZ:0.55,
 
     // ---- arms: shoulder -> elbow -> wrist -> mitt.
     // The shoulder sits INSIDE the shell (body radius at y 4.2 is 10.4 against
     // a shoulderX of 9.9), so the joint is never a ball floating on the skin.
-    shoulderY:4.2, shoulderX:9.9, upperLen:4.6, foreLen:4.6,
-    armR:2.95, elbowR:2.60, armTipR:2.35,
-    // 6.7 across, 19% of height -- the reference's hand is 17% and its depth
-    // 21%, so a mitt this size is in the same family without being the shape.
-    mittR:3.35,
+    // v26: high on the shoulder and short, so the arm reads as something the
+    // body grew rather than something bolted to it. The shoulder is still
+    // inside the shell (the bean is 9.8 wide at y 6.5 against a shoulderX of
+    // 8.4), and the radii hold nearly level down the arm for the same reason
+    // the leg's do.
+    // v26b: the arm now tapers continuously -- 3.05 at the shoulder down to
+    // 2.15 at the wrist -- instead of running at one radius and stopping. A
+    // tube that never changes width is what read as bolted on.
+    shoulderY:3.5, shoulderX:9.60, upperLen:6.7, foreLen:6.3,
+    armR:3.15, elbowR:2.25, armTipR:1.85,
+    // v26c: THE SHOULDER STANDS FURTHER OUT, AND THE REST FLARE GIVES BACK
+    // EXACTLY WHAT THAT COSTS.
+    //
+    // The bean is 9.06 wide at the shoulder and 10.2 at the belly, so it gets
+    // WIDER underneath the joint the arm hangs from. The arm's only source of
+    // outward travel was flare(), and during the run flare() asks for 0.18 --
+    // which buys 0.179 of radius per unit of arm against roughly 0.13 of bean,
+    // starting from a shoulder 0.65 INSIDE the shell. The centreline therefore
+    // never got out: it ran parallel to the skin, just under it, the whole way
+    // down. That is why the arm read as a blister on the torso rather than as
+    // an arm, and why it was worst on whichever side had the elbow closed -- a
+    // bent forearm travels outward by only cos(elbow) of what a straight one
+    // does, and at the run's -0.85 that is two thirds.
+    //
+    // 8.4 -> 9.2 moves every point of the arm out by 0.8 in EVERY pose,
+    // which a rotation cannot do: a lean is applied about z, so on a pose that
+    // has already thrown the arm forward -- the dive -- it tilts the arm INWARD
+    // instead and trades one pose's problem for another's. A translation has no
+    // orientation to get wrong.
+    //
+    // That 0.8 is paid for at rest, and only at rest: armZ drops from 0.30
+    // to 0.1924, which is the flare that puts the wrist back on the exact x it
+    // was approved at (shoulderX + sin(z)*(upperLen + foreLen*cos(elbowX))).
+    // Animated poses set their own flare and never read armZ, so they keep the
+    // whole 0.8. No pose angle, no timing, and no line of 12_charanim.js is
+    // touched.
+    // v26b: smaller and flatter. A big sphere on the end is a ball, not a mitt.
+    mittR:2.10,
 
     // ---- suit. Three landmarks down the front, which is what lets a later
     // skin repaint panels instead of repainting one smooth egg.
     // The pinch at 2.4 sits directly under the head bulge, so it reads as a
     // COLLAR, not a waist -- the belt belongs lower, on the actual hips.
+    // v26: no collar, no belt, no emblem. A seam across the middle is exactly
+    // the segmentation this pass exists to remove, and detail is not a fix for
+    // a shape. They are kept as zero so anything reading the names still
+    // reads, and drawn only when plainBody is off.
     collarY:2.4, collarR:0.50, beltY:-4.0, beltR:0.62,
     emblemY:-0.5, emblemProud:0.30, emblemHalfW:2.7, emblemHalfH:2.3,
-    hatScale:0.98
+    plainBody:true,
+    hatScale:0.98,
+    // v26 approval pass: judge the silhouette first. No mouth, no brows, no
+    // cheeks -- see the note on the mouth below.
+    neutralFace:true
   };
   RIG.waistY = (RIG.topY + RIG.bottomY)/2;
 
@@ -2726,12 +2783,44 @@ const QUALITY = {
   // 9.5 (was 10.8), then a shoulder shelf at 11.1, then the head at 12.0. Four
   // distinct widths up the figure instead of two, which is what gives the
   // silhouette something to read at gameplay distance where detail is gone.
-  const BEAN_PROFILE = [
-    [0.0, -8.4], [3.4, -8.2], [6.2, -7.4], [8.4, -5.6], [ 9.8, -3.0],
-    [10.5, -0.8], [ 9.5,  2.4],
-    [11.1,  5.4], [12.0,  8.8], [11.8, 11.8],
-    [10.8, 14.4], [ 8.8, 16.6], [5.4, 18.0], [0.0, 18.6]
-  ];
+  // v26. One shape, bottom to top: a softly rounded base, a long broad middle
+  // that holds its full width from -2 to +2, and a smooth narrowing to the
+  // crown. There is no waist pinch and no shoulder shelf any more -- v25 put
+  // four distinct widths up the figure "to give the silhouette something to
+  // read", and what that actually read as was segments. A bean has one width
+  // that swells and falls away.
+  // v26b. The v26 profile held its full width from -2 to +2, and two parallel
+  // side walls over four units is what made the middle read as a capsule. The
+  // widest line drops to the belly at -2.6 and the shape narrows continuously
+  // from there to the crown, so no two rows up the figure share a width.
+  // v27: GENERATED, not typed. See the note above: one smooth curve fitted to
+  // the reference's measured width envelope, sampled densely and cosine-spaced
+  // so the crown and the base get the points their curvature needs.
+  const BEAN_MAXR = 10.5;            // widest half-width, at BEAN_WIDE_AT
+  const BEAN_WIDE_AT = 0.360;        // fraction of body height, from the base
+  const BEAN_BOXY = 2.9;             // higher = flatter flanks, less egg
+  const BEAN_FALL = 2.55;            // higher = the ends round off later
+  const BEAN_FALL_TOP = 3.00;        // crown only, blended in above BEAN_TOP_FROM
+  const BEAN_TOP_FROM = 0.72, BEAN_TOP_TO = 0.97;
+  const BEAN_PROFILE = (()=>{
+    const y0 = -14.6, y1 = 18.6, N = 76;
+    const a = Math.log(0.5)/Math.log(BEAN_WIDE_AT);
+    const r = (t)=>{
+      if(t <= 0 || t >= 1) return 0;
+      const u = Math.pow(t, a);
+      const core = 1 - Math.pow(Math.abs(2*u - 1), BEAN_BOXY);
+      const lo = Math.pow(core, 1/BEAN_FALL), hi = Math.pow(core, 1/BEAN_FALL_TOP);
+      const e = Math.max(0, Math.min(1, (t - BEAN_TOP_FROM)/(BEAN_TOP_TO - BEAN_TOP_FROM)));
+      const w = e*e*(3 - 2*e);                      // smoothstep, 0 below BEAN_TOP_FROM
+      return BEAN_MAXR * (lo*(1 - w) + hi*w);
+    };
+    const out = [];
+    for(let i=0;i<N;i++){
+      const t = 0.5 - 0.5*Math.cos(Math.PI*i/(N-1));   // cosine spacing
+      out.push([ +r(t).toFixed(4), +(y0 + t*(y1-y0)).toFixed(4) ]);
+    }
+    return out;
+  })();
   // The head's radius at a height, straight off the profile the lathe is built
   // from. The face reads this rather than carrying its own copy of 12.4, so a
   // head that changes shape takes its face with it instead of swallowing it --
@@ -2763,10 +2852,67 @@ const QUALITY = {
   // segment every degree and a half, on a part that is a few dozen pixels wide
   // in play. These are the lowest counts that still read smooth at the lobby
   // camera, which is the closest the player ever gets to the model.
+  // v26: an OVAL panel, not a rectangle.
+  //
+  // A sphere patch is rectangular in angle, and at the size this face wants to
+  // be that rectangle is the first thing you see -- four hard corners and a
+  // border, a sticker on a bean. Mapping the patch's square (u,v) domain onto a
+  // disc bends the boundary into an ellipse and leaves the middle almost
+  // untouched, so the plate still lies on the head's curve and now ends in a
+  // soft edge. 28x20 segments because the outline is the silhouette here.
+  // The face panel, built as a DISC rather than as a rectangular sphere patch.
+  //
+  // Two earlier tries got the outline wrong. A sphere patch is rectangular in
+  // angle, and at this size that rectangle is the first thing you see. Bending
+  // that patch's square domain onto a circle fixes the corners but not the
+  // edge: the mapping is not monotonic, so interior rows of the grid bulge past
+  // the boundary row and the silhouette becomes the highest of several rows --
+  // a scalloped edge, which is exactly what it looked like.
+  //
+  // A radial fan has one boundary ring by construction, so the outline is a
+  // single ellipse and nothing can poke through it.
+  //
+  // The vertices are then pushed out to the BEAN's radius at their own height,
+  // not to a sphere's. The body is a lathe that is still widening below the
+  // face, so a sphere centred at face height sinks inside the shell lower down
+  // and the body comes through the plate. Following the profile keeps the whole
+  // panel on the surface it is meant to be lying on.
   function faceCapGeometry(radius, grow){
     const dphi = FACE_DPHI*(grow||1), dth = FACE_DTHETA*(grow||1);
-    return new THREE.SphereGeometry(radius, 16, 12,
-      Math.PI/2 - dphi, dphi*2, Math.PI/2 - dth, dth*2);
+    const RINGS = 14, SEG = 40;
+    const proud = (radius - FACE_R3) + RIG.facePROUD;
+    const pos = [], idx = [];
+    const put = (u, w)=>{
+      const p2 = u*dphi, t2 = w*dth;
+      const y = FACE_R3*Math.sin(t2);
+      const rad = beanRadiusAt(RIG.faceY + y) + proud;
+      pos.push(rad*Math.sin(p2), y, rad*Math.cos(p2));
+    };
+    put(0, 0);                                     // centre
+    for(let j=1;j<=RINGS;j++){
+      const rr = j/RINGS;
+      for(let k=0;k<SEG;k++){
+        const a = k/SEG*Math.PI*2;
+        put(rr*Math.cos(a), rr*Math.sin(a));
+      }
+    }
+    const ringStart = (j)=> 1 + (j-1)*SEG;
+    for(let k=0;k<SEG;k++){                        // centre fan
+      idx.push(0, ringStart(1)+k, ringStart(1)+((k+1)%SEG));
+    }
+    for(let j=1;j<RINGS;j++){
+      const a0 = ringStart(j), b0 = ringStart(j+1);
+      for(let k=0;k<SEG;k++){
+        const k2 = (k+1)%SEG;
+        idx.push(a0+k, b0+k, b0+k2);
+        idx.push(a0+k, b0+k2, a0+k2);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
   }
   // Where a feature at height `dy` above the cap's centre sits ON the cap, and
   // how far to pitch it so it lies flat against the curve there. One helper, so
@@ -2796,7 +2942,7 @@ const QUALITY = {
   let _beanGeo=null, _beanOutGeo=null;
   function beanGeometry(){
     if(!_beanGeo){
-      _beanGeo = new THREE.LatheGeometry(BEAN_PROFILE.map(p=>new THREE.Vector2(p[0],p[1])), 28);
+      _beanGeo = new THREE.LatheGeometry(BEAN_PROFILE.map(p=>new THREE.Vector2(p[0],p[1])), 48);
       // Baked ambient occlusion, as a vertex colour: the crease where the legs
       // meet the body and the hollow under each shoulder go a shade darker.
       const pos = _beanGeo.attributes.position, n = pos.count, col = new Float32Array(n*3);
@@ -2872,7 +3018,15 @@ const QUALITY = {
       for(let i=0;i<n;i++){
         if(p.colorAt) p.colorAt(c, g, i); else c.copy(p.color);
         col[(v+i)*3] = c.r; col[(v+i)*3+1] = c.g; col[(v+i)*3+2] = c.b;
-        si[(v+i)*4] = p.bone; sw[(v+i)*4] = 1;
+      }
+      // Most parts belong to exactly one bone. A part may instead arrive with
+      // its own per-vertex weights -- the arm does, because it is one surface
+      // that has to bend at two joints without showing where they are.
+      if(p.weights){
+        si.set(p.weights.si, v*4);
+        sw.set(p.weights.sw, v*4);
+      } else {
+        for(let i=0;i<n;i++){ si[(v+i)*4] = p.bone; sw[(v+i)*4] = 1; }
       }
       const gi = g.index.array;
       for(let i=0;i<gi.length;i++) idx[k+i] = gi[i] + v;
@@ -2893,8 +3047,74 @@ const QUALITY = {
 
   // A stubby capsule. No ball at the shoulder end — the joint sits inside the
   // body, and an extra sphere there just bulges through the surface.
+  // 16 sides, not 8. At gameplay distance an 8-sided limb shows its facets on
+  // the silhouette edge, which is the opposite of moulded vinyl.
+  // ONE ARM, ONE SURFACE.
+  //
+  // The arm used to be four primitives stacked end to end -- a shoulder ball,
+  // an upper cylinder, an elbow ball, a forearm cylinder. Each one is a
+  // separate shell with its own rim and its own hard normals, so however well
+  // their radii matched, the silhouette stepped at every join and the shading
+  // banded across them. No amount of taper fixes that; the seams are real.
+  //
+  // This lathes a single profile down the whole arm instead: a dome that starts
+  // inside the bean at the shoulder, a continuous taper through the elbow to
+  // the wrist, and a rounded end. One shell, one set of smooth normals, no rim
+  // anywhere. It bends because it is skinned across the three arm bones rather
+  // than parented to one -- weights fall off linearly from shoulder to elbow to
+  // wrist, which is what lets the surface fold instead of hinge.
+  //
+  // Authored in the SHOULDER bone's local space: down the arm is -Y, and the
+  // elbow and wrist bones sit at -upperLen and -(upperLen+foreLen) along it.
+  function armGeometry(RIG, boneArm, boneElbow, boneHand){
+    const L = RIG.upperLen + RIG.foreLen, tE = RIG.upperLen / L;
+    const ss = (a,b,x)=>{ const t = Math.max(0, Math.min(1, (x-a)/(b-a))); return t*t*(3-2*t); };
+    // radius down the arm: armR at the shoulder, elbowR at the elbow, armTipR
+    // at the wrist, blended smoothly so no station reads as an edge.
+    const R = (t)=> t <= tE
+      ? RIG.armR + (RIG.elbowR - RIG.armR) * ss(0, tE, t)
+      : RIG.elbowR + (RIG.armTipR - RIG.elbowR) * ss(tE, 1, t);
+    const prof = [];                                   // [y, r] crown to tip
+    const DOME = 6, SHAFT = 26, TIP = 7;
+    for(let i=0;i<=DOME;i++){                          // dome, buried in the bean
+      const a = (i/DOME)*Math.PI/2;
+      prof.push([ Math.cos(a)*RIG.armR*0.85, Math.sin(a)*RIG.armR ]);
+    }
+    for(let i=1;i<=SHAFT;i++){ const t=i/SHAFT; prof.push([ -t*L, R(t) ]); }
+    for(let i=1;i<=TIP;i++){                           // rounded end at the wrist
+      const a = (i/TIP)*Math.PI/2;
+      prof.push([ -L - Math.sin(a)*RIG.armTipR*0.85, Math.cos(a)*RIG.armTipR ]);
+    }
+    const SEG = 20, pos = [], idx = [], si = [], sw = [];
+    for(const [y, r] of prof){
+      const d = Math.max(0, -y);                       // distance down the arm
+      const wA = Math.max(0, Math.min(1, 1 - d/RIG.upperLen));
+      const wH = Math.max(0, Math.min(1, (d - RIG.upperLen)/RIG.foreLen));
+      const wE = Math.max(0, 1 - wA - wH);
+      for(let k=0;k<SEG;k++){
+        const a = k/SEG*Math.PI*2;
+        pos.push(Math.cos(a)*r, y, Math.sin(a)*r);
+        si.push(boneArm, boneElbow, boneHand, 0);
+        sw.push(wA, wE, wH, 0);
+      }
+    }
+    for(let j=0;j<prof.length-1;j++){
+      const a0 = j*SEG, b0 = (j+1)*SEG;
+      for(let k=0;k<SEG;k++){
+        const k2 = (k+1)%SEG;
+        idx.push(a0+k, b0+k2, b0+k);
+        idx.push(a0+k, a0+k2, b0+k2);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return { geo:g, weights:{ si:new Uint16Array(si), sw:new Float32Array(sw) } };
+  }
+
   function limbGeometry(r, len, rTip){
-    const g = new THREE.CylinderGeometry(r, rTip||r*0.94, len, 8);
+    const g = new THREE.CylinderGeometry(r, rTip||r*0.94, len, 16);
     g.translate(0, -len/2, 0);
     return g;
   }
@@ -2935,13 +3155,16 @@ const QUALITY = {
     const faceGroup = bone(BONE.face, BONE.head, 0, RIG.faceY, 0);
 
     const FS = RIG.faceR/7.0;                       // everything on the face scales with it
-    const eyeX = RIG.faceR*0.45;
+    // v26: the eyes came in at 0.45 of a faceR that was 6.4. At 7.2 that put
+    // them through the panel's edge. Narrower spacing on a bigger plate is what
+    // leaves the margin a face needs to read as a face.
+    const eyeX = RIG.faceR*0.30;
     const eyes = opts.eyes||'round';
     // EYES JUST ABOVE THE PLATE'S CENTRE, MOUTH BELOW IT. Every one of these
     // sits ON the cap: `faceOn` gives the z that puts a feature on the curve at
     // that height, so nothing is left floating in front of the middle of the
     // face or sunk into its edge.
-    const EYE_DY = 1.35*FS, MOUTH_DY = -2.45*FS;
+    const EYE_DY = 0.55*FS, MOUTH_DY = -2.45*FS;
     const eyeAt = faceOn(EYE_DY, eyeX);
     const scleras = [ bone(BONE.scleraL, BONE.face, -eyeX, EYE_DY, eyeAt.z-0.25),
                       bone(BONE.scleraR, BONE.face,  eyeX, EYE_DY, eyeAt.z-0.25) ];
@@ -3018,10 +3241,14 @@ const QUALITY = {
     const feet = [];
     [[BONE.legL,BONE.kneeL,BONE.footL,-1],[BONE.legR,BONE.kneeR,BONE.footR,1]]
     .forEach(([li,ki,fi,s])=>{
+      // The joint balls are still here and still close a bent limb, but they
+      // are now the SAME radius as the segments either side of them, so they
+      // read as the limb continuing rather than as a knuckle in it. That is
+      // the whole difference between a rig you can see and a rig you cannot.
       at(li, limbGeometry(RIG.legR, RIG.thighLen, RIG.kneeR), limbCol);
-      at(ki, new THREE.SphereGeometry(RIG.kneeR, 8, 6), limbCol);
+      at(ki, new THREE.SphereGeometry(RIG.kneeR, 14, 10), limbCol);
       at(ki, limbGeometry(RIG.kneeR, RIG.shinLen, RIG.ankleR), limbCol);
-      at(fi, new THREE.SphereGeometry(RIG.ankleR, 6, 5), limbCol);
+      at(fi, new THREE.SphereGeometry(RIG.ankleR, 12, 9), limbCol);
       const footGeo = new THREE.SphereGeometry(RIG.footR, 10, 7);
       const footLocal = xf(0, RIG.footDY, RIG.footDZ,
                            RIG.footScale[0], RIG.footScale[1], RIG.footScale[2], 0, s*0.10);
@@ -3034,33 +3261,37 @@ const QUALITY = {
       probe.applyMatrix4(footLocal); probe.visible = false;
       bones[fi].add(probe); feet.push(probe);
       at(fi, footGeo, shoeCol, footLocal);
-      // the sole: a thinner, wider slab under the shoe, in the cuff shade
-      at(fi, new THREE.SphereGeometry(RIG.footR, 10, 5), cuffCol,
-         xf(0, RIG.footDY - RIG.footR*0.50, RIG.footDZ,
-            RIG.footScale[0]*1.02, RIG.footScale[1]*0.34, RIG.footScale[2]*1.00, 0, s*0.10));
+      // v26: no sole slab. A second shade under the foot is a seam, and the
+      // foot is small enough now that it only broke the silhouette up.
     });
 
     // ---- arms: shoulder, elbow, forearm, mitt.
     const hands = [];
     [[BONE.armL,BONE.elbowL,BONE.handL,-1],[BONE.armR,BONE.elbowR,BONE.handR,1]]
     .forEach(([ai,ei,hi,s])=>{
-      at(ai, limbGeometry(RIG.armR, RIG.upperLen, RIG.elbowR), limbCol);
-      at(ei, new THREE.SphereGeometry(RIG.elbowR, 8, 6), limbCol);
-      at(ei, limbGeometry(RIG.elbowR, RIG.foreLen, RIG.armTipR), limbCol);
-      // the cuff: a band where the sleeve ends and the mitt begins, so the hand
-      // reads as worn rather than as a ball stuck on a stick
-      at(hi, new THREE.SphereGeometry(RIG.armTipR*1.20, 8, 5), cuffCol,
-         xf(0, RIG.mittR*0.62, 0, 1, 0.55, 1));
-      const handGeo = new THREE.SphereGeometry(RIG.mittR, 9, 7);
-      const handLocal = xf(0, 0, 0.25, 1, 1.15, 0.90);
+      // One swept surface from shoulder to wrist, skinned across all three arm
+      // bones. Nothing else goes on the arm -- no ball, no ring, no cuff.
+      {
+        const A = armGeometry(RIG, ai, ei, hi);
+        A.geo.applyMatrix4(bones[ai].matrixWorld);
+        parts.push({ geo:A.geo, bone:ai, color:limbCol, weights:A.weights });
+      }
+      // v26: no cuff. A band in a second shade at the wrist is precisely the
+      // "separate-looking connector" this pass is removing; the mitt meets the
+      // forearm at almost the same radius and needs nothing to explain it.
+      const handGeo = new THREE.SphereGeometry(RIG.mittR, 14, 10);
+      // hung BELOW the wrist, not centred on it, so the mitt reads as a hand
+      // on the end of an arm and reaches the hem the way the reference's does
+      const handLocal = xf(0, -2.1, 0.20, 1.05, 1.50, 0.72);
       const probe = new THREE.Mesh(handGeo.clone(), limbMat);
       probe.applyMatrix4(handLocal); probe.visible = false;
       bones[hi].add(probe); hands.push(probe);
       at(hi, handGeo, limbCol, handLocal);
-      // The thumb. One small ball on the inboard face is the whole difference
-      // between a mitten and a bean bag, and it gives the hand a front.
-      at(hi, new THREE.SphereGeometry(RIG.mittR*0.42, 6, 5), limbCol,
-         xf(-s*RIG.mittR*0.80, RIG.mittR*0.22, RIG.mittR*0.34, 1, 1.25, 1));
+      // The thumb stays, because without it a mitten is a bean bag and the hand
+      // loses its front -- but it is smaller and set further into the palm than
+      // v25's, so it is a swelling rather than a part.
+      at(hi, new THREE.SphereGeometry(RIG.mittR*0.30, 10, 8), limbCol,
+         xf(-s*RIG.mittR*0.62, -2.1 + RIG.mittR*0.14, RIG.mittR*0.26, 1, 1.15, 0.85));
     });
 
     // ---- the suit: a collar, a belt, and our own mark on the chest.
@@ -3073,13 +3304,16 @@ const QUALITY = {
       g.translate(0, y, 0);
       at(BONE.body, g, col);
     };
-    ring(RIG.collarY, RIG.collarR, cuffCol);      // under the head, in the pinch
-    ring(RIG.beltY,   RIG.beltR,   shoeCol);      // on the hips
+    if(!RIG.plainBody){
+      ring(RIG.collarY, RIG.collarR, cuffCol);    // under the head, in the pinch
+      ring(RIG.beltY,   RIG.beltR,   shoeCol);    // on the hips
+    }
 
     // THE MARK. Two chevrons leaning into the run, on a rounded badge: it is a
     // speed mark, it is ours, and it is four boxes and a cap. Deliberately not
     // a face-like shape, a letter, or anything borrowed -- the brief asks for a
     // Scramble Rush emblem and this is the cheapest thing that is one.
+    if(!RIG.plainBody){
     const EM_R = beanRadiusAt(RIG.emblemY) + RIG.emblemProud;
     const badge = capGeometry(EM_R, RIG.emblemHalfW, RIG.emblemHalfH, 12, 9);
     badge.translate(0, RIG.emblemY, 0);
@@ -3097,6 +3331,7 @@ const QUALITY = {
     };
     chevron( 0.62, 2.5, 0.58, WHITE);
     chevron(-0.72, 2.5, 0.58, WHITE);
+    }
 
     // ---- face. A wide oval on the upper third of the body, curved like the
     //      body so it sits on the surface rather than cutting a flat dish.
@@ -3107,27 +3342,39 @@ const QUALITY = {
     // angle, so it shows as a thin outline round the plate and closes the seam
     // at a grazing angle. It cannot float, because it is concentric with the
     // plate rather than pushed back along z.
-    at(BONE.face, faceCapGeometry(FACE_R3 - 0.10, 1.075), RIM);
+    // v26: no rim cap. Two concentric caps that have both been bent from a
+    // square onto a disc do not end on the same curve, and what showed was a
+    // scalloped edge along the bottom of the plate. A clean oval needs no
+    // outline drawn round it.
+    if(!RIG.neutralFace) at(BONE.face, faceCapGeometry(FACE_R3 - 0.10, 1.075), RIM);
     const plateGeo = faceCapGeometry(FACE_R3, 1);
     const facePlate = probeOf(BONE.face, plateGeo);
     at(BONE.face, plateGeo, WHITE);
 
     // ---- eyes: two dots on the plate, shaped by the chosen expression
+    // v26: smaller and rounder. A tall 1.55 oval on a 9.6-high panel filled it
+    // corner to corner and read as two slabs; a round dot with margin round it
+    // is what makes a face legible at tile size.
     const dotScale = eyes==='happy'  ? [1.30, 0.50, 0.45]
                    : eyes==='sleepy' ? [1.40, 0.26, 0.45]
-                   :                   [1.00, 1.55, 0.45];
+                   :                   [1.00, 1.10, 0.16];
     [[BONE.scleraL, BONE.pupilL, -1],[BONE.scleraR, BONE.pupilR, 1]].forEach(([sb,pb,s],i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
-      at(sb, new THREE.SphereGeometry(2.5*FS, 8, 6), WHITE, xf(0,0,0, 1,1,0.3));
+      // v26b: the eyes were spheres standing off the plate, and at this size
+      // that is all you saw. Flattened to 0.14 of their depth they sit in the
+      // panel instead of in front of it.
+      at(sb, new THREE.SphereGeometry(0.82*FS, 14, 10), WHITE, xf(0,0,0, 1,1,0.11));
       // A little bigger than v22's 2.0: at tile size the old dot read as a
       // pinprick, and the highlight below needs something to sit on.
-      at(pb, new THREE.SphereGeometry(2.25*FS, 10, 8), DARK,
+      at(pb, new THREE.SphereGeometry(0.66*FS, 14, 11), DARK,
          xf(0,0,0, dotScale[0], dotScale[1], dotScale[2]));
       // OUR OWN EYE, not a copy of anyone's: one small catchlight, top-left on
       // both eyes because a single light source does not mirror itself. On the
       // pupil bone, so it tracks the locker's look-at instead of sliding off.
-      at(pb, new THREE.SphereGeometry(2.25*FS*0.35, 6, 5), WHITE,
-         xf(-0.62*FS, 0.62*FS, 1.05*FS));
+      // v26b: flattened and pulled back to match. The pupil is 0.16 deep now,
+      // so a full-depth catchlight sat proud of it as a separate white bead.
+      at(pb, new THREE.SphereGeometry(0.66*FS*0.20, 8, 6), WHITE,
+         xf(-0.22*FS, 0.22*FS, 0.12*FS, 1, 1, 0.4));
       if(eyes==='angry'){
         const browAt = faceOn(2.9*FS, s*eyeX);
         at(BONE.face, new THREE.BoxGeometry(3.4*FS, 1.0*FS, 0.7), DARK,
@@ -3159,7 +3406,10 @@ const QUALITY = {
         .multiply(new THREE.Matrix4().makeRotationZ(-MOUTH.arc/2 + Math.PI/2));
       const mouthGeo = new THREE.TorusGeometry(MOUTH.r, MOUTH.tube, 6, 14, MOUTH.arc);
       const mouth = probeOf(BONE.face, mouthGeo, mm);
-      at(BONE.face, mouthGeo, DARK, mm);
+      // v26 approval pass: the shape is what is being judged, so the face is
+      // neutral -- no mouth. The probe stays so anything measuring a mouth
+      // still has one to measure; only the drawn geometry goes.
+      if(!RIG.neutralFace) at(BONE.face, mouthGeo, DARK, mm);
       mouthProbe = mouth;
     }
 
@@ -3167,7 +3417,7 @@ const QUALITY = {
     //      the plate so it reads as a blush rather than a sticker. There is no
     //      opacity to spend -- one opaque merged mesh -- so the 60% is mixed
     //      into the vertex colour instead.
-    {
+    if(!RIG.neutralFace) {
       const cheekCol = WHITE.clone().lerp(limbCol.clone().multiplyScalar(0.82), 0.60);
       for(const s of [-1, 1]){
         const cAt = faceOn(MOUTH_DY + 0.55*FS, s*3.55*FS, 0.06);
@@ -3273,7 +3523,10 @@ const QUALITY = {
     // Stated ONCE, here, because neutral() below has to be able to put the
     // character back into exactly this pose. Two copies of these numbers is how
     // one rest pose quietly becomes two different rest poses.
-    const REST = { armZ:0.30, elbowX:-0.26, kneeX:0.13, hipX:0, ankleX:0 };
+    // armZ was 0.30 against a shoulderX of 8.4. The shoulder now stands 0.8
+    // further out, so the same wrist needs less flare to reach: 0.1924 is the
+    // angle that lands the mitt on the x it was approved at. See shoulderX.
+    const REST = { armZ:0.34, elbowX:-0.26, kneeX:0.13, hipX:0, ankleX:0 };
 
     // Put the character in its documented rest pose and clear every transform
     // that belongs to the ANIMATION rather than to the model: the breath, the
@@ -3295,7 +3548,12 @@ const QUALITY = {
         legPivots[i].rotation.set(REST.hipX, 0, -s*REST.armZ*0.35);
         kneePivots[i].rotation.set(REST.kneeX, 0, 0);
         footPivots[i].rotation.set(REST.ankleX, 0, 0);
-        armPivots[i].rotation.set(0, 0, -s*REST.armZ);
+        // s is -1 on the LEFT, and the left arm's outward lean is NEGATIVE z --
+        // the same convention the rig's own rest pose below and the animation's
+        // flare() helper both use. This read `-s*REST.armZ`, which flared both
+        // arms INWARD, so neutral() was quietly posing a different character
+        // from the one every approval render was shot in.
+        armPivots[i].rotation.set(0, 0, s*REST.armZ);
         elbowPivots[i].rotation.set(REST.elbowX, 0, 0);
         handPivots[i].rotation.set(0, 0, 0);
         pupils[i].scale.set(1, 1, 1); scleras[i].scale.set(1, 1, 1);
