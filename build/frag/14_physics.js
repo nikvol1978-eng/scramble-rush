@@ -43,11 +43,15 @@
 
       // ---- past the line: you can mill about the finish area, but not leave it
       if(r.finished){
-        if(r.isPlayer){
+        // Once the spectator screen is up the arrows belong to it, and the
+        // player's own bean is not on camera anyway -- reading movement here as
+        // well would have one key press both switch who you are watching and
+        // shove a bean you cannot see around the finish pen.
+        if(r.isPlayer && !spectating()){
           const {ix,iy}=computeInputVec();
           const mag=Math.hypot(ix,iy);
           if(mag>0.05){ r.facing=Math.atan2(iy,ix); r.vx+=ix/mag*0.55*f; r.vy+=iy/mag*0.55*f; }
-        } else {
+        } else if(!r.isPlayer) {
           r.celebT=(r.celebT||0)-dt;
           if(r.celebT<=0){ r.celebT=rand(0.9,2.2);
             r.celebX=rand(70,TRACK_W-70); r.celebY=trackLength+rand(60,FINISH_ZONE-50); }

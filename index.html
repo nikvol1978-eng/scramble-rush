@@ -380,12 +380,21 @@
   }
 
   /* ============ SPECTATOR ============ */
+  /* UPPER LEFT, not bottom centre.
+     It sat at `bottom:22px` centred, which was the right place for a camera
+     that put the racer in the middle of the frame. The chase camera now aims
+     above what it orbits, so the subject sits LOW and centre -- exactly where
+     this panel was, and the racer being watched ended up behind it.
+     Up here it clears the racer, the ground around them and the hazards ahead,
+     which all live in the middle and lower thirds. It sits below #hud (the
+     badge row plus the progress bar end around y=90) and left of #eventBanner,
+     which is centred, so it overlaps neither. */
   #specBar{
-    position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:40;
-    display:flex;flex-direction:column;align-items:center;gap:8px;
+    position:absolute;left:16px;top:98px;z-index:40;
+    display:flex;flex-direction:column;align-items:flex-start;gap:8px;
     background:rgba(21,12,46,0.88);border:4px solid var(--line);border-radius:18px;
     box-shadow:0 6px 0 var(--line);padding:10px 18px;pointer-events:auto;
-    animation:coinIn .3s ease both;max-width:94vw;
+    animation:coinIn .3s ease both;max-width:min(380px,44vw);
   }
   .specTop{font-weight:700;font-size:0.72rem;letter-spacing:1.4px;color:var(--red);}
   .specRow{display:flex;align-items:center;gap:10px;}
@@ -400,7 +409,17 @@
   }
   .specArrow:active{transform:translateY(3px);box-shadow:0 0 0 var(--line);}
   .specLeft{font-weight:600;font-size:0.8rem;color:var(--track);margin-right:4px;}
-  @media (max-width:640px){ .specName{min-width:100px;font-size:0.9rem;} }
+  /* The control hint. Quiet on purpose: it is a reminder for the first
+     round you spend out, not a label to read every time. */
+  .specHint{font-weight:600;font-size:0.68rem;letter-spacing:0.3px;color:var(--track);opacity:0.72;}
+  /* On a phone 44vw is too narrow to hold the name and both arrows, and there
+     is no room beside the panel worth protecting anyway -- so it goes back to
+     full width, still up top and still clear of the racer. */
+  @media (max-width:640px){
+    .specName{min-width:100px;font-size:0.9rem;}
+    #specBar{left:8px;right:8px;top:92px;max-width:none;align-items:center;}
+    .specHint{font-size:0.62rem;}
+  }
 
   /* ============ MAP EVENTS ============ */
   #eventBanner{
@@ -920,11 +939,14 @@
 </div>
 
 <div id="specBar" class="hidden">
-  <div class="specTop">YOU'RE OUT — SPECTATING</div>
+  <div class="specTop" id="specTop">YOU'RE OUT — SPECTATING</div>
   <div class="specRow">
     <button class="specArrow" id="specPrev" aria-label="Previous player">&#9664;</button>
     <span class="specName" id="specName">—</span>
     <button class="specArrow" id="specNext" aria-label="Next player">&#9654;</button>
+  </div>
+  <div class="specRow">
+    <span class="specHint" id="specHint">&#9664; &#9654; or Q / E to switch &middot; drag to look around</span>
   </div>
   <div class="specRow">
     <span class="specLeft" id="specLeft"></span>
@@ -1372,9 +1394,18 @@ const QUALITY = {
     keys:{ forward:'w', back:'s', left:'a', right:'d', jump:' ', dive:'shift' },
     camDist:1.0, botCount:23, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
+    padSens:1.0,
     // Free-orbit mouse look is opt-in: the camera should follow you, not be
     // something you have to steer as well.
-    mouseLook:false, autoCentre:true,
+    mouseLook:false,
+    // AUTO-RECENTRE IS OFF BY DEFAULT, and that is a decision rather than an
+    // oversight. It was on at a 0.6s delay, which is short enough that letting
+    // go of the mouse for half a breath swung the view back on its own. With
+    // camera-relative movement now live it is worse than cosmetic: recentring
+    // the yaw also turns the direction W is pushing you, so a hands-off moment
+    // curves your run. It stays available for anyone who wants the camera to
+    // tidy itself up, at a delay and a rate that no longer fight the hand.
+    autoCentre:false,
     // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
     // skips the composer altogether. Medium is the default because it is the
     // one that holds a frame budget: the occlusion pass on High costs a second
@@ -1383,6 +1414,99 @@ const QUALITY = {
     quality:'medium'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+
+  // ============================================================
+  // CAMERA — every tuning number the chase/orbit camera has
+  // ============================================================
+  // It lives HERE rather than beside syncCamera because the PerspectiveCamera
+  // is constructed further up the file than the camera fragment lands, and a
+  // field of view written in two places is a field of view that will one day
+  // disagree with itself. One object, read by the construction and by every
+  // frame after it.
+  //
+  // Units are the simulation's, where the bean's RADIUS is 17 and the lane is
+  // 520 across. Angles are radians; each comment gives the degrees, because a
+  // reviewer checks degrees and the code needs radians.
+  const CAM = {
+    // ---- framing -------------------------------------------------------
+    // Boom length and the angle it sits above horizontal. v24 ran 205 back by
+    // 155 up: a boom of 257 at 37 degrees, high enough that the course read as
+    // a map of itself rather than as ground you are standing on. The boom keeps
+    // its length; it is the ANGLE that comes down.
+    DIST: 258,
+    // 28.1 deg. CHOSEN BY LOOKING, against a sweep at 18/24/28/32/37 on the same
+    // frame of the same course (docs/camera-review/camera-pitch-*.png).
+    //
+    // The brief that asked for this work suggested 10-25 deg. That is the right
+    // band for a character a couple of units tall; it is the wrong band here,
+    // and the sweep is why. At 18 deg the horizon sits across the middle of the
+    // screen, the ground ahead collapses to a flat wash and you cannot tell a
+    // hammer disc from the floor it is lying on -- unreadable, not cinematic. At
+    // 37 (v24's angle) the course reads well but the frame is a map of itself.
+    // 28 keeps the discs reading as discs, keeps the pack and the ribbon ahead
+    // on screen, and still shows the sides of pillars rather than their lids.
+    PITCH: 0.49,          // 28.1 deg above horizontal — the resting tilt
+    // What the boom orbits: a point above the racer's feet, not the racer's own
+    // transform. Attaching to the transform hands every squash, stumble and
+    // landing bounce straight to the lens.
+    TARGET_H: 26,
+    // What the camera AIMS at, measured up from the orbit point. Aiming above
+    // the thing you orbit is what puts the bean in the lower-middle of the frame
+    // instead of dead centre, and it costs nothing but this number.
+    AIM_RISE: 24,
+    // ...and a little up the course, so the frame shows what is coming rather
+    // than what has been survived.
+    LEAD: 52,
+
+    // ---- the lens ------------------------------------------------------
+    FOV: 72,              // vertical; read by the PerspectiveCamera construction
+
+    // ---- orbit limits --------------------------------------------------
+    // YAW IS NOT CLAMPED AND MUST NOT BE. The camera goes all the way round:
+    // look.yaw may wind past a full turn either way and is only ever reduced
+    // modulo 2pi for display, never for control.
+    PITCH_MIN: 0.10,      // 5.7 deg: flat enough to sight down a long straight
+    PITCH_MAX: 0.92,      // 52.7 deg: steep enough to read a drop, short of top-down
+
+    // ---- sensitivity ---------------------------------------------------
+    MOUSE_YAW: 0.0030, MOUSE_PITCH: 0.0026,
+    DRAG_GAIN: 3.4,       // one short finger/mouse drag should turn the view
+    LOCK_GAIN: 3.0,       // pointer-locked mouse movement
+    WHEEL_GAIN: 1.0,      // a trackpad two-finger swipe sends both axes
+    PAD_YAW: 2.9, PAD_PITCH: 2.0,   // right stick, radians per second at full tilt
+    PAD_DEAD: 0.18,       // stick centres are noisy; below this it is not input
+
+    // ---- smoothing -----------------------------------------------------
+    // Horizontal and vertical are separate on purpose. Horizontal can afford
+    // weight; vertical cannot chase a jump one-for-one without the whole frame
+    // pumping, and cannot lag so far that the landing leaves the screen.
+    FOLLOW_XZ: 14,
+    FOLLOW_Y: 9,          // grounded
+    FOLLOW_Y_AIR: 5.0,    // airborne: softer, so a jump rises THROUGH the frame
+    AIR_BLEND_H: 90,      // height by which the vertical follow has fully relaxed
+
+    // ---- auto-recentre (off by default — see settings.autoCentre) -------
+    RECENTRE_DELAY: 3.2,
+    RECENTRE_RATE: 0.55,
+
+    // ---- obstruction ---------------------------------------------------
+    BLOCK_PAD: 16,        // stop this far short of whatever the boom hits
+    BLOCK_MIN: 58,        // never closer, or the lens is inside the bean
+    BLOCK_IN: 60,         // closing is near-immediate: the wall is in the way NOW
+    BLOCK_OUT: 5,         // opening is slow, or clearing a pillar pops the frame
+
+    // ---- crowd ---------------------------------------------------------
+    CROWD_NEAR: 230,      // sim units counted as "on top of you"
+    CROWD_MAX: 0.12,      // at most 12% further out when the pack is thick
+
+    // ---- spectator hand-overs ------------------------------------------
+    // Switching target moves the pivot the length of the course in one frame.
+    // At the normal follow weight that reads as a whip-pan; for this long the
+    // follow is slackened right off so it reads as a glide instead.
+    SWITCH_BLEND: 0.75,   // seconds
+    SWITCH_FOLLOW: 3.2,   // the follow weight used during it
+  };
+
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
   const HATS = [['none','None'],['crown','Crown'],['party','Party'],['halo','Halo'],['horns','Horns'],['prop','Propeller']];
   const EYES = [['round','Round'],['happy','Happy'],['angry','Angry'],['sleepy','Sleepy']];
@@ -2318,7 +2442,7 @@ const QUALITY = {
     pmrem.dispose();
   }
   scene.fog = new THREE.Fog(0x2a1a5e, 400, 1500);
-  const camera = new THREE.PerspectiveCamera(64, W/H, 0.1, 4000);
+  const camera = new THREE.PerspectiveCamera(CAM.FOV, W/H, 0.1, 4000);
 
   // sky dome
   const skyGeo = new THREE.SphereGeometry(2500, 24, 16);
@@ -4318,10 +4442,24 @@ const QUALITY = {
     ix=-ix; // camera looks down +Z, so screen-right is sim -X
     if(settings.invertX) ix=-ix;
     if(settings.camRelative && typeof look!=='undefined'){
-      // steer relative to where the camera is pointing, so "forward" is always
-      // away from the camera however far you have swung the view round
+      // Steer relative to where the camera is pointing, so "forward" is always
+      // away from the camera however far the view has been swung round.
+      //
+      // THE SIGN. sim +y is the course heading and look.yaw is measured from
+      // it, so the two frames differ by exactly look.yaw and the ribbon's bend
+      // cancels. Forward, (0,1), has to come out as (sin yaw, cos yaw): that is
+      // the sim direction which toWorld maps onto heading base+yaw, which is
+      // where the boom says the lens is looking.
+      //
+      // This used to read `rx = ix*c - iy*s`, which is the rotation the other
+      // way: forward came out as (-sin yaw, cos yaw), correct at yaw 0 and at
+      // yaw pi and a full 180 degrees wrong at either side. It survived because
+      // auto-recentre was on by default at a 0.6s delay, so the camera was
+      // almost always sitting at yaw 0 where the error is zero -- you had to
+      // hold the view off-centre to meet it, and then W ran you at the screen.
+      // Check @ now pins it at five yaws.
       const a=look.yaw, c=Math.cos(a), s=Math.sin(a);
-      const rx = ix*c - iy*s, ry = ix*s + iy*c;
+      const rx = ix*c + iy*s, ry = iy*c - ix*s;
       ix=rx; iy=ry;
     }
     return {ix,iy};
@@ -6407,43 +6545,118 @@ const QUALITY = {
   }
 
   // ============================================================
-  // FREE LOOK — one finger, or one drag of the mouse, or a trackpad swipe
+  // THIRD-PERSON CHASE / ORBIT CAMERA
   // ============================================================
-  const look = { yaw:0, pitch:0, sinceInput:99 };
-  // A fixed frame: back and up, looking slightly down, with the racer in the
-  // middle of it. Nothing here changes on its own except distance.
-  // v24 §2.10: twenty up and fifteen back on v23's framing. A field of
-  // twenty-four needs to be seen, and the extra height is what puts the
-  // pack ahead of you on screen instead of behind the bean's shoulders.
-  const CAM_BACK = 205, CAM_UP = 155, CAM_FOCUS = 20, CAM_LEAD = 60;
+  // The shape of it: a BOOM of fixed length hanging off a PIVOT that floats
+  // above the racer, aimed at a point ABOVE the pivot so the bean sits low in
+  // the frame rather than dead centre. Three separate things, and keeping them
+  // separate is what makes the rest tractable --
+  //
+  //   pivot   where the orbit is centred. Follows the racer with smoothing, and
+  //           deliberately is NOT the racer's transform: bolting the lens to the
+  //           transform hands it every squash, stumble and landing bounce.
+  //   boom    yaw and pitch and length. Yaw is the player's, all the way round.
+  //   aim     what lookAt is given. Above the pivot, and a little up the course.
+  //
+  // Every number lives in CAM (see 01_data.js). Nothing here is a literal a
+  // reviewer would have to go hunting for.
+  //
+  // WHAT THE CAMERA MUST NEVER DO, because each of these was a bug once:
+  //   * turn the racer. Orbiting is looking, not steering.
+  //   * be turned BY the racer. Once the player has moved the view it is theirs
+  //     until they hand it back.
+  //   * clamp yaw. Looking behind you is a thing you are allowed to do.
+  const look = { yaw:0, pitch:CAM.PITCH, sinceInput:99 };
   // One warm key and a cool hemisphere fill. With ACES tone mapping on, the
   // v19 levels (1.0 / 0.9) blew the floor out to white; these keep the floor a
   // mid tone so the saturated hazards have something to be louder than.
   // v21: physical lights, so these are not the r128 numbers. The key does
   // the shaping and the environment map carries what the fill used to fake.
   const KEY_LIGHT = 1.7, FILL_LIGHT = 0.40;
-  const CAM_RECENTRE_DELAY = 0.6;   // hands off this long and the view comes home
   let camZoom = 1, camReach = 0;
+  // Counts down after the spectator changes target (20_spectate.js sets it).
+  // While it is running the pivot follows on a much slacker weight, which turns
+  // a cut across the whole course into a glide.
+  let camSwitchT = 0;
   const _camRay = new THREE.Raycaster();
-  // Yaw is deliberately unbounded: the camera orbits the racer all the way
-  // round. Movement is taken relative to it (see computeInputVec), so holding
-  // forward always runs away from the camera whichever way you have swung it.
-  const LOOK_PITCH_MIN = -0.55, LOOK_PITCH_MAX = 1.05;
+  // Scratch. The camera runs every frame; allocating here would hand the GC a
+  // steady drip for the whole race.
+  const _camFrom = new THREE.Vector3(), _camDir = new THREE.Vector3();
+  const _camBack = new THREE.Vector3();
+  const _camAim  = new THREE.Vector3(), _camPivot = new THREE.Vector3();
+
   function lookActiveState(){ return state==='racing'||state==='countdown'||state==='paused'; }
+
+  // pitch is stored as the ABSOLUTE elevation of the boom above horizontal, not
+  // as an offset from a resting tilt. An offset needs two clamps that have to be
+  // reasoned about together, and the limits in CAM then mean nothing on their
+  // own. This way PITCH_MIN and PITCH_MAX are exactly the angles they say.
   function nudgeLook(dx, dy){
     if(!settings.freeLook || !lookActiveState()) return;
     const s = settings.lookSens;
     const inv = settings.invertLook ? -1 : 1;
-    look.yaw  -= dx*0.0030*s;
-    look.pitch = clamp(look.pitch - dy*0.0026*s*inv, LOOK_PITCH_MIN, LOOK_PITCH_MAX);
+    look.yaw  -= dx*CAM.MOUSE_YAW*s;                         // NOT clamped. Ever.
+    look.pitch = clamp(look.pitch - dy*CAM.MOUSE_PITCH*s*inv, CAM.PITCH_MIN, CAM.PITCH_MAX);
     look.sinceInput = 0;
   }
-  function resetLook(){ look.yaw=0; look.pitch=0; look.sinceInput=99; camZoom=1; camReach=0; }
+  function resetLook(){ look.yaw=0; look.pitch=CAM.PITCH; look.sinceInput=99; camZoom=1; camReach=0; }
+
+  // ---- right stick -------------------------------------------------------
+  // Polled rather than evented, because an axis being HELD produces no events at
+  // all -- it just sits at 0.8 and the view has to keep turning. Scaled by dt so
+  // the turn rate is the same whatever the frame budget.
+  function padLook(dt){
+    if(!settings.freeLook || !lookActiveState()) return;
+    if(!navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let gx=0, gy=0;
+    for(let i=0;i<pads.length;i++){
+      const g = pads[i];
+      if(!g || !g.connected || !g.axes || g.axes.length < 4) continue;
+      // Axes 2 and 3 are the right stick under the Standard Gamepad mapping,
+      // which is what every pad a browser recognises reports. Take the LARGEST
+      // deflection across pads rather than the first, so a second controller
+      // sitting at rest cannot veto the one being held.
+      if(Math.abs(g.axes[2]) > Math.abs(gx)) gx = g.axes[2];
+      if(Math.abs(g.axes[3]) > Math.abs(gy)) gy = g.axes[3];
+    }
+    const dz = CAM.PAD_DEAD;
+    // Squared response past the dead zone: small corrections stay small, and a
+    // stick shoved to the rail still whips round.
+    const curve = (v)=>{ const a=Math.abs(v); if(a<dz) return 0; const t=(a-dz)/(1-dz); return (v<0?-1:1)*t*t; };
+    const rx = curve(gx), ry = curve(gy);
+    if(rx===0 && ry===0) return;
+    const s = settings.lookSens * (settings.padSens||1);
+    const inv = settings.invertLook ? -1 : 1;
+    look.yaw  -= rx*CAM.PAD_YAW*s*dt;                        // still not clamped
+    look.pitch = clamp(look.pitch - ry*CAM.PAD_PITCH*s*inv*dt, CAM.PITCH_MIN, CAM.PITCH_MAX);
+    look.sinceInput = 0;
+  }
+
+  // Shoulder buttons step the spectator target. Edge-detected rather than
+  // level-read: a button that is merely still held is not a second press, and
+  // without this a resting thumb would riffle through the whole field.
+  let padLB = false, padRB = false;
+  function padSpectate(){
+    if(typeof spectating !== 'function' || !spectating()) return;
+    if(!navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let lb=false, rb=false;
+    for(let i=0;i<pads.length;i++){
+      const g = pads[i];
+      if(!g || !g.connected || !g.buttons || g.buttons.length < 6) continue;
+      if(g.buttons[4] && g.buttons[4].pressed) lb = true;   // LB / L1
+      if(g.buttons[5] && g.buttons[5].pressed) rb = true;   // RB / R1
+    }
+    if(lb && !padLB) cycleSpectate(-1);
+    if(rb && !padRB) cycleSpectate(1);
+    padLB = lb; padRB = rb;
+  }
 
   canvas.addEventListener('wheel', e=>{
     if(!settings.freeLook || !lookActiveState()) return;
     e.preventDefault();
-    nudgeLook(e.deltaX, e.deltaY);          // trackpads send both axes
+    nudgeLook(e.deltaX*CAM.WHEEL_GAIN, e.deltaY*CAM.WHEEL_GAIN);   // trackpads send both axes
   }, {passive:false});
 
   // A single pointer down-and-move turns the view: no click-first, no second button.
@@ -6462,13 +6675,14 @@ const QUALITY = {
   });
   canvas.addEventListener('pointermove', e=>{
     if(e.pointerId!==dragId) return;
-    // 3.4 rather than v6's 2.2 — one short drag should be enough to turn the view
-    nudgeLook((e.clientX-dragLast.x)*3.4, (e.clientY-dragLast.y)*3.4);
+    nudgeLook((e.clientX-dragLast.x)*CAM.DRAG_GAIN, (e.clientY-dragLast.y)*CAM.DRAG_GAIN);
     dragLast={x:e.clientX,y:e.clientY};
   });
   // With mouse look on, a click captures the pointer and plain mouse movement
   // orbits the camera -- the way it works on a laptop in Stumble Guys. Esc
-  // releases it (and pauses). Without it, drag-to-look still works.
+  // releases it (and pauses). Without it, drag-to-look still works, and that is
+  // also what touch uses, so pointer lock is never the only way in and the
+  // lobby and the settings pane are never behind it.
   function locked(){ return document.pointerLockElement === canvas; }
   canvas.addEventListener('click', ()=>{
     if(settings.mouseLook && settings.freeLook && state==='racing' && !locked()){
@@ -6477,7 +6691,7 @@ const QUALITY = {
   });
   document.addEventListener('mousemove', e=>{
     if(!locked()) return;
-    nudgeLook(e.movementX*3.0, e.movementY*3.0);
+    nudgeLook(e.movementX*CAM.LOCK_GAIN, e.movementY*CAM.LOCK_GAIN);
   });
   document.addEventListener('pointerlockchange', ()=>{
     if(!locked()) dragId=null;
@@ -6488,12 +6702,40 @@ const QUALITY = {
   canvas.addEventListener('pointercancel', endDrag);
   canvas.addEventListener('contextmenu', e=>{ if(lookActiveState()) e.preventDefault(); });
 
+  // ---- the three pieces, as functions -------------------------------------
+  // Shared, so the opening fly-in can land on EXACTLY where the chase camera
+  // wants to be rather than on a second guess at it that drifts whenever the
+  // framing is retuned. That drift is why the handover used to jolt.
+  function chasePivot(p, out){
+    const w = toWorld(p.x, p.y, (p.floorH||0) + p.h + CAM.TARGET_H);
+    out.set(w.x, w.y, w.z); return out;
+  }
+  // Aim: ahead of the racer so the frame shows what is coming, and up in the air
+  // so the bean falls to the lower third instead of sitting in the middle.
+  //
+  // "AHEAD" MEANS AHEAD OF THE LENS, NOT UP THE COURSE. Leading along the course
+  // heading is right only while the camera is behind: swing the orbit ninety
+  // degrees and that lead points across the frame instead of into it, dragging
+  // the aim sideways by atan(LEAD/boom) -- about twelve degrees at these numbers,
+  // which is the racer sliding off centre and forward no longer matching what
+  // you are looking at. Leading along the camera's own azimuth keeps the bean
+  // centred and the two in agreement at every yaw. Check @ measures it.
+  function chaseAim(pivX, pivY, pivZ, aw, out){
+    out.set(pivX + Math.sin(aw)*CAM.LEAD, pivY + CAM.AIM_RISE, pivZ + Math.cos(aw)*CAM.LEAD);
+    return out;
+  }
+  // Unit vector from the pivot out along the boom.
+  function boomDir(yaw, pitch, base, out){
+    const aw = yaw + base, ce = Math.cos(pitch);
+    out.set(-ce*Math.sin(aw), Math.sin(pitch), -ce*Math.cos(aw));
+    return out;
+  }
+
   // The opening shot: sweep the whole arena from beyond the finish back to the
   // start line, then settle exactly where the chase camera wants to be.
   const FLY_MS = 3800;      // 4200 before the reveal took its 400 ms
   function flyCamera(){
     const p=racers.find(r=>r.isPlayer); if(!p) return;
-    const px=toSceneX(p.x), py=p.y;
     const k  = clamp(1 - mapIntroTimer/FLY_MS, 0, 1);
     // travel the length of the arena over the first 80%, then hand over to the chase cam
     const eA = clamp(k/0.80, 0, 1);
@@ -6514,21 +6756,26 @@ const QUALITY = {
 
     const camW  = toWorld(TRACK_W/2 + sway, sA, hA);
     const tgtW  = toWorld(TRACK_W/2 + sway*0.3, sA - lead, 20);
-    // where the chase camera wants to be, so the handover is seamless
-    const restW = toWorld(p.x, p.y - 95, 95);
-    const restT = toWorld(p.x, p.y + 55, 14);
+    // Where the chase camera will be on its first frame, computed the way it
+    // computes itself, so the cut is not a cut.
+    chasePivot(p, _camPivot);
+    chaseAim(_camPivot.x, _camPivot.y, _camPivot.z, pathAngle(p.y), _camAim);
+    boomDir(0, CAM.PITCH, pathAngle(p.y), _camDir);
+    const reach = CAM.DIST*settings.camDist;
+    const restX = _camPivot.x + _camDir.x*reach,
+          restY = _camPivot.y + _camDir.y*reach,
+          restZ = _camPivot.z + _camDir.z*reach;
 
-    camera.position.set(camW.x + (restW.x-camW.x)*bs,
-                        camW.y + (restW.y-camW.y)*bs,
-                        camW.z + (restW.z-camW.z)*bs);
-    camera.lookAt(tgtW.x + (restT.x-tgtW.x)*bs,
-                  tgtW.y + (restT.y-tgtW.y)*bs,
-                  tgtW.z + (restT.z-tgtW.z)*bs);
+    camera.position.set(camW.x + (restX-camW.x)*bs,
+                        camW.y + (restY-camW.y)*bs,
+                        camW.z + (restZ-camW.z)*bs);
+    camera.lookAt(tgtW.x + (_camAim.x-tgtW.x)*bs,
+                  tgtW.y + (_camAim.y-tgtW.y)*bs,
+                  tgtW.z + (_camAim.z-tgtW.z)*bs);
     dirLight.position.set(camera.position.x+220, camera.position.y+330, camera.position.z-160);
     dirLight.target.position.set(camW.x, camW.y-100, camW.z+150);
     sky.position.set(camera.position.x, 0, camera.position.z);
-    const hand = toWorld(p.x, p.y + 55, 0);
-    camPos.x = hand.x; camPos.y = hand.y; camPos.z = hand.z;   // hand over cleanly
+    camPos.x = _camPivot.x; camPos.y = _camPivot.y; camPos.z = _camPivot.z;  // hand over cleanly
   }
 
   function syncCamera(snap, dt){
@@ -6539,20 +6786,21 @@ const QUALITY = {
     // the profile stage dims these; put them back for play
     dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
 
-    // Hands off for a moment and the view eases back behind the way the racer
-    // is actually running -- not instantly, and not so slowly you give up and
-    // drag it yourself.
+    padLook(dt);
+    padSpectate();
     look.sinceInput += dt;
-    if(settings.autoCentre && look.sinceInput > CAM_RECENTRE_DELAY){
-      // The camera settles back behind the COURSE heading, never behind the
-      // direction you happen to be running. Settling behind your velocity while
-      // steering is camera-relative made W+A curve into a spiral: the input was
-      // rotated by a yaw that was itself chasing the input.
-      const want = 0;
-      const k = 1 - Math.exp(-2.2*dt);
-      let d = want - look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
+
+    // ---- optional, gentle, and never in a hurry ---------------------------
+    // Off by default (see settings.autoCentre). When it is on it eases the yaw
+    // back behind the COURSE heading -- never behind the racer's own heading.
+    // Chasing the racer's heading is what once made W+A spiral: the input was
+    // rotated by a yaw that was itself chasing the input. A fixed attractor
+    // cannot do that.
+    if(settings.autoCentre && look.sinceInput > CAM.RECENTRE_DELAY){
+      const k = 1 - Math.exp(-CAM.RECENTRE_RATE*dt);
+      let d = 0 - look.yaw; while(d>Math.PI) d-=Math.PI*2; while(d<-Math.PI) d+=Math.PI*2;
       look.yaw   += d*k;
-      look.pitch += (0 - look.pitch)*k;
+      look.pitch += (CAM.PITCH - look.pitch)*k;
     }
 
     // Pull back a little when the pack is on top of you, so you can still see
@@ -6560,62 +6808,76 @@ const QUALITY = {
     let crowd = 0;
     for(const o of racers){
       if(o===p || o.falling || o.finished || o.lavaOut) continue;
-      if(Math.abs(o.y-p.y) < 230 && Math.abs(o.x-p.x) < 230) crowd++;
+      if(Math.abs(o.y-p.y) < CAM.CROWD_NEAR && Math.abs(o.x-p.x) < CAM.CROWD_NEAR) crowd++;
     }
     // Distance no longer breathes with speed -- that read as the camera lurching
     // every time you let go of the stick. Only the crowd pulls it back.
-    const wantZoom = 1 + clamp(crowd/5, 0, 1)*0.12;
+    const wantZoom = 1 + clamp(crowd/5, 0, 1)*CAM.CROWD_MAX;
     camZoom += (wantZoom - camZoom) * (snap ? 1 : 1 - Math.exp(-2.4*dt));
 
-    const back = CAM_BACK*settings.camDist*camZoom, height = CAM_UP*settings.camDist*camZoom;
-    const radius = Math.hypot(back, height);
-    // The frame is fixed. It used to tilt down whenever you were falling, which
-    // meant the view swung every time you landed a jump.
-    const elev = clamp(Math.atan2(height, back) + look.pitch, -0.20, 1.35);
-    const azim = look.yaw;
+    const radius = CAM.DIST*settings.camDist*camZoom;
+    // Clamp and WRITE BACK, rather than clamping a local copy. If look.pitch is
+    // allowed to hold a value the camera will never use -- which it can, because
+    // the debug setter and any future caller write it directly -- then the
+    // recentre eases from a number that was never real, and the next nudge has
+    // to unwind it before the view moves. The stored angle is the angle.
+    look.pitch = clamp(look.pitch, CAM.PITCH_MIN, CAM.PITCH_MAX);
+    const elev = look.pitch;
 
-    // Orbit the racer themselves, at chest height, so they sit in the middle of
-    // the frame. The azimuth is relative to the course heading, so "behind"
-    // means back along the track rather than back along world Z.
-    const base = pathAngle(p.y);
-    const footH = (p.floorH||0) + p.h;
-    // Aim a little up the course so you can read what is coming, without
-    // pushing the bean off the middle of the frame.
-    const pivotW = toWorld(p.x, p.y + CAM_LEAD*0.35, footH + CAM_FOCUS);
-    // Vertical follow is quick -- a lagging pivot is the same as a tilting
-    // camera -- while the horizontal follow keeps a little weight.
-    const kXZ = snap ? 1 : 1 - Math.exp(-16*dt);
-    const kY  = snap ? 1 : 1 - Math.exp(-36*dt);
-    if(camPos.y===undefined || snap){ camPos.y = pivotW.y; }
-    camPos.x += (pivotW.x-camPos.x)*kXZ;
-    camPos.y += (pivotW.y-camPos.y)*kY;
-    camPos.z += (pivotW.z-camPos.z)*kXZ;
+    // ---- the pivot follows, with separate weights ------------------------
+    chasePivot(p, _camPivot);
+    // Vertical is softened while the racer is off the ground, and softened
+    // further the higher they get. Following a jump one-for-one pumps the whole
+    // frame; not following it at all loses the landing off the bottom. The blend
+    // is on HEIGHT rather than on a boolean, so a hop and a fall down a shaft do
+    // not get the same treatment.
+    const airK = clamp((p.h||0)/CAM.AIR_BLEND_H, 0, 1);
+    let followY  = CAM.FOLLOW_Y + (CAM.FOLLOW_Y_AIR - CAM.FOLLOW_Y)*airK;
+    let followXZ = CAM.FOLLOW_XZ;
+    // Mid hand-over between spectator targets: slacken both axes so the move
+    // across the course is a glide rather than a whip-pan.
+    if(camSwitchT > 0){
+      camSwitchT = Math.max(0, camSwitchT - dt);
+      followXZ = Math.min(followXZ, CAM.SWITCH_FOLLOW);
+      followY  = Math.min(followY,  CAM.SWITCH_FOLLOW);
+    }
+    const kXZ = snap ? 1 : 1 - Math.exp(-followXZ*dt);
+    const kY  = snap ? 1 : 1 - Math.exp(-followY*dt);
+    if(camPos.y===undefined || snap){ camPos.y = _camPivot.y; }
+    camPos.x += (_camPivot.x-camPos.x)*kXZ;
+    camPos.y += (_camPivot.y-camPos.y)*kY;
+    camPos.z += (_camPivot.z-camPos.z)*kXZ;
 
-    const aw = azim + base;
-    const ox = -Math.cos(elev)*Math.sin(aw);
-    const oy =  Math.sin(elev);
-    const oz = -Math.cos(elev)*Math.cos(aw);
+    // Azimuth is relative to the course heading, so "behind" means back along
+    // the track rather than back along world Z.
+    boomDir(look.yaw, elev, pathAngle(p.y), _camDir);
 
-    // Don't let the camera end up on the far side of a wall: cast back along the
-    // boom and stop short of whatever it meets. Coming in is instant, going back
-    // out is gradual, or it pops the moment you clear a pillar.
+    // ---- obstruction ------------------------------------------------------
+    // Cast from the far end of the boom back toward the pivot and stop short of
+    // whatever it meets. camBlockers is the curated list of solid course
+    // geometry (see 17_path.js) -- not decoration, not particles, not racers --
+    // so this never fights the bean it is trying to show. Coming in is near
+    // instant, going back out is slow, or it pops the moment you clear a pillar.
     let reach = radius;
     if(camBlockers.length){
-      _camRay.set(new THREE.Vector3(camPos.x+ox*radius, camPos.y+oy*radius, camPos.z+oz*radius),
-                  new THREE.Vector3(-ox, -oy, -oz));
+      _camFrom.set(camPos.x + _camDir.x*radius, camPos.y + _camDir.y*radius, camPos.z + _camDir.z*radius);
+      _camBack.set(-_camDir.x, -_camDir.y, -_camDir.z);
+      _camRay.set(_camFrom, _camBack);
       _camRay.far = radius;
       const hitList = _camRay.intersectObjects(camBlockers, false);
-      if(hitList.length) reach = clamp(radius - hitList[0].distance - 16, 58, radius);
+      if(hitList.length) reach = clamp(radius - hitList[0].distance - CAM.BLOCK_PAD, CAM.BLOCK_MIN, radius);
     }
     if(camReach === 0 || snap) camReach = reach;
-    else camReach += (reach - camReach) * (1 - Math.exp(-(reach < camReach ? 60 : 5)*dt));
+    else camReach += (reach - camReach) * (1 - Math.exp(-(reach < camReach ? CAM.BLOCK_IN : CAM.BLOCK_OUT)*dt));
 
     let shx=0, shy=0;
     if(camShake>0 && settings.shake){ shx=rand(-1,1)*camShake; shy=rand(-1,1)*camShake; camShake*= Math.pow(0.02, dt); if(camShake<0.2) camShake=0; }
 
-    camera.position.set(camPos.x+ox*camReach+shx, camPos.y+oy*camReach+shy, camPos.z+oz*camReach);
-    camera.lookAt(camPos.x, camPos.y, camPos.z);
-    updateOcclusion(new THREE.Vector3(camPos.x, camPos.y, camPos.z));
+    camera.position.set(camPos.x+_camDir.x*camReach+shx, camPos.y+_camDir.y*camReach+shy, camPos.z+_camDir.z*camReach);
+    chaseAim(camPos.x, camPos.y, camPos.z, look.yaw + pathAngle(p.y), _camAim);
+    camera.lookAt(_camAim.x, _camAim.y, _camAim.z);
+    _camPivot.set(camPos.x, camPos.y, camPos.z);
+    updateOcclusion(_camPivot);
     const lightAt = toWorld(p.x, p.y, 0);
     dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
     dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);
@@ -10365,30 +10627,74 @@ const QUALITY = {
   // SPECTATOR
   // ============================================================
   // Being knocked out of a survival round used to mean watching your own faded
-  // blob lie there. Now the camera moves to someone still alive and you can
+  // blob lie there. Now the camera moves to someone still in it and you can
   // switch between them, or bail straight into a new match.
-  let spectateIdx = 0;
+  //
+  // QUALIFYING COUNTS TOO. It used to be elimination only, so crossing the line
+  // first -- the good outcome -- left you watching your own bean jog in circles
+  // round the finish pen while the race that still mattered happened somewhere
+  // off screen. Finishing and being eliminated are the same thing as far as the
+  // camera is concerned: you are no longer the interesting racer.
+  //
+  // The TARGET IS HELD AS A RACER, not as an index. An index into a list that
+  // shrinks every time somebody qualifies is an index that silently slides onto
+  // a different person, so the view would drift on its own while the player sat
+  // still. Holding the racer means the only thing that can move the camera is
+  // that racer leaving the race, and then it is a deliberate step to the next
+  // one rather than a reshuffle.
+  let specTarget = null;
 
+  // Out of it, either way, while there is still a race to watch.
   function spectating(){
     const p = racers.find(r=>r.isPlayer);
-    return !!(p && p.lavaOut && (state==='racing' || state==='countdown'));
+    if(!p) return false;
+    if(!(state==='racing' || state==='countdown')) return false;
+    return !!(p.lavaOut || p.finished);
   }
-  function aliveRacers(){
-    return racers.filter(r=>!r.lavaOut && !r.falling);
+  // Still in it: not eliminated, not mid-fall, and not already past the line.
+  // A racer who has qualified is NOT a candidate -- watching somebody celebrate
+  // in the pen is the exact thing this screen exists to get you away from.
+  function activeRacers(){
+    return racers.filter(r=>!r.lavaOut && !r.falling && !r.finished);
+  }
+  // The fallback, for the seconds between the last racer finishing and the round
+  // actually ending. Anyone still rendering beats a black screen.
+  function watchableRacers(){
+    const live = activeRacers();
+    if(live.length) return live;
+    return racers.filter(r=>!r.lavaOut);
   }
   // Who the camera is actually following.
   function camSubject(){
     const p = racers.find(r=>r.isPlayer);
-    if(!spectating()) return p;
-    const alive = aliveRacers();
-    if(!alive.length) return p;
-    spectateIdx = ((spectateIdx % alive.length) + alive.length) % alive.length;
-    return alive[spectateIdx];
+    if(!spectating()){ specTarget = null; return p; }
+    const pool = watchableRacers();
+    if(!pool.length) return p;
+    // AUTOMATIC ADVANCE: the held target qualified, fell in, or is the player
+    // themselves. Step to the next one in course order rather than to whoever
+    // happens to be first in the racers array, so the jump is to a neighbour.
+    if(!specTarget || specTarget.isPlayer || pool.indexOf(specTarget) === -1){
+      const next = pool.slice().sort((a,b)=>b.y-a.y)[0];
+      if(next !== specTarget){ specTarget = next; noteSpecSwitch(); }
+    }
+    return specTarget || p;
   }
+
+  // Tell the camera a cut is coming so it glides rather than whips. The camera
+  // owns the constant; this only says when.
+  function noteSpecSwitch(){ camSwitchT = CAM.SWITCH_BLEND; }
+
   function cycleSpectate(step){
-    const alive = aliveRacers();
-    if(!alive.length) return;
-    spectateIdx = ((spectateIdx + step) % alive.length + alive.length) % alive.length;
+    const pool = watchableRacers();
+    if(!pool.length) return;
+    // Ordered by position on the course, so prev/next means "the racer ahead"
+    // and "the racer behind" rather than an arbitrary walk through an array.
+    const ord = pool.slice().sort((a,b)=>b.y-a.y);
+    const at = ord.indexOf(specTarget);
+    const i = at === -1 ? 0 : ((at + step) % ord.length + ord.length) % ord.length;
+    if(ord[i] === specTarget) return;
+    specTarget = ord[i];
+    noteSpecSwitch();
     SFX.click();
     updateSpectator();
   }
@@ -10397,16 +10703,25 @@ const QUALITY = {
     const bar = $('specBar'); if(!bar) return;
     const on = spectating();
     bar.classList.toggle('hidden', !on);
-    // the movement hint sits where the bar does, and you are not moving anyway
+    // the movement hint sits where the bar does, and you are not racing anyway
     if(on) $('hint').classList.add('hidden');
     if(!on) return;
-    const alive = aliveRacers();
-    const who = alive.length ? alive[((spectateIdx % alive.length)+alive.length)%alive.length] : null;
-    $('specName').textContent = who ? nameOf(who) : '—';
-    $('specLeft').textContent = alive.length + ' still in';
+    const who = camSubject();
+    const top = $('specTop');
+    // The banner reads differently depending on how you got here. Telling a
+    // player who just WON the round that they are out is a small lie that lands
+    // badly, and it is one string.
+    if(top){
+      const p = racers.find(r=>r.isPlayer);
+      top.textContent = (p && p.finished && !p.lavaOut) ? 'QUALIFIED — SPECTATING' : "YOU'RE OUT — SPECTATING";
+    }
+    $('specName').textContent = (who && !who.isPlayer) ? nameOf(who) : '—';
+    const live = activeRacers().length;
+    $('specLeft').textContent = live + ' still in';
   }
 
   function leaveSpectate(){
+    specTarget = null;
     const bar = $('specBar'); if(bar) bar.classList.add('hidden');
   }
 
@@ -10683,11 +10998,15 @@ const QUALITY = {
 
       // ---- past the line: you can mill about the finish area, but not leave it
       if(r.finished){
-        if(r.isPlayer){
+        // Once the spectator screen is up the arrows belong to it, and the
+        // player's own bean is not on camera anyway -- reading movement here as
+        // well would have one key press both switch who you are watching and
+        // shove a bean you cannot see around the finish pen.
+        if(r.isPlayer && !spectating()){
           const {ix,iy}=computeInputVec();
           const mag=Math.hypot(ix,iy);
           if(mag>0.05){ r.facing=Math.atan2(iy,ix); r.vx+=ix/mag*0.55*f; r.vy+=iy/mag*0.55*f; }
-        } else {
+        } else if(!r.isPlayer) {
           r.celebT=(r.celebT||0)-dt;
           if(r.celebT<=0){ r.celebT=rand(0.9,2.2);
             r.celebX=rand(70,TRACK_W-70); r.celebY=trackLength+rand(60,FINISH_ZONE-50); }
@@ -12713,10 +13032,16 @@ const QUALITY = {
   $('specNext').onclick  = ()=>cycleSpectate(1);
   $('specAgain').onclick = ()=>{ SFX.click(); leaveSpectate(); goHome(); startRound(1,null); };
   $('specQuit').onclick  = ()=>{ SFX.click(); leaveSpectate(); goHome(); };
+  // Spectator switching. The arrows are free here because a spectating racer is
+  // no longer steering anything -- 14_physics.js stops reading movement input
+  // for a finished player the moment this screen is up, so the two cannot both
+  // claim the key. Q and E are the pair the lobby uses for its tabs, and that
+  // handler returns early unless state is 'menu', so they never overlap either.
   window.addEventListener('keydown', e=>{
     if(!spectating()) return;
-    if(e.key==='ArrowLeft'){ cycleSpectate(-1); e.preventDefault(); }
-    if(e.key==='ArrowRight'){ cycleSpectate(1); e.preventDefault(); }
+    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+    if(e.key==='ArrowLeft'  || e.key==='q' || e.key==='Q'){ cycleSpectate(-1); e.preventDefault(); }
+    if(e.key==='ArrowRight' || e.key==='e' || e.key==='E'){ cycleSpectate(1);  e.preventDefault(); }
   });
 
   function buildSettings(){
@@ -12741,9 +13066,10 @@ const QUALITY = {
     toggle('freeLook','Free look (trackpad / drag)');
     const ls=document.createElement('div'); ls.className='row'; const lr=document.createElement('input'); lr.type='range'; lr.min=0.4; lr.max=2.2; lr.step=0.1; lr.value=settings.lookSens; const lv=document.createElement('span'); lv.className='lbl'; lv.textContent=settings.lookSens.toFixed(1)+'\u00d7'; lr.oninput=()=>{ settings.lookSens=+lr.value; lv.textContent=settings.lookSens.toFixed(1)+'\u00d7'; }; ls.appendChild(lr); ls.appendChild(lv); row('Look sensitivity', ls);
     toggle('mouseLook','Mouse look (click to capture)');
+    const gs=document.createElement('div'); gs.className='row'; const gr=document.createElement('input'); gr.type='range'; gr.min=0.4; gr.max=2.2; gr.step=0.1; gr.value=settings.padSens; const gv=document.createElement('span'); gv.className='lbl'; gv.textContent=settings.padSens.toFixed(1)+'×'; gr.oninput=()=>{ settings.padSens=+gr.value; gv.textContent=settings.padSens.toFixed(1)+'×'; }; gs.appendChild(gr); gs.appendChild(gv); row('Right stick sensitivity', gs);
     toggle('invertLook','Invert look up/down');
     toggle('camRelative','Move relative to camera');
-    toggle('autoCentre','Camera drifts back behind you');
+    toggle('autoCentre','Camera drifts back behind you (off by default)');
     toggle('shake','Camera shake');
     const qseg=document.createElement('div'); qseg.className='seg';
     [['low','Low'],['medium','Medium'],['high','High']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='chip'+(settings.quality===k?' sel':''); b.textContent=l; b.onclick=()=>{ settings.quality=k; SFX.click(); applyQuality(k); buildSettings(); }; qseg.appendChild(b); });

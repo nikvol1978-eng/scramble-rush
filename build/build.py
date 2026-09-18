@@ -205,13 +205,18 @@ sub("  dirLight.shadow.bias = -0.0008;",
     + chr(10) + "  dirLight.shadow.radius = 4; dirLight.shadow.blurSamples = 12;",
     "shadow bias")
 
-# a wider lens: obstacles need to be on screen sooner than 1.5s before impact
+# A wider lens: obstacles need to be on screen sooner than 1.5s before impact.
+# The NUMBER is not here -- it is CAM.FOV in frag/01_data.js, with the rest of
+# the camera's tuning. A field of view written in two places is a field of view
+# that will one day disagree with itself, and the data layer lands above this
+# line in the output so the constant is in scope by the time this runs.
 sub("  const camera = new THREE.PerspectiveCamera(58, W/H, 0.1, 4000);",
-    "  const camera = new THREE.PerspectiveCamera(64, W/H, 0.1, 4000);",
+    "  const camera = new THREE.PerspectiveCamera(CAM.FOV, W/H, 0.1, 4000);",
     "wider fov")
 
 # A 760-wide track at RADIUS 17 is 22 bean-widths across, which reads as a field.
 sub("  const TRACK_W = 760;", "  const TRACK_W = 520;", "narrower track")
+
 
 # the narrow channel can sit off-centre now, so the bots have to aim at it
 sub("      r.targetX=TRACK_W/2+(r.aiRoute-0.5)*o.halfWidth*0.7;",
@@ -587,10 +592,24 @@ cut("  function computeInputVec(){",
     ix=-ix; // camera looks down +Z, so screen-right is sim -X
     if(settings.invertX) ix=-ix;
     if(settings.camRelative && typeof look!=='undefined'){
-      // steer relative to where the camera is pointing, so "forward" is always
-      // away from the camera however far you have swung the view round
+      // Steer relative to where the camera is pointing, so "forward" is always
+      // away from the camera however far the view has been swung round.
+      //
+      // THE SIGN. sim +y is the course heading and look.yaw is measured from
+      // it, so the two frames differ by exactly look.yaw and the ribbon's bend
+      // cancels. Forward, (0,1), has to come out as (sin yaw, cos yaw): that is
+      // the sim direction which toWorld maps onto heading base+yaw, which is
+      // where the boom says the lens is looking.
+      //
+      // This used to read `rx = ix*c - iy*s`, which is the rotation the other
+      // way: forward came out as (-sin yaw, cos yaw), correct at yaw 0 and at
+      // yaw pi and a full 180 degrees wrong at either side. It survived because
+      // auto-recentre was on by default at a 0.6s delay, so the camera was
+      // almost always sitting at yaw 0 where the error is zero -- you had to
+      // hold the view off-centre to meet it, and then W ran you at the screen.
+      // Check @ now pins it at five yaws.
       const a=look.yaw, c=Math.cos(a), s=Math.sin(a);
-      const rx = ix*c - iy*s, ry = ix*s + iy*c;
+      const rx = ix*c + iy*s, ry = iy*c - ix*s;
       ix=rx; iy=ry;
     }
     return {ix,iy};
@@ -651,9 +670,10 @@ sub("""    toggle('shake','Camera shake');""",
     """    toggle('freeLook','Free look (trackpad / drag)');
     const ls=document.createElement('div'); ls.className='row'; const lr=document.createElement('input'); lr.type='range'; lr.min=0.4; lr.max=2.2; lr.step=0.1; lr.value=settings.lookSens; const lv=document.createElement('span'); lv.className='lbl'; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; lr.oninput=()=>{ settings.lookSens=+lr.value; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; }; ls.appendChild(lr); ls.appendChild(lv); row('Look sensitivity', ls);
     toggle('mouseLook','Mouse look (click to capture)');
+    const gs=document.createElement('div'); gs.className='row'; const gr=document.createElement('input'); gr.type='range'; gr.min=0.4; gr.max=2.2; gr.step=0.1; gr.value=settings.padSens; const gv=document.createElement('span'); gv.className='lbl'; gv.textContent=settings.padSens.toFixed(1)+'×'; gr.oninput=()=>{ settings.padSens=+gr.value; gv.textContent=settings.padSens.toFixed(1)+'×'; }; gs.appendChild(gr); gs.appendChild(gv); row('Right stick sensitivity', gs);
     toggle('invertLook','Invert look up/down');
     toggle('camRelative','Move relative to camera');
-    toggle('autoCentre','Camera drifts back behind you');
+    toggle('autoCentre','Camera drifts back behind you (off by default)');
     toggle('shake','Camera shake');""",
     "look settings")
 

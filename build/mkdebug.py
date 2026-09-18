@@ -104,7 +104,29 @@ hook = """
     setWins:(w)=>{ stats.wins=w; checkAchievements(); saveProfile(); return stats.wins; },
     equip:(id)=>{ stats.owned=stats.owned||[]; if(!stats.owned.includes(id)) stats.owned.push(id); custom.skin=id; syncCustomColor(); saveProfile(); refreshPreview(); return id; },
     equipPat:(id)=>{ stats.patterns=stats.patterns||[]; if(!stats.patterns.includes(id)) stats.patterns.push(id); custom.pattern=id; saveProfile(); refreshPreview(); return id; },
-    look:(y,p)=>{ look.yaw=y; look.pitch=p; look.sinceInput=0; },
+    look:(y,p)=>{ look.yaw=y; if(p!==null && p!==undefined) look.pitch=p; look.sinceInput=0; },
+    // Read-back, so a harness can restore the resting angle instead of keeping
+    // its own copy of it. A second copy of the shipped pitch in a tool is a
+    // second thing to update when the framing is retuned.
+    lookState:()=>({yaw:look.yaw, pitch:look.pitch, sinceInput:look.sinceInput}),
+    // tick() steps the simulation and the scene but NOT the HUD, so the DOM a
+    // screenshot catches is whatever updateHud last wrote -- which is why the
+    // GO! banner sat over the review shots minutes of simulated time after it
+    // should have gone. This drives the same path the game's own loop does.
+    hud:()=>{ updateHud(); },
+    // The player's world position, and whether any camera blocker stands
+    // between the lens and them. Used by the review harness to tell "framed out
+    // of shot" apart from "behind a wall", which look identical in a PNG.
+    playerWorld:()=>{ const p=racers.find(r=>r.isPlayer);
+      const w=toWorld(p.x, p.y, (p.floorH||0)+p.h+RADIUS); return {x:w.x,y:w.y,z:w.z}; },
+    blockedToPlayer:()=>{ const p=racers.find(r=>r.isPlayer);
+      const w=toWorld(p.x, p.y, (p.floorH||0)+p.h+RADIUS);
+      const from=camera.position.clone(), to=new THREE.Vector3(w.x,w.y,w.z);
+      const dir=to.clone().sub(from), len=dir.length(); dir.normalize();
+      const ray=new THREE.Raycaster(from, dir); ray.far=Math.max(1,len-8);
+      const hitB=ray.intersectObjects(camBlockers,false).map(h=>h.object.name||'blocker');
+      const hitF=ray.intersectObjects(fadeables,false).map(h=>h.object.name||'fadeable');
+      return {blockers:hitB.length, fadeables:hitF.length, dist:Math.round(len)}; },
     tick:(n,dt)=>{
       dt = dt||1/60; n = n||60;
       window.__T = window.__T || performance.now()/1000;

@@ -122,8 +122,14 @@
   $('specNext').onclick  = ()=>cycleSpectate(1);
   $('specAgain').onclick = ()=>{ SFX.click(); leaveSpectate(); goHome(); startRound(1,null); };
   $('specQuit').onclick  = ()=>{ SFX.click(); leaveSpectate(); goHome(); };
+  // Spectator switching. The arrows are free here because a spectating racer is
+  // no longer steering anything -- 14_physics.js stops reading movement input
+  // for a finished player the moment this screen is up, so the two cannot both
+  // claim the key. Q and E are the pair the lobby uses for its tabs, and that
+  // handler returns early unless state is 'menu', so they never overlap either.
   window.addEventListener('keydown', e=>{
     if(!spectating()) return;
-    if(e.key==='ArrowLeft'){ cycleSpectate(-1); e.preventDefault(); }
-    if(e.key==='ArrowRight'){ cycleSpectate(1); e.preventDefault(); }
+    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+    if(e.key==='ArrowLeft'  || e.key==='q' || e.key==='Q'){ cycleSpectate(-1); e.preventDefault(); }
+    if(e.key==='ArrowRight' || e.key==='e' || e.key==='E'){ cycleSpectate(1);  e.preventDefault(); }
   });
