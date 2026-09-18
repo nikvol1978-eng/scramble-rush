@@ -10,7 +10,13 @@
     // respawn just before the hazard we fell into
     let ry=r.y-260, rx=r.x, hitObs=null;
     for(const o of obstacles){
-      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank'||o.type==='logroll') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
+      // tiltdeck belongs on this list and was not on it. A racer who slid off a
+      // leaning deck got the generic "260 back, same x" instead -- and 260 back
+      // inside a section that is three 340-deep decks long is still inside it,
+      // at the x they just fell off the side from, which is off the deck. That
+      // is the exact loop this list exists to prevent: put back onto the hazard,
+      // fall again, repeat.
+      if((o.type==='pit'||o.type==='narrow'||o.type==='mover'||o.type==='crumble'||o.type==='gap'||o.type==='discField'||o.type==='plank'||o.type==='logroll'||o.type==='tiltdeck') && r.y>=o.yStart-5 && r.y<=o.yEnd+5){
         ry=o.yStart-90; hitObs=o;
         // Put them back on the line that works, not on the one that just killed
         // them. Respawning at the same x is how a racer collects eleven falls
@@ -19,6 +25,9 @@
         // from: that x is beside it, and coming back beside a log is coming
         // back into the water.
         if(o.type==='logroll') rx = o.logs[0].cx;
+        // the middle of the first deck, which is the only part of a tilt deck
+        // that is level at the moment nobody is standing on it
+        else if(o.type==='tiltdeck') rx = o.decks[0].cx;
         else if(o.type==='narrow') rx = TRACK_W/2 + (o.offset||0);
         else if(o.type==='gap') rx = (r.x < o.cx ? o.cx - o.halfWidth - 55 : o.cx + o.halfWidth + 55);
         // back onto the lane of discs nearest the one they came off, not the

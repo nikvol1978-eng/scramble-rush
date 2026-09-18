@@ -499,9 +499,12 @@
         const beam=new THREE.Mesh(THREE.RoundedBox(TRACK_W+40,12,12), barMat);
         placeAt(beam, TRACK_W/2, o.y, o.pivotH); courseGroup.add(beam);
         const rod=new THREE.Mesh(new THREE.CylinderGeometry(3,3,o.armLen,8), barMat);
-        rod.castShadow=true; g.add(rod);
+        rod.castShadow=true; g.add(rod); registerFadeable(rod);
+        // A ball 27..38 across swinging the full width of the track at head
+        // height. Nothing in the game is better placed to hide the racer from
+        // the camera at the moment it matters, and it faded nothing.
         const ball=new THREE.Mesh(new THREE.SphereGeometry(o.r,16,12), look.stripeMat(0));
-        ball.castShadow=true; g.add(ball);
+        ball.castShadow=true; g.add(ball); registerFadeable(ball);
         courseGroup.add(g);
         o.mesh=g; o.rod=rod; o.ball=ball;
 
@@ -709,9 +712,13 @@
       placeAt(post, TRACK_W/2 + s*(TRACK_W/2-14), z, 75); post.castShadow=true; courseGroup.add(post);
     });
     // an arch with a chequered banner, and the word on it
+    // It fades, because the moment it is in the way is the moment the racer
+    // crosses under it: from there to the end of the pen the arch stands
+    // squarely between the chase camera and the bean, so the last thing you saw
+    // of your own finish was a chequered beam.
     const chk=checkerTexture('#ffffff','#1a1033',8); chk.repeat.set(TRACK_W/64, 1);
     const beam=new THREE.Mesh(THREE.RoundedBox(TRACK_W-8,44,16), new THREE.MeshLambertMaterial({map:chk}));
-    placeAt(beam, TRACK_W/2, z, 150); beam.castShadow=true; courseGroup.add(beam);
+    placeAt(beam, TRACK_W/2, z, 150); beam.castShadow=true; courseGroup.add(beam); registerFadeable(beam);
     const sign=new THREE.Mesh(new THREE.PlaneGeometry(200, 40), new THREE.MeshBasicMaterial({map:finishBanner(), transparent:true, side:THREE.DoubleSide}));
     placeAt(sign, TRACK_W/2, z-9, 150); sign.rotation.y = Math.PI; courseGroup.add(sign);
     const trim=new THREE.Mesh(THREE.RoundedBox(TRACK_W+4,6,20), barMat);
@@ -1148,7 +1155,7 @@
             // The surface of a turning log moves sideways at spin x radius,
             // and it takes what is standing on it with it. This is the round:
             // everything else is you arguing with this line.
-            r.x += lg.spin*lr.R/60;
+            r.x += lg.spin*lr.R/60*frameK;
             // and a peg that is coming up over the crown catches anything
             // whose feet are still down
             for(const peg of lg.pegs){
@@ -1185,8 +1192,8 @@
         // and nothing ever slid. It needed a hammer bolted to the course to
         // hurt anybody at all.
         if(r.h <= 0.5 && !(r.tumbleT > 0)){
-          r.vx += dk.tx*td.slide;
-          r.vy += dk.ty*td.slide;
+          r.vx += dk.tx*td.slide*frameK;
+          r.vy += dk.ty*td.slide*frameK;
         }
       }
     } else if(r.onDeck){ r.floorH = 0; r.onDeck = null; }
@@ -1194,14 +1201,39 @@
     // ---- ground hazards (only when on the ground, and only at ground level) ----
     if(r.h<=0.5 && (r.floorH||0) <= 20){
       if(inPit){
-        let onPlat=false;
-        for(const p of inPit.platforms){ if(Math.abs(r.x-platX(p,t))<p.width/2+RADIUS-8){ onPlat=true; break; } }
+        let onPlat=false, ridden=null;
+        for(const p of inPit.platforms){ if(Math.abs(r.x-platX(p,t))<p.width/2+RADIUS-8){ onPlat=true; ridden=p; break; } }
         // ...and the island, which does not move and does not need timing
         if(!onPlat) for(const is of (inPit.islands||[])){
           if(Math.abs(r.x-is.x) < is.w/2 + RADIUS - 8 && r.y > is.y0 - RADIUS && r.y < is.y1 + RADIUS){ onPlat=true; break; }
         }
         if(!onPlat){ fallDown(r); return; }
-      }
+        // A platform takes what is standing on it with it. It did not: a racer
+        // who stood still on a pit platform held a fixed world position while
+        // the deck slid out from under them, and the only reason that was
+        // survivable is that the bots were written to steer against it by hand.
+        // platX is baseX + sin(t*speed + phase)*amp, so the deck's own sideways
+        // speed is the derivative of that -- the same expression `pusher`
+        // already uses to work out how hard it is closing on you.
+        //
+        // Kept as a position write, like every other carrier in the game, so
+        // that it cannot be spent twice or accumulate through friction. What it
+        // is worth on take-off is remembered separately, below.
+        // The EXACT distance the deck moved this frame, not its speed times the
+        // length of the frame. platX is a sine, so its derivative is only right
+        // at the instant it is taken: integrating that forward drifts a little
+        // every frame and a lot through the turn at each end of the swing, and
+        // a rider who drifts a few units a second off a deck ends up standing
+        // on nothing. Differencing the position itself cannot drift, because it
+        // IS the position.
+        if(ridden && !(r.tumbleT>0)){
+          const step = platX(ridden, t) - platX(ridden, t - frameK/60);
+          r.x += step;
+          // ...and the same thing as a velocity, in the units r.vx is in, so
+          // that doJump can hand it to the jump.
+          r.platVX = frameK > 0 ? step/frameK : 0;
+        } else r.platVX = 0;
+      } else if(r.platVX) r.platVX = 0;
       if(inNarrow){
         // inNarrow was measured before the gate block, which can shove r.y --
         // so by the time we look the racer may no longer be in one.
@@ -1247,8 +1279,8 @@
         }
         // the floor is turning: it takes you round with it
         const dx = r.x-on.x, dy = r.y-on.y;
-        r.x += -dy*on.speed*(1/60);
-        r.y +=  dx*on.speed*(1/60);
+        r.x += -dy*on.speed*(1/60)*frameK;
+        r.y +=  dx*on.speed*(1/60)*frameK;
         }
       }
       const gp = obstacles.find(o=>o.type==='gap' && r.y>o.yStart && r.y<o.yEnd);
@@ -1279,7 +1311,7 @@
         if(dd > disc.r){ fallDown(r); return; }
         // the floor is turning: it carries you round with it
         const w = disc.speed;
-        r.x += -dy*w*(1/60); r.y += dx*w*(1/60);
+        r.x += -dy*w*(1/60)*frameK; r.y += dx*w*(1/60)*frameK;
       }
       if(hf){
         const grace = raceTime < (r.tileGraceUntil||-1);

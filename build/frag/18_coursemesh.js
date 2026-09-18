@@ -258,10 +258,20 @@
       [-1,1].forEach(s=>{
         const post = new THREE.Mesh(THREE.RoundedBox(9, 84, 9), postMat);
         post.position.set(s*(TRACK_W/2-26), 42, 0); post.castShadow = true; g.add(post);
+        registerFadeable(post);
       });
       const banner = new THREE.Mesh(THREE.RoundedBox(TRACK_W-52, 26, 4),
         new THREE.MeshLambertMaterial({color: accents[0]}));
       banner.position.y = 74; g.add(banner);
+      // The gantry fades like anything else in the way. It is scenery rather
+      // than a hazard, but it is scenery 26 units deep sitting at head height
+      // right across the track, and the chase camera's sightline passes through
+      // 38..147 above the floor -- so every checkpoint on every map put a solid
+      // bar between the lens and the racer for the stride or two either side of
+      // it, and nothing faded it because nothing had registered it. Registering
+      // the mesh and not the group is deliberate: updateOcclusion raycasts
+      // non-recursively, so a Group in the list matches nothing.
+      registerFadeable(banner);
       placeAt(g, TRACK_W/2, c.y, 0); courseGroup.add(g);
       c.mesh = g; c.banner = banner;
       // dim until you pass it, the map's accent afterwards
@@ -289,10 +299,14 @@
         o.meshes = o.items.map(it=>{
           const mesh=new THREE.Mesh(new THREE.CylinderGeometry(it.r,it.r*1.05,60,18), pillarMat);
           placeAt(mesh, it.x, o.y, 30); mesh.castShadow=true; mesh.receiveShadow=true; courseGroup.add(mesh); registerFadeable(mesh);
+          // The body was registered and its trim was not, so a pillar in the way
+          // faded to a fifth and left a fully opaque cap and a fully opaque
+          // outline shell standing in front of the racer -- which reads worse
+          // than not fading at all, because the silhouette is all that is left.
           const cap=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.1,it.r*1.1,8,18), pillarCapMat);
-          placeAt(cap, it.x, o.y, 62); cap.castShadow=true; courseGroup.add(cap);
+          placeAt(cap, it.x, o.y, 62); cap.castShadow=true; courseGroup.add(cap); registerFadeable(cap);
           const out=new THREE.Mesh(new THREE.CylinderGeometry(it.r*1.1,it.r*1.15,62,18), outlineMat);
-          out.position.copy(mesh.position); courseGroup.add(out);
+          out.position.copy(mesh.position); courseGroup.add(out); registerFadeable(out);
           return mesh;
         });
       } else if(o.type==='logroll'){
@@ -347,21 +361,32 @@
         });
       } else if(o.type==='hammer'){
         const xs=o.items.map(i=>i.pivotX);
+        // The whole rig fades. A mace on a 100-unit pole sweeps straight through
+        // the camera's sightline twice a swing, and the gantry it hangs from
+        // spans every pivot on the row -- so the one hazard whose timing you
+        // most need to read was also the one most likely to be hiding you while
+        // you read it.
         const beam=new THREE.Mesh(THREE.RoundedBox(Math.max(...xs)-Math.min(...xs)+40,8,8), poleMat);
-        placeAt(beam, (Math.max(...xs)+Math.min(...xs))/2, o.y, 100); beam.castShadow=true; courseGroup.add(beam);
+        placeAt(beam, (Math.max(...xs)+Math.min(...xs))/2, o.y, 100); beam.castShadow=true; courseGroup.add(beam); registerFadeable(beam);
         for(const it of o.items){
           const pole=new THREE.Mesh(new THREE.CylinderGeometry(4,5,100,8), poleMat);
-          placeAt(pole, it.pivotX, o.y, 50); pole.castShadow=true; courseGroup.add(pole);
-          const mace=new THREE.Mesh(new THREE.IcosahedronGeometry(24,0), maceMat); mace.castShadow=true; courseGroup.add(mace);
-          const maceOut=new THREE.Mesh(new THREE.IcosahedronGeometry(24*1.16,0), outlineMat); courseGroup.add(maceOut);
+          placeAt(pole, it.pivotX, o.y, 50); pole.castShadow=true; courseGroup.add(pole); registerFadeable(pole);
+          const mace=new THREE.Mesh(new THREE.IcosahedronGeometry(24,0), maceMat); mace.castShadow=true; courseGroup.add(mace); registerFadeable(mace);
+          const maceOut=new THREE.Mesh(new THREE.IcosahedronGeometry(24*1.16,0), outlineMat); courseGroup.add(maceOut); registerFadeable(maceOut);
           const rod=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,1,6), poleMat); courseGroup.add(rod);
           const pv=toWorld(it.pivotX, o.y, 96);
           it.mesh={mace,maceOut,rod,pivot:{x:pv.x,y:pv.y,z:pv.z}};
         }
       } else if(o.type==='spinbar'){
         const g=new THREE.Group();
-        const mesh=new THREE.Mesh(THREE.RoundedBox(o.length,22,o.thickness), barMat); mesh.castShadow=true; g.add(mesh);
-        const out=new THREE.Mesh(THREE.RoundedBox(o.length+5,26,o.thickness+5), outlineMat); g.add(out);
+        // The course bar. It rotates a full turn around the lane, so unlike a
+        // wall it is GUARANTEED to pass between the camera and the racer on
+        // every pass -- and at a low camera pitch its 11..33 band is exactly
+        // where the sightline sits. Registering the meshes, not the group: the
+        // occlusion ray is non-recursive and a Group would match nothing, which
+        // is the trap that made this look registered when it was not.
+        const mesh=new THREE.Mesh(THREE.RoundedBox(o.length,22,o.thickness), barMat); mesh.castShadow=true; g.add(mesh); registerFadeable(mesh);
+        const out=new THREE.Mesh(THREE.RoundedBox(o.length+5,26,o.thickness+5), outlineMat); g.add(out); registerFadeable(out);
         placeAt(g, o.cx, o.y, 22); courseGroup.add(g);
         const hub=new THREE.Mesh(new THREE.CylinderGeometry(16,18,40,12), darkMat);
         placeAt(hub, o.cx, o.y, 20); courseGroup.add(hub);

@@ -6,34 +6,46 @@
     const p=racers.find(r=>r.isPlayer);
     if(p && !p.finished){
       const {ix:ix0,iy:iy0}=computeInputVec();
-      let ix=ix0, iy=iy0;
-      const mag=Math.hypot(ix,iy);
+      const mag=Math.hypot(ix0,iy0);
+      // v25: you drive along the BODY, not along the stick.
+      //
+      // The body already turned toward the stick at TURN_RATE_GROUND while the
+      // push went instantly wherever the stick pointed, so the two disagreed
+      // for the whole of every turn. Measured, a 180 at full tilt put the
+      // velocity through zero in three frames and back to nine tenths of top
+      // speed the other way in nine, coasting 1.8 units on the way -- a third
+      // of a bean. That is a tank turn wearing a bean's animation, and no
+      // amount of tuning the constants fixes it, because the model says a racer
+      // may change direction instantly and the picture says it may not.
+      //
+      // The previous fix for that disagreement went the other way: `turnGrip`
+      // spotted a sharp turn and made the GROUND grippier for six frames so the
+      // velocity would catch the body up. That treats momentum as the defect.
+      // Driving along the body makes the two agree by construction -- the push
+      // sweeps round with the bean, the velocity follows it in an arc, and a
+      // reversal costs what turning a running body round ought to cost. So
+      // turnGrip goes with it: there is no longer a disagreement to paper over.
+      let dvx=0, dvy=0, amt=0;
       if(mag>0.05 && !p.airDive){
-        ix/=mag; iy/=mag;
-        // Turn toward the stick rather than snapping to it. Snapping is what
-        // made a change of direction read as a teleport plus a skid.
-        const want = Math.atan2(iy,ix);
+        // The stick's length is how hard, the body is which way. Clamped,
+        // because a keyboard's diagonal is 1.414 and must not out-accelerate a
+        // stick pushed all the way.
+        amt = Math.min(1, mag);
+        const want = Math.atan2(iy0,ix0);
         const rate = (p.h>0 ? TURN_RATE_AIR : TURN_RATE_GROUND) * dt;
         let d = want - p.facing;
         while(d> Math.PI) d-=Math.PI*2;
         while(d<-Math.PI) d+=Math.PI*2;
-        p.facing += clamp(d, -rate, rate);
-        // A sharp change of direction read as a skid: the body swings at
-        // TURN_RATE_GROUND while the velocity carries on the old way. Bite
-        // harder for a few frames so the two arrive together. This belongs with
-        // the turn rather than with the surface -- bots snap their facing
-        // instead of turning, so it is part of the control model, not the
-        // ground. Ice is exempt: sliding is the point of a slippery map.
-        let off = want - Math.atan2(p.vy, p.vx);
-        while(off> Math.PI) off-=Math.PI*2;
-        while(off<-Math.PI) off+=Math.PI*2;
-        if(Math.hypot(p.vx,p.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) p.turnGrip = 6;
+        p.facing = (Math.hypot(p.vx,p.vy) < TURN_SNAP_SPEED)
+                 ? want                                   // no momentum to argue with
+                 : p.facing + clamp(d, -rate, rate);
+        dvx = Math.cos(p.facing); dvy = Math.sin(p.facing);
       }
       // v22: getting up gives you a little more of yourself back than it did.
       // At 0.30 the last quarter-second of every knock felt like a second knock.
-      const control = (p.airDive?0 : (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?0.65:1)
+      const control = (p.airDive?0 : (p.respawnFreeze>0)?0 : p.tumbleT>0?0 : p.stumbleT>0?0.15 : p.falling?0 : p.getUpT>0?0.45 : p.diveT>0?0.12 : p.h>0?AIR_CONTROL:1)
                     * ((p.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);
-      let pax = ix*ACCEL*(1+p.draft)*WIND(p)*control, pay = iy*ACCEL*(1+p.draft)*WIND(p)*control;
+      let pax = dvx*amt*ACCEL*(1+p.draft)*WIND(p)*control, pay = dvy*amt*ACCEL*(1+p.draft)*WIND(p)*control;
       const iceK = iceBlend(p, pax, pay);
       p.vx+=pax*iceK*f; p.vy+=pay*iceK*f;
     }
@@ -77,19 +89,27 @@
       if(r.remoteId){
         const inp=mp.remoteInput[r.remoteId];
         if(inp){
-          let ix=inp.ix||0, iy=inp.iy||0;
+          const ix=inp.ix||0, iy=inp.iy||0;
           const mag=Math.hypot(ix,iy);
-          if(mag>0.05){
+          // The same model the local player is on. A remote bean is the same
+          // bean: it used to snap its facing to the stick and push along the
+          // stick, so every other player in a multiplayer round turned like a
+          // tank while the one on your own screen turned like a bean.
+          let dvx=0, dvy=0, amt=0;
+          if(mag>0.05 && !r.airDive){
+            amt = Math.min(1, mag);
             const want=Math.atan2(iy,ix);
-            let off = want - Math.atan2(r.vy, r.vx);
-            while(off> Math.PI) off-=Math.PI*2;
-            while(off<-Math.PI) off+=Math.PI*2;
-            if(Math.hypot(r.vx,r.vy) > 1.5 && Math.abs(off) > Math.PI*0.45) r.turnGrip = 6;
-            r.facing=want;
+            const rate = (r.h>0 ? TURN_RATE_AIR : TURN_RATE_GROUND) * dt;
+            let d = want - r.facing;
+            while(d> Math.PI) d-=Math.PI*2;
+            while(d<-Math.PI) d+=Math.PI*2;
+            r.facing = (Math.hypot(r.vx,r.vy) < TURN_SNAP_SPEED)
+                     ? want : r.facing + clamp(d, -rate, rate);
+            dvx = Math.cos(r.facing); dvy = Math.sin(r.facing);
           }
-          const control = (r.airDive?0 : (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?0.65:1)
+          const control = (r.airDive?0 : (r.respawnFreeze>0)?0 : r.tumbleT>0?0 : r.stumbleT>0?0.15 : r.falling?0 : r.getUpT>0?0.45 : r.diveT>0?0.12 : r.h>0?AIR_CONTROL:1)
                         * ((r.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);
-          r.vx+=ix*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=iy*ACCEL*(1+r.draft)*WIND(r)*control*f;
+          r.vx+=dvx*amt*ACCEL*(1+r.draft)*WIND(r)*control*f; r.vy+=dvy*amt*ACCEL*(1+r.draft)*WIND(r)*control*f;
         }
       } else if(!r.isPlayer){ botAirDive(r); updateBotAI(r,dt,t,f); }
 
@@ -174,11 +194,16 @@
       // Ice first, because a landing does not make ice grippier. Then the
       // landing slide, which outranks the turn bite for the same reason: you
       // cannot dig in with your feet while they are still sliding.
+      // v25: the turn-bite is gone. It existed because the body and the push
+      // pointed different ways during a turn, and made the ground briefly
+      // grippier so the velocity would catch up; the push now sweeps round with
+      // the body, so there is nothing to catch up to and nothing here to hide.
+      // What is left is the honest order: ice first, because a landing does not
+      // make ice grippier, then the landing slide, because you cannot dig in
+      // with your feet while they are still sliding.
       const slip = currentMap.slippery ? ICE_FR
                  : (r.slideT||0) > 0    ? LAND_SLIDE_FR
-                 : (r.turnGrip||0) > 0  ? 0.70
                  :                        GROUND_FR;
-      if(r.turnGrip) r.turnGrip = Math.max(0, r.turnGrip - f);
       const fr = Math.pow(r.diveT>0 ? 0.972 : (r.h>0 ? AIR_FR : slip), f);
       r.vx*=fr; r.vy*=fr;
       // The hard ceiling. Applied after every impulse of the frame has landed,

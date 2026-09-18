@@ -107,7 +107,37 @@
   const V_CAP = V_MAX*1.50;
   const V_CAP_ICE = V_MAX_ICE*1.35;
   function speedCap(){ return (currentMap && currentMap.slippery) ? V_CAP_ICE : V_CAP; }
+  // How much of your drive answers while your feet are off the ground. Air
+  // friction matches ground friction, so this is very nearly the fraction of
+  // top speed you can reach on air steering alone -- which is the number that
+  // decides whether a jump can be completely redirected in flight or merely
+  // corrected. It was an unnamed 0.65 sitting in the middle of the control
+  // table; naming it is what lets a check assert air steering is weaker than
+  // ground steering without asserting the whole table.
+  const AIR_CONTROL = 0.65;
+  // ---- how fast the body comes round -------------------------------------
+  // Unchanged at 17 and 9, and worth writing down why, because the obvious
+  // derivation is wrong. Driving along the body means the velocity turns only
+  // because the push has a component across it: at speed v under acceleration a
+  // the heading sweeps at a*sin(gap)/v. It is tempting to conclude that the
+  // body should therefore turn at a/v -- the fastest the velocity can manage --
+  // but sustaining THAT rate needs sin(gap) = 1, a permanent ninety-degree gap.
+  // Tried, and measured: it lowered the peak gap through a 90-degree turn from
+  // 50 degrees to 43 and pushed the time for the two to converge from 12 frames
+  // to 14, because a slower body simply arrives later. It bought nothing.
+  //
+  // The real trade is fixed by the friction and cannot be tuned away: a fast
+  // body opens a wider gap briefly, a slow body a narrower one for longer, and
+  // the velocity always needs about 1/(1-fr) = 6 frames to settle onto the body
+  // once the body has stopped moving. 17 rad/s puts a 90-degree turn on the
+  // body in five and a half frames, which is what makes small corrections feel
+  // immediate, so it stays.
   const TURN_RATE_GROUND = 17, TURN_RATE_AIR = 9;   // radians per second
+  // Below this there is no momentum worth arguing with, so the body comes round
+  // at once. Without it, driving along the body means a standing start with the
+  // bean facing the wrong way spends its first tenth of a second accelerating
+  // backwards -- which is the one thing a standing start must never do.
+  const TURN_SNAP_SPEED = V_MAX*0.18;
   // How hard a gradient pulls, per frame per unit of sin(slope). At the
   // steepest point of Boom Peak this is about a fifth of ACCEL.
   // Scaled with ACCEL: at 0.50 against the old 0.68 a hill was worth 15%, and
@@ -175,6 +205,22 @@
   function iceSteerK(){ return (currentMap && currentMap.slippery) ? ICE_DRIVE*ICE_LATERAL : 1; }
   // The player pushes in a direction rather than along a lane, so their scale
   // is the blend between the two: full with their momentum, lateral against it.
+  // How far a racer still has to travel sideways once it stops pushing. Friction
+  // takes the same share of what is left every frame, so the whole of the
+  // remaining drift is a geometric series summing to v*fr/(1-fr) -- five and a
+  // quarter units per unit of speed on dry ground, but fifteen and two thirds on
+  // ice.
+  //
+  // This is the number a steering controller has to lead by. Aiming at where a
+  // racer IS cannot help overshooting on a surface that answers this slowly: the
+  // bot is still being told to push toward a lane it has already arrived at,
+  // and it only starts braking once the error changes sign, by which point it
+  // is most of a track width past. Measured on Splash Slide seed 1048, bots
+  // carried their error 397 units past the lane they were aiming at -- on a
+  // track 520 wide. Aiming at where it will STOP is the same controller with
+  // the lag taken out, and it turns a pair of complex eigenvalues (an
+  // oscillation that decays over about half a second) into two real ones.
+  function driftLead(){ return currentMap && currentMap.slippery ? ICE_FR/(1-ICE_FR) : GROUND_FR/(1-GROUND_FR); }
   function iceBlend(r, ax, ay){
     if(!(currentMap && currentMap.slippery)) return 1;
     const s = Math.hypot(r.vx, r.vy), a = Math.hypot(ax, ay);
@@ -201,6 +247,14 @@
     // count on. Coyote time and the input buffer stay: those forgive when you
     // pressed, not how long.
     r.vh=JUMP_V; r.h=Math.max(r.h,0.01); r.coyote=0; r.squash=0; r.landT=0; r.stretchT=STRETCH_MS;
+    // What the deck under you was worth comes with you. A moving platform
+    // carries a racer by writing their position, which is right while their
+    // feet are on it and wrong the instant they leave: jumping straight up off
+    // a platform travelling at a third of running speed dropped every bit of
+    // that and put you down where you took off in WORLD space, with the
+    // platform somewhere else. One frame's carry IS the velocity it stands for,
+    // so handing it to the jump is the whole of the fix.
+    if(r.platVX){ r.vx += r.platVX; r.platVX = 0; }
     // What you left the ground with. The air dive multiplies this rather than
     // whatever is left of it by the frame you press, so pressing dive late in
     // the arc is a choice about where you land and not a tax on your run-up.
