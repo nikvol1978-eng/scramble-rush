@@ -155,6 +155,11 @@ hook = """
       return window.__dbg.info();
     },
     hold:(k,v)=>{ keys[k]=v!==false; },
+    // The analog stick. computeInputVec reads touchVec for the on-screen pad and
+    // the gamepad alike, so this is how a harness presses something other than
+    // all-the-way. Screen axes: +y is up the screen, which the input vector
+    // flips, so stick(0,1) is forward exactly as the pad's forward is.
+    stick:(x,y)=>{ touchVec.x = x||0; touchVec.y = y||0; return {x:touchVec.x, y:touchVec.y}; },
     pops:()=>coinPops.map(p=>p.n+' '+p.why),
     // jump and dive fire on keydown, so holding the key does nothing. These are
     // what a playtest presses.
@@ -279,10 +284,87 @@ hook = """
     }),
     obsTypes:()=>{ const h={}; for(const o of obstacles) h[o.type]=(h[o.type]||0)+1; return h; },
     wipe:()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} return 'cleared'; },
+    // The whole movement state of one racer, in one object. tools/movement-metrics.mjs
+    // samples this every frame to measure acceleration, braking, turn rates,
+    // jump arcs and dive reach, so that the feel of the bean is a number some-
+    // thing can disagree with rather than an opinion. Defaults to the player.
+    // Kept deliberately flat and cheap: it is read sixty times a simulated
+    // second and anything clever in here shows up as harness overhead.
+    rstate:(i)=>{ const r = (i===undefined||i===null) ? racers.find(x=>x.isPlayer) : racers[i];
+      if(!r) return null;
+      return { x:r.x, y:r.y, h:r.h, vx:r.vx, vy:r.vy, vh:r.vh, facing:r.facing,
+               spd:Math.hypot(r.vx,r.vy), floorH:r.floorH||0,
+               diveT:r.diveT||0, diveCd:r.diveCd||0, airDive:!!r.airDive,
+               getUpT:r.getUpT||0, landT:r.landT||0, slideT:r.slideT||0,
+               tumbleT:r.tumbleT||0, stumbleT:r.stumbleT||0, platVX:r.platVX||0,
+               coyote:r.coyote===undefined?-1:r.coyote, jumpBuf:r.jumpBuf||0,
+               respawnFreeze:r.respawnFreeze||0, falling:!!r.falling,
+               finished:!!r.finished, lavaOut:!!r.lavaOut,
+               cpIndex:r.cpIndex===undefined?-1:r.cpIndex, fallCount:r.fallCount||0 }; },
+    // Where a pit's moving decks are at this instant, and how fast each is
+    // travelling sideways. A harness that wants to stand a racer ON a platform
+    // has to be told where the platform is: standing them at the middle of the
+    // track and hoping is how a carry test silently becomes a falling test.
+    platAt:(y)=>{ const o = obstacles.find(x=>x.type==='pit' && y>=x.yStart && y<=x.yEnd)
+                          || obstacles.find(x=>x.type==='pit');
+      if(!o) return null;
+      const t = obsTime(window.__T||0);
+      return { yStart:Math.round(o.yStart), yEnd:Math.round(o.yEnd),
+               platforms:o.platforms.map(p=>({ x:+platX(p,t).toFixed(1), w:p.width,
+                 vx:+(Math.cos(t*p.speed+p.phase)*p.amp*p.speed/60).toFixed(4) })),
+               islands:(o.islands||[]).map(i=>({x:i.x,w:i.w,y0:Math.round(i.y0),y1:Math.round(i.y1)})) }; },
+    // Where every bot is against where it is trying to be. The lane a bot aims
+    // at is r.targetX and the only thing it can do about the difference is push
+    // sideways, so these four numbers are the whole of its steering problem --
+    // and on ice, where a push takes a second to answer, the gap between them
+    // is what a narrow channel is lost by. tools/map-sweep.mjs samples this to
+    // tell "aimed at the wrong lane" apart from "aimed at the right lane and
+    // could not hold it", which look identical in a fall count.
+    botTrack:()=>racers.filter(r=>!r.isPlayer && !r.lavaOut && !r.finished).map(r=>({
+      x:+r.x.toFixed(1), y:+r.y.toFixed(1), vx:+r.vx.toFixed(3),
+      targetX:+(r.targetX===undefined?-1:r.targetX).toFixed(1),
+      err:+(r.targetX===undefined?0:r.targetX-r.x).toFixed(1),
+      h:+r.h.toFixed(1), falling:!!r.falling, tumbleT:+(r.tumbleT||0).toFixed(0) })),
+    // A controlled starting condition for movement measurement: every bot parked
+    // off the course where nothing it does can reach the subject, and the player
+    // set down at a chosen point with no velocity and no timer left running from
+    // whatever happened before. tools/movement-metrics.mjs calls this before
+    // every run; the numbers it reports are only comparable because it does.
+    // lavaOut is how the bots are parked because the physics loop skips such a
+    // racer outright -- freezing them any later still lets them push the subject.
+    mlab:(y,x)=>{ const p=racers.find(r=>r.isPlayer); if(!p) return null;
+      for(const r of racers) if(!r.isPlayer){ r.lavaOut = true; r.x = -9000; r.y = -9000; }
+      if(y!==undefined) p.y = y;
+      if(x!==undefined) p.x = x;
+      p.vx=0; p.vy=0; p.vh=0; p.h=0; p.facing=Math.PI/2;
+      p.diveT=0; p.diveCd=0; p.airDive=false; p.getUpT=0; p.getUpTotal=0;
+      p.landT=0; p.slideT=0; p.tumbleT=0; p.tumbleSpin=0; p.stumbleT=0;
+      p.platVX=0; p.jumpBuf=0; p.respawnFreeze=0; p.falling=false;
+      p.invuln=0; p.windT=0; p.squash=0; p.stretchT=0;
+      touchVec.x=0; touchVec.y=0;
+      for(const k in keys) keys[k]=false;
+      look.yaw=0; look.pitch=CAM.PITCH;
+      syncCamera(true);
+      return window.__dbg.rstate(); },
+    // The constants the feel is made of, read from the game rather than copied
+    // into the tool -- a second copy of ACCEL in a harness is a second thing to
+    // forget when the movement is retuned.
+    mconst:()=>({ V_MAX, ACCEL, GROUND_FR, AIR_FR, ICE_FR, V_CAP,
+                  JUMP_V, GRAV_UP, GRAV_DOWN, APEX_GRAV,
+                  TURN_RATE_GROUND, TURN_RATE_AIR,
+                  DIVE_IMPULSE, DIVE_PRONE_MS, DIVE_CD_MS, DIVE_GETUP_MS,
+                  AIR_DIVE_BOOST, AIR_DIVE_KICK, AIR_DIVE_FLOOR,
+                  COYOTE_MS, BUFFER_MS, LAND_SLIDE_F, LAND_SLIDE_FR, LAND_SLIDE_STEER,
+                  AIR_CONTROL, RESPAWN_FREEZE_S }),
     info:()=>{
       const hf=obstacles.find(o=>o.type==='hexfield');
       const tf=obstacles.find(o=>o.type==='tilefield');
       return { state, round, map:currentMap.key, mode:currentMap.mode||null, racers:racers.length,
+        // What KIND of round this is. A survival map has no finish line, so a
+        // sweep that counts finishers on one is measuring nothing -- it has to
+        // count survivors instead, and it cannot tell which to do without this.
+        knockout:!!currentMap.knockout, isMinigame:!!currentMap.isMinigame,
+        arenaEnd:Math.round(arenaEnd||0),
         boulders:boulders.length, obstacles:Object.keys(window.__dbg.obsTypes()),
         tiles:tf?tf.tiles.length:0, gone:tf?tf.tiles.filter(t=>t.gone).length:0,
         hexCells:hf?hf.cells.length:0, hexGone:hf?hf.cells.filter(c=>c.gone).length:0,

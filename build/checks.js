@@ -3400,12 +3400,37 @@
     window.__dbg.hold('a', false);
     window.__turnTrace = trace;
 
+    // v25: the bound was 8 frames, and 8 frames was `turnGrip` -- the mechanism
+    // that spotted a sharp turn and made the ground briefly grippier so the
+    // velocity would snap onto the facing. With the drive now applied along the
+    // body there is no such mechanism and there is no longer anything for it to
+    // hide, so the number has to come from the physics instead of from the
+    // trick.
+    //
+    // It is two terms. The body reaches the new heading in 90deg / 17rad/s =
+    // 5.5 frames. The velocity then settles onto it at the rate friction allows,
+    // a time constant of 1/(1-GROUND_FR) = 6.25 frames, and coming from a gap of
+    // about 50 degrees down to 15 is ln(50/15) = 1.2 of those, so about 7.5.
+    // Thirteen frames, and it measures twelve. Eighteen is that with margin for
+    // ordinary retuning -- and still less than half of what a genuine skid
+    // regression looks like: dropping the friction to the old ice-like 0.955
+    // puts this past forty.
+    //
+    // The peak gap is asserted too, and that assertion is NEW. It is the part
+    // that actually says "does not skid": a racer may take a moment to come
+    // round, but it must never be pointing somewhere more than a right angle
+    // from where it is travelling, which is what reads as skating rather than
+    // turning.
+    const SKID_FRAMES = 18, SKID_PEAK_DEG = 90;
     if(top < 3)     bad.push('never reached speed');
-    if(settle > 8)  bad.push('velocity trailed the facing for '+settle+' frames, want <= 8 (peak '+peak.toFixed(0)+' deg)');
+    if(settle > SKID_FRAMES)
+      bad.push('velocity trailed the facing for '+settle+' frames, want <= '+SKID_FRAMES+' (peak '+peak.toFixed(0)+' deg)');
+    if(peak >= SKID_PEAK_DEG)
+      bad.push('the bean pointed '+peak.toFixed(0)+' deg away from its own velocity -- that is skating, not turning');
 
     return { name:'W a 90 degree turn does not skid', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
-               : 'velocity settled within 15 deg after '+settle+' frames, peak '+peak.toFixed(0)+' deg' };
+               : 'velocity settled within 15 deg after '+settle+' frames (bar '+SKID_FRAMES+'), peak '+peak.toFixed(0)+' deg' };
   }
 
   // ---------- k: slime carries you, a pad launches you, a flag brings you back ----------
@@ -4677,6 +4702,14 @@
     {
       const seen = { 1:{}, 2:{}, 3:{} };
       const wasForced = window.__forceMap;
+      // ...and the map itself, which this loop nulls 180 times and used to walk
+      // away from still null. checks.js is injected into the debug build only,
+      // but the debug build's own rAF loop is still running between checks, and
+      // an unrestored null currentMap is a live `currentMap.slippery` throw the
+      // moment it ticks a frame that is still in state 'racing'. That surfaced
+      // as exactly one unexplained page error in a 66-check CI run, which is
+      // the kind of noise that teaches people to ignore the error line.
+      const wasMap = currentMap;
       for(let i=0;i<180;i++){
         for(let n=1;n<=ROUNDS;n++){
           window.__forceMap = null;
@@ -4690,6 +4723,7 @@
         }
       }
       window.__forceMap = wasForced;
+      currentMap = wasMap;
       const r1 = Object.keys(seen[1]), r3 = Object.keys(seen[3]);
       rep.dealt = 'r1 ' + r1.length + ' races, r2 ' + Object.keys(seen[2]).length
                 + ' maps, r3 ' + r3.length + ' finals';
@@ -4862,7 +4896,13 @@
     // including the ones where that is backwards down the course.
     for(const k of ['w','a','s','d']) window.__dbg.hold(k, false);
     let worstErr = 0;
-    for(const yaw of [0, Math.PI/2, Math.PI, -Math.PI/2, 2.3]){
+    // Every octant, not five scattered angles. The bug this guards inverted
+    // forward at +-90 and was exactly zero at 0 and pi, so the diagonals are
+    // where a half-wrong rotation hides: a sign error that survives 0, pi and
+    // one arbitrary angle is still a sign error.
+    const YAWS = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI,
+                  -Math.PI/4, -Math.PI/2, -3*Math.PI/4];
+    for(const yaw of YAWS){
       window.__dbg.look(yaw, CAM.PITCH); window.__dbg.tick(2);
       window.__dbg.hold('w', true);
       const iv = computeInputVec();
@@ -4893,7 +4933,7 @@
     settings.autoCentre = autoWas; settings.camRelative = relWas;
     return { name:'@ orbit and racer stay independent; forward follows the lens', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
-               : 'racer unturned by a '+look.yaw.toFixed(2)+' rad orbit, yaw held through 120 running frames, forward within '+(worstErr*180/Math.PI).toFixed(1)+' deg at 5 yaws' };
+               : 'racer unturned by a '+look.yaw.toFixed(2)+' rad orbit, yaw held through 120 running frames, forward within '+(worstErr*180/Math.PI).toFixed(1)+' deg at '+YAWS.length+' yaws' };
   }
 
   // ---------- #: obstruction, and who the spectator picks ----------
@@ -4973,6 +5013,328 @@
                  +'; qualified -> '+(s1?nameOf(s1):'?')+', advanced to '+(after?nameOf(after):'?') };
   }
 
+  // ---------- %: the movement model ----------
+  // v25 changed what the drive is applied ALONG -- the body rather than the
+  // stick -- and that is a change you can only see in numbers. These are the
+  // properties that make the bean feel like a bean; none of them is a
+  // frame-perfect snapshot, and every bound is wide enough that ordinary
+  // retuning passes while the character of the movement is pinned.
+  //
+  // The bound that matters most is the reversal. Before v25 a 180 at full tilt
+  // put the velocity through zero in three frames and coasted 1.8 units -- a
+  // third of a bean -- which is a tank turn however the bean is animated. A
+  // racer with momentum cannot do that, so the check asserts it cannot.
+  const MOVE_MAP = 'sunny';
+  const MOVE_SPOTS = [1500, 3700, 4800];
+  // Seeded, because begin() rolls a fresh course every time it is called and
+  // these measurements are taken at fixed distances down it. Unseeded, whether
+  // 3700 was open track or the middle of a disc field was a coin flip, and the
+  // check passed or failed on the toss -- which is worse than not having it.
+  const MOVE_SEED = 20250;
+  function moveRun(fn){
+    // Several places to try, because a run that ends up inside a disc field is
+    // measuring the disc field. The first clean one wins.
+    let last = null;
+    for(const y of MOVE_SPOTS){ const r = fn(y); last = r; if(r && r.ok) return r; }
+    return last || { ok:false, why:'no clean spot' };
+  }
+  function moveClean(s, s0){
+    return s && s0 && s.fallCount === s0.fallCount && !s.falling && !s.lavaOut
+        && s.tumbleT <= 0 && s.stumbleT <= 0;
+  }
+  function checkMovement(){
+    return withSeed(MOVE_SEED, checkMovementInner);
+  }
+  function checkMovementInner(){
+    const bad = [], rep = {};
+    beginSeeded(MOVE_MAP, MOVE_SEED);
+    const D = window.__dbg;
+
+    // ---- ground: reaches top speed promptly, and stops in a readable distance
+    const g = moveRun(y=>{
+      const s0 = D.mlab(y, 260);
+      D.hold('w', true);
+      const tr = [];
+      for(let i=0;i<120;i++){ D.tick(1); tr.push(D.rstate()); }
+      const end = tr[tr.length-1];
+      if(!moveClean(end, s0) || end.spd < 1) return { ok:false, why:'interrupted at '+y };
+      let t95 = -1;
+      for(let i=0;i<tr.length;i++) if(tr[i].spd >= end.spd*0.95){ t95 = (i+1)/60; break; }
+      D.hold('w', false);
+      const b0 = D.rstate();
+      let tStop = -1, dStop = 0;
+      for(let i=0;i<180;i++){
+        D.tick(1); const s = D.rstate();
+        if(s.spd <= end.spd*0.05){ tStop=(i+1)/60; dStop=Math.hypot(s.x-b0.x, s.y-b0.y); break; }
+      }
+      return { ok:true, vmax:end.spd, t95, tStop, dStop };
+    });
+    if(!g.ok) bad.push('could not measure a clean run: '+g.why);
+    else {
+      rep.ground = 'top '+g.vmax.toFixed(2)+'/frame, 95% in '+g.t95.toFixed(2)
+                 +'s, stops in '+g.tStop.toFixed(2)+'s / '+g.dStop.toFixed(0)+'u';
+      // Responsive, but not instant: a standing start that reaches top speed in
+      // under a tenth of a second has no weight, and one that takes over half a
+      // second is sluggish.
+      if(!(g.t95 > 0.08 && g.t95 < 0.55)) bad.push('0-95% took '+g.t95.toFixed(2)+'s, want 0.08..0.55');
+      // Momentum, but not ice: letting go must cost ground and must not cost a
+      // whole obstacle's worth of it.
+      if(!(g.tStop > 0.12 && g.tStop < 0.75)) bad.push('stopping took '+g.tStop.toFixed(2)+'s, want 0.12..0.75');
+      if(!(g.dStop > 8 && g.dStop < 90)) bad.push('stopping distance '+g.dStop.toFixed(0)+'u, want 8..90');
+      if(g.vmax < 3.5 || g.vmax > 6) bad.push('top speed '+g.vmax.toFixed(2)+' is nowhere near V_MAX '+V_MAX);
+    }
+
+    // ---- the reversal keeps its momentum -------------------------------
+    const rev = moveRun(y=>{
+      const s0 = D.mlab(y, 260);
+      D.hold('w', true); D.tick(100);
+      const pre = D.rstate();
+      if(!moveClean(pre, s0) || pre.spd < 3) return { ok:false, why:'no run-up at '+y };
+      D.hold('w', false); D.hold('s', true);
+      let tZero = -1, coast = 0;
+      for(let i=0;i<180;i++){
+        D.tick(1); const s = D.rstate();
+        coast = Math.max(coast, s.y - pre.y);
+        if(s.vy <= 0){ tZero = (i+1)/60; break; }
+      }
+      D.hold('s', false);
+      return { ok:tZero>0, tZero, coast, entry:pre.spd, why:'never reversed at '+y };
+    });
+    if(!rev.ok) bad.push('reversal never completed: '+rev.why);
+    else {
+      rep.reversal = 'from '+rev.entry.toFixed(2)+'/frame, zero after '+rev.tZero.toFixed(2)
+                   +'s, coasted '+rev.coast.toFixed(0)+'u on';
+      // The whole point. A racer at full tilt who is told to go the other way
+      // must carry on for a moment first.
+      if(rev.tZero < 0.10) bad.push('a 180 flipped the velocity in '+rev.tZero.toFixed(2)+'s -- that is a tank turn');
+      if(rev.coast < 10) bad.push('a 180 from full speed coasted only '+rev.coast.toFixed(0)+'u onward');
+      // ...and not so much that it is unresponsive
+      if(rev.tZero > 0.60) bad.push('a 180 took '+rev.tZero.toFixed(2)+'s to bite, which is sluggish');
+    }
+
+    // ---- analog: half a stick is half a run, not a whole one -------------
+    const an = moveRun(y=>{
+      const out = {};
+      for(const m of [0.5, 1.0]){
+        const s0 = D.mlab(y, 260);
+        D.stick(0, m);
+        for(let i=0;i<120;i++) D.tick(1);
+        const s = D.rstate();
+        D.stick(0, 0);
+        if(!moveClean(s, s0)) return { ok:false, why:'interrupted at '+y };
+        out['m'+m] = s.spd;
+      }
+      return { ok:true, half:out['m0.5'], full:out['m1'] };
+    });
+    if(!an.ok) bad.push('could not measure analog input: '+an.why);
+    else {
+      const ratio = an.half/(an.full||1);
+      rep.analog = 'half stick '+an.half.toFixed(2)+' vs full '+an.full.toFixed(2)+' = '+ratio.toFixed(2);
+      // It used to saturate: every magnitude above the dead zone produced the
+      // same top speed, so an analog stick was a digital one.
+      if(ratio > 0.80) bad.push('half a stick gave '+(ratio*100).toFixed(0)+'% of full speed -- analog input is saturating');
+      if(ratio < 0.20) bad.push('half a stick gave only '+(ratio*100).toFixed(0)+'% of full speed');
+    }
+
+    // ---- jump: legal only, and exactly once ------------------------------
+    {
+      D.mlab(3700, 260);
+      const first = D.press('jump');
+      D.tick(10);
+      const mid = D.rstate();
+      const second = D.press('jump');
+      const afterVh = D.rstate().vh;
+      if(!first) bad.push('a grounded racer could not jump');
+      if(second) bad.push('a second jump was accepted in mid-air');
+      if(Math.abs(afterVh - mid.vh) > 1e-9) bad.push('a mid-air jump press changed the rise');
+      rep.jump = 'single jump only, tried again at h='+mid.h.toFixed(0);
+    }
+
+    // ---- dive: committed, not spammable ----------------------------------
+    {
+      D.mlab(3700, 260);
+      let accepted = 0;
+      for(let i=0;i<180;i++){ if(D.press('dive')) accepted++; D.tick(1); }
+      rep.dive = accepted+' dives in 3s';
+      // 1400ms of cooldown means at most three starts in three seconds.
+      if(accepted > 3) bad.push(accepted+' dives started in three seconds -- the cooldown is not holding');
+      if(accepted < 1) bad.push('no dive started at all in three seconds');
+      // ...and one dive per trip through the air
+      D.mlab(3700, 260);
+      D.press('jump'); D.tick(8);
+      const air1 = D.press('dive');
+      D.tick(6);
+      const air2 = D.press('dive');
+      if(!air1) bad.push('an air dive was refused mid-jump');
+      if(air2) bad.push('a second air dive was accepted before landing');
+    }
+
+    // ---- air steering is weaker than ground steering ---------------------
+    const air = moveRun(y=>{
+      const N = 18;
+      const s0 = D.mlab(y, 260);
+      D.hold('d', true);
+      for(let i=0;i<N;i++) D.tick(1);
+      const gs = D.rstate();
+      D.hold('d', false);
+      if(!moveClean(gs, s0)) return { ok:false, why:'ground leg interrupted at '+y };
+      D.mlab(y, 260);
+      D.press('jump'); D.tick(3);
+      const b = D.rstate();
+      D.hold('d', true);
+      for(let i=0;i<N;i++) D.tick(1);
+      const as = D.rstate();
+      D.hold('d', false);
+      if(as.h <= 0) return { ok:false, why:'landed mid-measurement at '+y };
+      return { ok:true, ground:gs.spd, air:Math.hypot(as.vx-b.vx, as.vy-b.vy) };
+    });
+    if(!air.ok) bad.push('could not measure air control: '+air.why);
+    else {
+      const ratio = air.air/(air.ground||1);
+      rep.air = 'air steering is '+(ratio*100).toFixed(0)+'% of ground';
+      if(ratio >= 0.95) bad.push('air steering is '+(ratio*100).toFixed(0)+'% of ground steering -- a jump can be flown');
+      if(ratio <= 0.05) bad.push('air steering is '+(ratio*100).toFixed(0)+'% of ground -- a jump cannot be corrected at all');
+    }
+
+    // ---- a moving platform takes its passenger with it -------------------
+    {
+      const pits = D.obsAt('pit');
+      if(!pits.length) bad.push('no pit on '+MOVE_MAP+', so platform carry is untested');
+      else {
+        const mid = Math.round((pits[0].y0 + pits[0].y1)/2);
+        const found = D.platAt(mid);
+        // The fastest deck is not necessarily a usable one: by the time this
+        // section runs the swings are wherever several hundred ticks of earlier
+        // measurement have left them, and a deck sitting at the end of its
+        // travel is about to leave the track. Take the quickest deck that is
+        // well inside the playable width, so there is a run of frames to
+        // measure before it reaches the edge.
+        const usable = found ? found.platforms.filter(pl=>pl.x > 90 && pl.x < TRACK_W-90) : [];
+        const deck = usable.length
+          ? usable.reduce((a,b)=>Math.abs(b.vx)>Math.abs(a.vx)?b:a) : null;
+        if(!deck) bad.push('the pit reported no platform clear of the track edges');
+        else {
+          const di = found.platforms.indexOf(deck);
+          D.mlab(mid, deck.x);
+          // The defect this pins: a racer who does nothing at all on a moving
+          // deck used to hold a fixed world position while the deck slid out
+          // from under them, and the only reason that was survivable is that
+          // the bots were written to steer against it by hand.
+          //
+          // What is asserted is TRACKING, not survival. A deck's travel can
+          // carry it past the edge of the track -- measured, one of Sunny
+          // Sprint's swings reaches x = -42 on a track that starts at 0 -- and
+          // there the rider is held by the side clamp while the deck keeps
+          // going, so "never falls" is not a property the map supports, and a
+          // check demanding it would be demanding a map change. The rider must
+          // stay ON the deck for as long as the deck is somewhere a racer is
+          // allowed to be, which is the whole of what carrying means.
+          let worst = 0, samples = 0;
+          for(let i=0;i<60;i++){
+            D.tick(1);
+            const s = D.rstate();
+            if(s.falling) break;
+            const now = D.platAt(mid);
+            const dk = now && now.platforms[di];
+            if(!dk) break;
+            if(dk.x < 20 || dk.x > TRACK_W-20) break;      // past the playable width
+            worst = Math.max(worst, Math.abs(s.x - dk.x));
+            samples++;
+          }
+          if(samples < 10) bad.push('could not sample the platform carry (only '+samples+' frames on track)');
+          else if(worst > 6) bad.push('a racer standing still drifted '+worst.toFixed(1)+'u off the deck under them');
+          rep.carry = 'tracked the deck within '+worst.toFixed(1)+'u over '+samples+' frames';
+          const s1 = D.mlab(mid, deck.x);
+          D.tick(6);
+          const pre = D.rstate();
+          const jumped = D.press('jump');
+          const post = D.rstate();
+          if(jumped && Math.abs(pre.platVX) > 0.05 && Math.abs(post.vx - pre.vx) < 1e-9)
+            bad.push('jumping off a moving platform threw away its velocity');
+          rep.platform = 'deck at '+deck.vx.toFixed(2)+'/frame';
+        }
+      }
+    }
+
+    return { name:'% the movement model: momentum, analog, jump, dive, air, platforms',
+             pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,6).join('; ') : JSON.stringify(rep) };
+  }
+
+  // ---------- =: everything that can hide the racer is fadeable ----------
+  // The camera pulls its boom in for `camBlockers` and fades `fadeables`, and a
+  // mesh in neither list can sit between the lens and the bean with nothing at
+  // all to stop it. That is not a hypothetical: the checkpoint gantry is a bar
+  // 26 units deep across almost the whole track at head height, it is passed
+  // several times a lap on every map, and until v25 it was in neither list.
+  //
+  // This asserts REGISTRATION rather than pixels, because a pixel test of "is
+  // the racer visible" passes whenever the obstacle happens to be elsewhere in
+  // its cycle, which is most of the time -- which is exactly how this shipped.
+  function checkOccluders(){
+    return withSeed(MOVE_SEED, checkOccludersInner);
+  }
+  function checkOccludersInner(){
+    const bad = [], seen = {};
+    // The meshes the occlusion ray is actually tested against, per type. The
+    // ray is non-recursive, so a Group is not enough: whatever is named here is
+    // what has to be in the list.
+    const PARTS = {
+      spinbar:  o => (o.mesh && o.mesh.children) || [],
+      hammer:   o => (o.items||[]).map(it => it.mesh && it.mesh.mace),
+      pendulum: o => [o.ball, o.rod],
+    };
+    let maxFadeables = 0;
+    for(const key of ['sunny','neon','tiltdeck']){
+      beginSeeded(key, MOVE_SEED);
+      const inList = new Set(fadeables);
+      maxFadeables = Math.max(maxFadeables, fadeables.length);
+      for(const c of checkpoints){
+        if(!c.banner) continue;
+        seen.checkpoint = (seen.checkpoint||0)+1;
+        if(!inList.has(c.banner)) bad.push(key+': a checkpoint banner is not fadeable');
+      }
+      for(const o of obstacles){
+        const get = PARTS[o.type];
+        if(!get) continue;
+        for(const m of get(o)){
+          if(!m) continue;
+          seen[o.type] = (seen[o.type]||0)+1;
+          if(!inList.has(m)) bad.push(key+': a '+o.type+' mesh is not fadeable');
+        }
+      }
+      // The boom is still stopped by the corridor and by nothing else. A hazard
+      // in camBlockers would haul the camera to its 58-unit minimum every time
+      // one swung past, which is the bean filling the screen.
+      //
+      // Counting blockers is the wrong test and was the first thing this check
+      // got wrong: the corridor is built as a run of swept wall segments, so a
+      // perfectly healthy map has 24 of them. What must be true is not that the
+      // list is short but that nothing which MOVES is on it.
+      const blocking = new Set(camBlockers);
+      for(const m of camBlockers){
+        if(!inList.has(m)) bad.push(key+': a camera blocker is not also fadeable');
+      }
+      for(const c of checkpoints)
+        if(c.banner && blocking.has(c.banner)) bad.push(key+': a checkpoint banner stops the camera boom');
+      for(const o of obstacles){
+        const get = PARTS[o.type];
+        if(!get) continue;
+        for(const m of get(o))
+          if(m && blocking.has(m)) bad.push(key+': a '+o.type+' stops the camera boom instead of fading');
+      }
+    }
+    // ...and we have not simply registered the world, which would put every
+    // mesh on the course through a raycast every frame.
+    if(maxFadeables > 400) bad.push(maxFadeables+' fadeables is too many to raycast every frame');
+    for(const k of ['checkpoint','spinbar','hammer','pendulum'])
+      if(!seen[k]) bad.push('no '+k+' was found on any sampled map, so its coverage is unproven');
+    return { name:'= every bar, mace and gantry that can hide the racer fades',
+             pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,5).join('; ')
+               : 'covered '+JSON.stringify(seen)+', peak fadeables '+maxFadeables };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -4984,6 +5346,7 @@
       ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],['e',check5c],['u',check5d],
       ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
+      ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
     ];
     // slow: five layouts a map, so only when asked for
@@ -5014,5 +5377,13 @@
         failed: failed.length,
         results: results.map(r=>(r.pass?'PASS  ':'FAIL  ')+r.name+'  ['+r.detail+']')
       };
-    }
+    },
+    // The suite's own determinism machinery, handed out so that an external
+    // sweep reproduces a seed EXACTLY as a check does. tools/map-sweep.mjs runs
+    // thousands of rounds looking for map defects and then hands the seed back
+    // here to be pinned in a check; that hand-back is only meaningful if both
+    // sides build the round the same way, which means one implementation of
+    // beginSeeded and not two. H_SEEDS travels with it because seed 1048 is
+    // documented above as a real defect and a sweep should keep meeting it.
+    seeded: { seededRandom, withSeed, beginSeeded, wipeRoundState, H_SEEDS, T0: H_T0 },
   };

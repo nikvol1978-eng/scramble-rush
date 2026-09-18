@@ -484,7 +484,7 @@ cut("""    const p=racers.find(r=>r.isPlayer);
 # written the natural way round would have been the seventh.
 sub("  function baseRacer(){ return {x:0,y:-60,",
     "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,"
-    + "tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,"
+    + "tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,platVX:0,"
     + "x:0,y:-60,",
     "baseRacer fields")
 
@@ -546,11 +546,35 @@ sub("    r.vy+=0.52*(r.speed||1)*diffMult()*throttle*f;",
 # that takes a second to answer the helm that alone took them from a median of
 # two falls a layout on Splash Slide to eight, all of them at narrow channels
 # and crumbling bridges where the line has to be held.
+#
+# v25: the damping was written as a fraction of the current sideways speed and
+# guessed at -- 0.55 -- rather than derived, and it was far too weak to be the
+# brake it was meant to be. Worked through, the closed loop it made has COMPLEX
+# eigenvalues, magnitude 0.916: an oscillation with a period of about six tenths
+# of a second that barely decays. What that looks like in the game is a bot
+# weaving across an icy channel instead of holding it, and it is the whole of
+# the documented Splash Slide navigation defect that seed 1048 pins (see
+# H_SEEDS in checks.js). Measured on that seed, a bot carried its error 397
+# units past the lane it was aiming at, on a track 520 wide.
+#
+# The fix is not a bigger guess. A racer that stops pushing still travels
+# v*fr/(1-fr) sideways, so the error a controller should act on is not where the
+# bot is but where it will END UP -- dx - vx*driftLead(). That is the same
+# controller with its own lag subtracted, and it makes both eigenvalues real
+# (0.940 and 0.386): it closes on the lane and stays there instead of crossing
+# it. The gain and the clamp are untouched, so a bot's hardest push sideways is
+# still exactly what it always was; only the thing it is aiming at has moved.
+#
+# Dry ground keeps the plain error. It has never had a damping term, its drift
+# is a third of ice's, and its lanes are not the ones anybody falls off -- so
+# leading there would be retuning eight maps that are not broken to fix one
+# that is.
 sub("    r.vx+=clamp(dx*0.035,-0.75,0.75)*f;",
     "    const latK = currentMap.slippery ? 1 : DRY_LATERAL_K;" + chr(10)
     + "    const latS = ((r.slideT||0) > 0 ? LAND_SLIDE_STEER : 1);" + chr(10)
-    + "    r.vx+=clamp(dx*(currentMap.slippery?0.20:0.055*latK) - (currentMap.slippery?r.vx*0.55:0),-1.5*latK,1.5*latK)*iceSteerK()*latS*f;",
-    "bot steering keeps up with the new friction")
+    + "    const dxAim = currentMap.slippery ? dx - r.vx*driftLead() : dx;" + chr(10)
+    + "    r.vx+=clamp(dxAim*(currentMap.slippery?0.20:0.055*latK),-1.5*latK,1.5*latK)*iceSteerK()*latS*f;",
+    "bot steering aims at where it will stop, not where it is")
 
 # ------------------------------------------------------------ arena bot ai
 sub("  function racerCollisions(){",
