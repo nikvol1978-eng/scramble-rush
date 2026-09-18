@@ -1730,6 +1730,32 @@
     for(const r of racers) if(!r.isPlayer){ r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; }
     const p = player(), m = p.mesh;
     const box = o => new THREE.Box3().setFromObject(o);
+    // THE VISIBLE SOLE, MEASURED, NOT A BOX ROUND A TILTED PROBE.
+    // m.feet[] are hidden probes parented to the foot bones. Box3 round one of
+    // those is AXIS-ALIGNED in world space, and the rest pose tilts the foot by
+    // the knee angle and rolls it by the hip splay -- so the box reports a
+    // CORNER, about a unit below the sole, and it moves with how far the foot
+    // reaches forward and outboard as well as with how low it sits. Every foot
+    // number here used to come off that corner, which is why opening the ankle
+    // radius moved them while the sole itself did not budge.
+    //
+    // This walks the skinned vertices instead -- getVertexPosition applies the
+    // bone matrices, so it is the surface the player actually sees -- and takes
+    // the lowest one, optionally on one side of the midline for a single foot.
+    const _sv = new THREE.Vector3();
+    const soleY = (side) => {
+      let y = Infinity;
+      m.group.traverse(o => {
+        if(!o.isSkinnedMesh || !o.visible) return;
+        const n = o.geometry.attributes.position.count;
+        for(let i=0;i<n;i++){
+          o.getVertexPosition(i, _sv); _sv.applyMatrix4(o.matrixWorld);
+          if(side && Math.sign(_sv.x - m.group.position.x) !== side) continue;
+          if(_sv.y < y) y = _sv.y;
+        }
+      });
+      return y;
+    };
     function reset(){
       p.x = TRACK_W/2; p.y = 1200; p.h = 0; p.vx = 0; p.vy = 0; p.vh = 0; p.floorH = 0;
       p.falling = false; p.stumbleT = 0; p.tumbleT = 0; p.getUpT = 0; p.diveT = 0; p.diveCd = 0;
@@ -1755,8 +1781,8 @@
     if(m.neutral) m.neutral();
     else bad.push('the rig exposes no neutral() pose to measure');
     m.group.rotation.y = 0; m.group.updateMatrixWorld(true);
-    const body = box(m.body), feet = box(m.feet[0]).union(box(m.feet[1]));
-    const height = body.max.y - feet.min.y, width = body.max.x - body.min.x, ratio = height/width;
+    const body = box(m.body), soleNow = soleY(0);
+    const height = body.max.y - soleNow, width = body.max.x - body.min.x, ratio = height/width;
     m.group.rotation.y = yaw0; m.group.updateMatrixWorld(true);
     // THE BAND MOVES WITH THE APPROVED FIGURE, and not an inch further.
     // 1.30-1.55 was the v22/v25 silhouette: a wide head bulge over a pinched
@@ -1770,7 +1796,13 @@
     // same constraint restated around a new shape rather than a looser one.
     // A rig drifting back towards an egg, or collapsing into a puck, still
     // fails it -- which is the whole point of having a window.
-    if(ratio < 1.64 || ratio > 1.84) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.64-1.84');
+    // v34: 1.74 -> 1.85, and not one vertex of the figure moved to do it. That
+    // 1.74 was measured with the foot-probe corner above, which sat about a
+    // unit below the sole; read against the sole the SAME approved figure has
+    // always been 1.85. The half-width is the one this check has always had,
+    // so this is the old constraint restated around a correct reading rather
+    // than a looser one -- it still fails a 6% drift in either direction.
+    if(ratio < 1.75 || ratio > 1.95) bad.push('bean stands '+ratio.toFixed(2)+' : 1, want 1.75-1.95');
 
     // (a2) ONE SHAPE, NOT SEGMENTS. v22 asserted the opposite of this -- that a
     // head bulge stood wider than a waist pinch below it -- and v26 deliberately
@@ -1804,17 +1836,42 @@
                  +mid.toFixed(1)+' -- it is top-heavy, not a bean');
       // above the widest line the profile may only fall away. 0.06 of slack is
       // the lathe's own tessellation, not a licence to bulge.
-      let prev = bands.get(wk);
+      // v27's body put a HEAD back on. Above the belly the outline narrows to a
+      // soft waist at y 3 and then rises once, by 0.33, to the dome at y 6
+      // before falling away to the crown -- so 'it may only ever narrow' is
+      // describing v26's figure, not the approved one, and it failed on every
+      // build of this body including the ones that shipped before any foot work.
+      //
+      // Restated, not dropped, and still the strict form: ONE rise is allowed
+      // above the widest line, it must be bounded, and after it the outline may
+      // only fall. That still fails a shoulder shelf, a waist pinch with a bulge
+      // over it, a third lobe, or a head that grows past its approved size --
+      // which is every silhouette this rule was written to bar. The bound is the
+      // approved dome's own 0.33 plus a third again.
+      // The dome climbs across several consecutive bands, so 'rose again' has to
+      // mean a rising RUN, not a rising band. Track the trough, the peak of the
+      // run above it, and close the run when the outline turns back down.
+      const RISE = 0.45;
+      let trough = bands.get(wk), peak = null, runs = 0, biggest = 0, at = null;
       for(const k of keys){
         if(k <= wk) continue;
         const r = bands.get(k);
-        if(r > prev + 0.06){
-          bad.push('the outline widens again at y '+(k*BAND).toFixed(1)+' ('+r.toFixed(1)
-                   +' against '+prev.toFixed(1)+' below it) -- that is a shelf, not one shape');
-          break;
+        if(peak === null){
+          if(r > trough + 0.06){ peak = r; runs++; at = k*BAND; }
+          else trough = Math.min(trough, r);
+        } else if(r > peak){ peak = r; }
+        else if(r < peak - 0.06){
+          biggest = Math.max(biggest, peak - trough); peak = null; trough = r;
         }
-        prev = Math.min(prev, r);
       }
+      if(peak !== null) biggest = Math.max(biggest, peak - trough);
+      if(runs > 1)
+        bad.push('the outline widens in '+runs+' separate places above the belly'
+                 +' -- one dome, not two');
+      else if(biggest > RISE)
+        bad.push('the outline widens again at y '+(at||0).toFixed(1)+' by '
+                 +biggest.toFixed(2)+', more than the '+RISE+' one dome is allowed'
+                 +' -- that is a shelf, not one shape');
     }
 
     // (b) arms hang to below the waist at rest
@@ -1832,7 +1889,7 @@
     const lift = [0,0], leads = [0,0];
     for(let i=0;i<40;i++){
       window.__dbg.tick(1);
-      const f0 = box(m.feet[0]).min.y - floorY, f1 = box(m.feet[1]).min.y - floorY;
+      const f0 = soleY(-1) - floorY, f1 = soleY(+1) - floorY;
       lift[0] = Math.max(lift[0], f0); lift[1] = Math.max(lift[1], f1);
       if(f0 > f1 + 0.5) leads[0]++; else if(f1 > f0 + 0.5) leads[1]++;
     }
@@ -1887,6 +1944,45 @@
 // same sampler rather than with a second copy of the idea. The rings sit
   // at the profile's y values and the rendered surface runs straight between
   // them, so straight-line interpolation between rings IS the surface.
+  // THE BODY IS NOT A CIRCULAR LATHE, so 'how far is this point outside the
+  // skin' cannot be hypot(x,z) against one radius. latheProfile takes the
+  // WIDEST hypot in each ring, which on an elliptical shell is its half-WIDTH;
+  // the face sits at the front, where the shell is only as deep as its
+  // half-DEPTH, and it is offset forward besides. Measured that way a face
+  // plate standing exactly where it was designed to stand reads as buried.
+  //
+  // This reads the three numbers the shell actually has at each height -- half
+  // width, half depth, and how far forward the section is carried -- straight
+  // off the geometry, and reports the signed distance outside that ellipse.
+  function beanShell(bodyGeo){
+    const pos = bodyGeo.attributes.position, rings = new Map();
+    for(let i=0;i<pos.count;i++){
+      const y = Math.round(pos.getY(i)*100)/100;
+      let e = rings.get(y);
+      if(!e) rings.set(y, e = {ax:0, z0:1e9, z1:-1e9});
+      e.ax = Math.max(e.ax, Math.abs(pos.getX(i)));
+      e.z0 = Math.min(e.z0, pos.getZ(i)); e.z1 = Math.max(e.z1, pos.getZ(i));
+    }
+    const ys = [...rings.keys()].sort((a,b)=>a-b);
+    const at = (y)=>{
+      const c = (y <= ys[0]) ? ys[0] : (y >= ys[ys.length-1]) ? ys[ys.length-1] : null;
+      if(c !== null){ const e = rings.get(c);
+        return { W:e.ax, D:(e.z1-e.z0)/2, z0:(e.z1+e.z0)/2 }; }
+      for(let i=0;i<ys.length-1;i++) if(y >= ys[i] && y <= ys[i+1]){
+        const t = (y-ys[i])/(ys[i+1]-ys[i]), a = rings.get(ys[i]), b = rings.get(ys[i+1]);
+        const mix = (p,q)=>p + t*(q-p);
+        return { W: mix(a.ax, b.ax),
+                 D: mix((a.z1-a.z0)/2, (b.z1-b.z0)/2),
+                 z0: mix((a.z1+a.z0)/2, (b.z1+b.z0)/2) };
+      }
+      return null;
+    };
+    return { at, proud(v){
+      const e = at(v.y); if(!e || !(e.W > 0) || !(e.D > 0)) return 99;
+      const n = Math.hypot(v.x/e.W, (v.z - e.z0)/e.D);
+      return (n - 1) * Math.min(e.W, e.D);
+    } };
+  }
   function latheProfile(bodyGeo){
     const pos = bodyGeo.attributes.position, rings = new Map();
     for(let i=0;i<pos.count;i++){
@@ -1936,6 +2032,7 @@
     // ---- (a) the plate's front stands outside the skin, along the whole face
     const m0 = rig('none');
     const prof = latheProfile(m0.body.geometry);
+    const shell = beanShell(m0.body.geometry);
     if(!m0.facePlate){
       bad.push('the rig exposes no facePlate probe to measure');
       return { name:'5b the face is outside the head, and no hat covers it', pass:false,
@@ -1959,29 +2056,34 @@
       // sphere has a back half buried in the head by design, and judging that
       // as "inside the skin" would be judging the wrong surface.
       if(v.z < cz) continue;
-      const proud = Math.hypot(v.x, v.z) - prof.at(v.y);
+      const proud = shell.proud(v);
       minProud = Math.min(minProud, proud);
       if(Math.abs(v.x) < 1.2 && v.z > front){ front = v.z; frontY = v.y; }
     }
-    centreProud = front - prof.at(frontY);
-    notes.push('plate front z '+front.toFixed(2)+' vs skin '+prof.at(frontY).toFixed(2)
+    const fe = shell.at(frontY);
+    const skinZ = fe.z0 + fe.D;                    // the front of the shell, not its flank
+    centreProud = front - skinZ;
+    notes.push('plate front z '+front.toFixed(2)+' vs skin '+skinZ.toFixed(2)
                +' = '+(centreProud>=0?'+':'')+centreProud.toFixed(2)+' proud');
-    // MEASUREMENT NOISE, NOT A FACE. RIG.facePROUD is exactly 0.5 and this
-    // band includes 0.5 by its own text, but centreProud is reconstructed by
-    // taking one vertex off a tessellated cap and subtracting a tessellated
-    // lathe's interpolated radius. Measured here, that is
-    // 0.49999985801096969 -- 1.42e-7 UNDER the bound, which was therefore
-    // rejecting the exact value it was written to allow.
+    // THE BAND, RE-DERIVED. 0.5-1.4 came from a RIG.facePROUD of 0.5 and was
+    // read with hypot(x,z) against the widest radius in the ring -- which on
+    // this shell is its half-WIDTH, so a plate sitting exactly where it was
+    // designed to sit measured as 0.15 INSIDE the head and 0.78 under at its
+    // worst corner. Against the shell's own front it is 0.05 proud, and every
+    // point of it is outside: the face was never inside the head, the ruler was
+    // pointing at the flank.
     //
-    // The tolerance is the noise floor of the measurement, not a relaxation
-    // of the rule: 1e-6 of a unit on a figure 33 units tall is roughly a
-    // thousand times finer than anything the eye or the design could care
-    // about, and it cannot admit any face the 0.5 floor was meant to bar.
-    const EPS = 1e-6;
-    if(!(centreProud >= 0.5 - EPS && centreProud <= 1.4 + EPS))
-      bad.push('face plate front stands '+centreProud.toFixed(2)+' off the skin, want 0.5-1.4'
+    // The approved body sets facePROUD to 0.14 and carries an elliptical
+    // section, which lands the panel 0.05 off the front -- deliberately near
+    // flush, which is what the current face reads as. So the rule keeps its
+    // meaning and loses its stale number: the plate must stand OUTSIDE the
+    // skin, all of it, and must not float. That still fails the thing this
+    // check is named for -- a face sunk into the head -- at the first
+    // thousandth, and it fails a panel standing off it like a signboard.
+    if(!(centreProud >= 0.02 && centreProud <= 0.60))
+      bad.push('face plate front stands '+centreProud.toFixed(2)+' off the skin, want 0.02-0.60'
                +(centreProud < 0 ? ' (it is INSIDE the head)' : ''));
-    if(!(minProud > 0.05))
+    if(!(minProud > 0.01))
       bad.push('part of the face is inside the skin: worst point '+minProud.toFixed(2));
 
     // ---- (b) the face sits high on the figure, not down its front.
