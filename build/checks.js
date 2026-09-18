@@ -880,23 +880,44 @@
     const { p, pin } = steerRig();
     for(let i=0;i<60;i++){ pin(); window.__dbg.tick(1); }
 
-    // (a) the racer sits in the middle of the frame, not down in the corner
+    // (a) the racer sits centred across the frame, and LOW in it.
+    // Low is the point: the camera aims above what it orbits (CAM.AIM_RISE) so
+    // the ground the racer is about to run onto gets the screen space, not the
+    // sky behind them. This used to demand |y| < 0.30 around the middle, which
+    // was the right test for a camera that aimed at the bean itself.
     const centred = racerNDC();
     if(!isFinite(centred.x) || !isFinite(centred.y)) bad.push('could not project the racer at all');
     if(Math.abs(centred.x) > 0.14) bad.push('racer is off-centre horizontally ('+centred.x.toFixed(2)+')');
-    if(Math.abs(centred.y) > 0.30) bad.push('racer is not vertically centred ('+centred.y.toFixed(2)+')');
+    if(centred.y > 0.02)  bad.push('racer is not below the middle of the frame ('+centred.y.toFixed(2)+')');
+    if(centred.y < -0.70) bad.push('racer has dropped too near the bottom edge ('+centred.y.toFixed(2)+')');
 
-    // (b) jumping must not swing the camera down
+    // (b) jumping must not THROW the camera about.
+    //
+    // This used to hold the elevation to the racer within 0.09 rad across the
+    // whole jump, and that was a fair test of a camera whose vertical follow was
+    // near rigid -- kY of 36 pinned the lens to the bean's own height, so the
+    // angle between them barely moved. It is the WRONG test now and would block
+    // the thing it is measuring: CAM.FOLLOW_Y_AIR deliberately lets the racer
+    // rise through the frame so the ground stays readable and the frame does not
+    // pump on every hop. A little angle change is that damping working.
+    //
+    // What must still be true is that nothing JERKS. So: bound the per-frame
+    // movement of the lens, which is what a violent bounce actually looks like,
+    // and bound the total swing loosely enough to allow the damping and tightly
+    // enough to catch a camera that has come unstuck.
     const flatElev = camElev();
     doJump(p);
-    let worst = 0;
+    let worst = 0, worstFrame = 0, lastPos = camera.position.clone();
     for(let i=0;i<80;i++){
       const wasH = p.h, wasVh = p.vh; pin(); p.h = wasH; p.vh = wasVh;
       window.__dbg.tick(1);
       worst = Math.max(worst, Math.abs(camElev() - flatElev));
+      worstFrame = Math.max(worstFrame, camera.position.distanceTo(lastPos));
+      lastPos.copy(camera.position);
       if(p.h <= 0 && i > 6) break;
     }
-    if(worst > 0.09) bad.push('camera angle swung '+worst.toFixed(3)+' rad over a jump');
+    if(worst > 0.26)      bad.push('camera angle swung '+worst.toFixed(3)+' rad over a jump');
+    if(worstFrame > 14)   bad.push('camera moved '+worstFrame.toFixed(1)+' in a single frame of the jump');
 
     // (c) the racer stays on screen through the jump
     p.h = 0; p.vh = 0;
@@ -906,27 +927,50 @@
     const air = racerNDC();
     if(Math.abs(air.x) > 0.25 || Math.abs(air.y) > 0.75) bad.push('racer left frame mid-jump ('+air.x.toFixed(2)+','+air.y.toFixed(2)+')');
 
-    // (d) look away by hand, let go, and the view comes back behind on its own
+    // (d) AUTO-RECENTRE IS NOW OPT-IN, so it is tested with the option on.
+    //
+    // It used to be on by default at a 0.6s delay, and this asserted the view
+    // was home within 2.5s of letting go. It is off by default now: with
+    // camera-relative movement live, a recentre also turns the direction W is
+    // pushing you, so a hands-off moment would curve your run. Left on by
+    // default that is a camera steering the racer, which is the one thing the
+    // whole file is written to prevent.
+    //
+    // The behaviour still has to be CORRECT for the people who turn it on, so
+    // the test stands -- with the setting set, and with the delay read from CAM
+    // rather than assumed.
+    const autoWas = settings.autoCentre;
+    settings.autoCentre = true;
     p.h = 0; p.vh = 0;
     look.yaw = 1.15; look.sinceInput = 0;
     for(let i=0;i<4;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }
     const swung = look.yaw;
-    for(let i=0;i<150;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }   // 2.5s hands off
+    // Hands off for the delay plus four seconds of easing.
+    const waitFrames = Math.ceil((CAM.RECENTRE_DELAY + 4.0)*60);
+    for(let i=0;i<waitFrames;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }
     const back = Math.abs(look.yaw);
-    if(back > 0.22) bad.push('view did not recentre in 2.5s (yaw '+swung.toFixed(2)+' -> '+look.yaw.toFixed(2)+')');
-    if(back < 0.0005 && swung > 0) seen1 = 0;                 // fine, fully home
+    if(back > 0.22) bad.push('view did not recentre once enabled (yaw '+swung.toFixed(2)+' -> '+look.yaw.toFixed(2)+')');
 
     // (e) it must not snap: one frame cannot eat the whole swing
-    look.yaw = 1.15; look.sinceInput = 9; window.__dbg.tick(1);
+    look.yaw = 1.15; look.sinceInput = CAM.RECENTRE_DELAY + 9; window.__dbg.tick(1);
     const afterOne = Math.abs(look.yaw);
     if(afterOne < 0.55) bad.push('recentre snapped instead of easing (1.15 -> '+look.yaw.toFixed(2)+' in one frame)');
 
-    return { name:'1 chase camera stays centred, level and self-recentring', pass: bad.length===0,
+    // (f) ...and with it OFF, which is the shipped default, the view is the
+    // player's and nothing takes it back.
+    settings.autoCentre = false;
+    look.yaw = 1.15; look.sinceInput = 0;
+    for(let i=0;i<240;i++){ pin(); p.vy = 4; window.__dbg.tick(1); }
+    if(Math.abs(look.yaw - 1.15) > 1e-9)
+      bad.push('the view drifted with auto-recentre off (1.15 -> '+look.yaw.toFixed(3)+')');
+    settings.autoCentre = autoWas;
+
+    return { name:'1 chase camera frames the racer low, rides a jump without jerking, recentres only when asked', pass: bad.length===0,
              detail: bad.length ? bad.join('; ')
                : 'centre '+centred.x.toFixed(2)+','+centred.y.toFixed(2)
-                 +'  jump swing '+worst.toFixed(3)+' rad  recentre '+swung.toFixed(2)+'->'+back.toFixed(2) };
+                 +'  jump swing '+worst.toFixed(3)+' rad, worst frame '+worstFrame.toFixed(1)
+                 +'  recentre '+swung.toFixed(2)+'->'+back.toFixed(2) };
   }
-  let seen1 = 0;
 
   // ---------- 2: a fork is two routes, and you have to commit to one ----------
   function check2(){
@@ -4672,6 +4716,263 @@
   // never disagree about what exists. CI shards the suite by asking list() for
   // the real ids rather than keeping a copy of them in a workflow file, which is
   // what stops a check added here from silently never running in CI.
+  // ================= CAMERA =================
+  // Three checks for the chase/orbit camera, grouped rather than split one per
+  // assertion because the expensive part is begin() -- generating a course --
+  // and all of this can be read off one.
+
+  // Where a world point lands on screen, in NDC: x and y both -1..+1, y up.
+  function _ndc(wx, wy, wz){
+    const v = new THREE.Vector3(wx, wy, wz);
+    camera.updateMatrixWorld();
+    v.project(camera);
+    return v;
+  }
+
+  // ---------- y: framing, unbounded yaw, pitch limits, damped rise ----------
+  function checkCameraFrame(){
+    const bad = [];
+    begin('sunny');
+    const p = player();
+    window.__dbg.warp(2200, 260);
+    window.__dbg.look(0, CAM.PITCH);
+    window.__dbg.tick(45);
+
+    // ---- the bean is whole, and it is low in the frame --------------------
+    const foot = toWorld(p.x, p.y, (p.floorH||0) + p.h);
+    const head = toWorld(p.x, p.y, (p.floorH||0) + p.h + RADIUS*2);
+    const nf = _ndc(foot.x, foot.y, foot.z), nh = _ndc(head.x, head.y, head.z);
+    if(Math.abs(nf.x) > 1 || Math.abs(nf.y) > 1) bad.push('feet off screen at ndc '+nf.x.toFixed(2)+','+nf.y.toFixed(2));
+    if(Math.abs(nh.x) > 1 || Math.abs(nh.y) > 1) bad.push('head off screen at ndc '+nh.x.toFixed(2)+','+nh.y.toFixed(2));
+    // Centred horizontally, and sitting BELOW the middle: the whole point of
+    // aiming above the pivot. Positive ndc y is up, so this wants a negative.
+    if(Math.abs(nf.x) > 0.20) bad.push('racer off centre horizontally: ndc x '+nf.x.toFixed(2));
+    const mid = (nf.y + nh.y)/2;
+    if(mid > 0.0)   bad.push('racer sits at or above the middle of the frame (ndc y '+mid.toFixed(2)+')');
+    if(mid < -0.75) bad.push('racer pushed too near the bottom edge (ndc y '+mid.toFixed(2)+')');
+    // Ground ahead of the racer must be on screen, or you cannot read a gap.
+    const ahead = toWorld(p.x, p.y + 300, 0);
+    const na = _ndc(ahead.x, ahead.y, ahead.z);
+    if(Math.abs(na.x) > 1 || Math.abs(na.y) > 1) bad.push('ground 300 ahead is off screen');
+
+    // ---- yaw is not clamped, and does not snap ---------------------------
+    // Wind it more than a full turn in small steps and watch the camera trace a
+    // circle. A clamp shows up as look.yaw refusing to keep counting; a snap
+    // shows up as one step being far larger than its neighbours.
+    const pivot = toWorld(p.x, p.y, (p.floorH||0) + p.h + CAM.TARGET_H);
+    const pv = new THREE.Vector3(pivot.x, pivot.y, pivot.z);
+    let prev = null, maxStep = 0, minStep = 1e9, radiusMin = 1e9, radiusMax = 0;
+    const N = 48, TURN = Math.PI*2.5;                  // two and a half turns
+    for(let i=0;i<=N;i++){
+      const want = (i/N)*TURN;
+      window.__dbg.look(want, CAM.PITCH);
+      window.__dbg.tick(1);
+      if(Math.abs(look.yaw - want) > 1e-6){ bad.push('yaw was altered: asked '+want.toFixed(3)+', got '+look.yaw.toFixed(3)); break; }
+      const here = camera.position.clone();
+      const r = Math.hypot(here.x-pv.x, here.z-pv.z);
+      radiusMin = Math.min(radiusMin, r); radiusMax = Math.max(radiusMax, r);
+      if(prev){ const d = here.distanceTo(prev); maxStep = Math.max(maxStep,d); minStep = Math.min(minStep,d); }
+      prev = here;
+    }
+    if(look.yaw < TURN - 1e-6) bad.push('yaw stopped short of '+TURN.toFixed(2)+' at '+look.yaw.toFixed(2));
+
+    // ...and the bean stays centred THROUGH the orbit, not only behind. The aim
+    // leads along the camera's own azimuth for exactly this reason: leading up
+    // the course instead dragged the aim sideways by atan(LEAD/boom) as soon as
+    // the view came off centre, which is about twelve degrees here.
+    let worstOff = 0;
+    for(const yaw of [0, 0.8, Math.PI/2, Math.PI, -Math.PI/2, 2.3]){
+      window.__dbg.look(yaw, CAM.PITCH); window.__dbg.tick(8);
+      const w = toWorld(p.x, p.y, (p.floorH||0) + p.h + RADIUS);
+      const n = _ndc(w.x, w.y, w.z);
+      worstOff = Math.max(worstOff, Math.abs(n.x));
+      if(Math.abs(n.x) > 0.20) bad.push('at yaw '+yaw.toFixed(2)+' the racer is '+n.x.toFixed(2)+' off centre');
+    }
+    if(maxStep > minStep*3.5) bad.push('orbit is not smooth: steps ranged '+minStep.toFixed(1)+'..'+maxStep.toFixed(1));
+    if(radiusMax - radiusMin > radiusMax*0.25)
+      bad.push('orbit is not a circle: radius ranged '+radiusMin.toFixed(0)+'..'+radiusMax.toFixed(0));
+
+    // ---- pitch limits ----------------------------------------------------
+    window.__dbg.look(0, 99);  window.__dbg.tick(1);
+    if(Math.abs(look.pitch - CAM.PITCH_MAX) > 1e-6) bad.push('pitch not clamped at max: '+look.pitch.toFixed(3));
+    window.__dbg.look(0, -99); window.__dbg.tick(1);
+    if(Math.abs(look.pitch - CAM.PITCH_MIN) > 1e-6) bad.push('pitch not clamped at min: '+look.pitch.toFixed(3));
+    // ...and the clamp holds through the input path, not only through look().
+    window.__dbg.look(0, CAM.PITCH);
+    for(let i=0;i<400;i++) nudgeLook(0, -40);
+    if(look.pitch > CAM.PITCH_MAX + 1e-9) bad.push('nudgeLook drove pitch past max');
+    for(let i=0;i<800;i++) nudgeLook(0, 40);
+    if(look.pitch < CAM.PITCH_MIN - 1e-9) bad.push('nudgeLook drove pitch under min');
+
+    // ---- vertical follow is damped ---------------------------------------
+    // Jump, and compare how far the racer rose against how far the lens did.
+    // Rigidly attached would be 1:1, which is the bounce this is here to stop.
+    window.__dbg.look(0, CAM.PITCH); window.__dbg.tick(40);
+    const camY0 = camera.position.y, racerY0 = (p.floorH||0) + p.h;
+    window.__dbg.press('jump');
+    let worstStep = 0, lastY = camera.position.y, rose = 0;
+    for(let i=0;i<14;i++){
+      window.__dbg.tick(1);
+      worstStep = Math.max(worstStep, Math.abs(camera.position.y - lastY));
+      lastY = camera.position.y;
+      rose = Math.max(rose, ((p.floorH||0) + p.h) - racerY0);
+    }
+    const camRose = camera.position.y - camY0;
+    if(rose > 4){
+      if(camRose >= rose*0.92) bad.push('camera tracked the jump 1:1 (racer +'+rose.toFixed(0)+', camera +'+camRose.toFixed(0)+')');
+      if(camRose <= 0)         bad.push('camera did not follow the jump at all');
+      if(worstStep > rose*0.6) bad.push('camera Y snapped '+worstStep.toFixed(1)+' in one frame');
+    }
+
+    return { name:'y camera framing, free yaw, pitch limits, damped rise', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'bean at ndc y '+mid.toFixed(2)+', orbit r '+radiusMin.toFixed(0)+'-'+radiusMax.toFixed(0)
+                 +', yaw to '+TURN.toFixed(2)+' unclamped, centred within '+worstOff.toFixed(2)+' at 6 yaws'
+                 +', jump racer +'+rose.toFixed(0)+' camera +'+camRose.toFixed(0) };
+  }
+
+  // ---------- @: the camera and the racer do not steer each other ----------
+  function checkCameraIndependence(){
+    const bad = [];
+    begin('sunny');
+    const p = player();
+    const autoWas = settings.autoCentre, relWas = settings.camRelative;
+    settings.autoCentre = false; settings.camRelative = true;
+    window.__dbg.warp(2200, 260);
+    window.__dbg.look(0, CAM.PITCH); window.__dbg.tick(30);
+
+    // ---- orbiting must not turn the racer --------------------------------
+    for(const k of ['w','a','s','d']) window.__dbg.hold(k, false);
+    const facing0 = p.facing;
+    for(let i=0;i<60;i++){ nudgeLook(-18, 0); window.__dbg.tick(1); }
+    if(Math.abs(p.facing - facing0) > 1e-6)
+      bad.push('orbiting turned the racer by '+(p.facing-facing0).toFixed(3)+' rad');
+    if(Math.abs(look.yaw) < 0.5) bad.push('the orbit under test barely moved: yaw '+look.yaw.toFixed(2));
+
+    // ---- running must not drag the camera back behind ---------------------
+    const yaw0 = look.yaw;
+    window.__dbg.hold('w', true);
+    window.__dbg.tick(120);
+    window.__dbg.hold('w', false);
+    if(Math.abs(look.yaw - yaw0) > 1e-9)
+      bad.push('running moved the manual yaw from '+yaw0.toFixed(3)+' to '+look.yaw.toFixed(3));
+
+    // ---- camera-relative movement ----------------------------------------
+    // Forward must push the racer the way the camera is LOOKING, at every yaw,
+    // including the ones where that is backwards down the course.
+    for(const k of ['w','a','s','d']) window.__dbg.hold(k, false);
+    let worstErr = 0;
+    for(const yaw of [0, Math.PI/2, Math.PI, -Math.PI/2, 2.3]){
+      window.__dbg.look(yaw, CAM.PITCH); window.__dbg.tick(2);
+      window.__dbg.hold('w', true);
+      const iv = computeInputVec();
+      window.__dbg.hold('w', false);
+      // input vector, sim space -> world XZ, through the ribbon's own mapping
+      const a = pathAngle(p.y);
+      const wx = iv.ix*Math.cos(a) + iv.iy*Math.sin(a);
+      const wz = -iv.ix*Math.sin(a) + iv.iy*Math.cos(a);
+      // where the camera is looking, flattened onto the ground
+      const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+      fwd.y = 0; fwd.normalize();
+      const m = Math.hypot(wx, wz) || 1;
+      const dot = (wx/m)*fwd.x + (wz/m)*fwd.z;
+      const err = Math.acos(Math.max(-1, Math.min(1, dot)));
+      worstErr = Math.max(worstErr, err);
+      if(err > 0.06) bad.push('at yaw '+yaw.toFixed(2)+' forward is '+(err*180/Math.PI).toFixed(1)+' deg off the camera');
+    }
+
+    // ---- and with it off, forward is up the course ------------------------
+    settings.camRelative = false;
+    window.__dbg.look(Math.PI/2, CAM.PITCH); window.__dbg.tick(2);
+    window.__dbg.hold('w', true);
+    const iv0 = computeInputVec();
+    window.__dbg.hold('w', false);
+    if(Math.abs(iv0.ix) > 1e-9 || iv0.iy <= 0)
+      bad.push('with camRelative off, forward was not straight up the course: '+iv0.ix.toFixed(2)+','+iv0.iy.toFixed(2));
+
+    settings.autoCentre = autoWas; settings.camRelative = relWas;
+    return { name:'@ orbit and racer stay independent; forward follows the lens', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'racer unturned by a '+look.yaw.toFixed(2)+' rad orbit, yaw held through 120 running frames, forward within '+(worstErr*180/Math.PI).toFixed(1)+' deg at 5 yaws' };
+  }
+
+  // ---------- #: obstruction, and who the spectator picks ----------
+  function checkCameraBlockSpectate(){
+    const bad = [];
+    begin('sunny');
+    window.__dbg.warp(2200, 260);
+    window.__dbg.look(0, CAM.PITCH); window.__dbg.tick(40);
+
+    // ---- the lens never ends up behind the course ------------------------
+    // Sweep the orbit and, at every angle, cast from the pivot to where the
+    // camera actually is. A camera on the far side of a wall shows up as a hit
+    // between the two; one that has been pulled in correctly does not.
+    let shortened = 0, inside = 0, sampled = 0;
+    const ray = new THREE.Raycaster();
+    for(let i=0;i<24;i++){
+      window.__dbg.look((i/24)*Math.PI*2, CAM.PITCH);
+      window.__dbg.tick(6);
+      sampled++;
+      const full = CAM.DIST*settings.camDist;
+      const piv = new THREE.Vector3(camPos.x, camPos.y, camPos.z);
+      const to = camera.position.clone().sub(piv);
+      const len = to.length();
+      if(len < full*0.985) shortened++;
+      if(len > 4 && camBlockers.length){
+        ray.set(piv, to.clone().normalize());
+        ray.far = len - 3;
+        if(ray.intersectObjects(camBlockers, false).length) inside++;
+      }
+    }
+    if(inside) bad.push(inside+' of '+sampled+' orbit angles put course geometry between the lens and the racer');
+    if(camReach > CAM.DIST*settings.camDist + 1) bad.push('reach exceeded the boom: '+camReach.toFixed(0));
+    if(camReach < CAM.BLOCK_MIN - 1) bad.push('reach went under the floor: '+camReach.toFixed(0));
+
+    // ---- spectator: qualifying hands the camera over ---------------------
+    begin('sunny');
+    const q = player();
+    updateHud();
+    if(spectating()) bad.push('spectating before anything happened');
+    if(camSubject() !== q) bad.push('camera was not on the player at the start');
+
+    q.finished = true; q.finishTime = raceTime;       // qualify, do not die
+    updateHud();
+    const s1 = camSubject();
+    if(!spectating())      bad.push('qualifying did not start spectating');
+    if(s1 === q)           bad.push('camera stayed on the racer who had finished');
+    if(s1 && s1.finished)  bad.push('spectating somebody who has already qualified');
+    if(s1 && s1.lavaOut)   bad.push('spectating somebody already out');
+    if($('specBar').classList.contains('hidden')) bad.push('spectator bar stayed hidden after qualifying');
+    const top = $('specTop');
+    if(top && !/QUALIFIED/.test(top.textContent))
+      bad.push('banner told a qualified player they were out: "'+(top && top.textContent)+'"');
+
+    // ---- cycling ---------------------------------------------------------
+    const pool = racers.filter(r=>!r.lavaOut && !r.falling && !r.finished);
+    const a = camSubject();
+    cycleSpectate(1);
+    const b = camSubject();
+    if(pool.length > 1 && a === b) bad.push('next did not change target ('+pool.length+' active)');
+    if(b && (b.finished || b.lavaOut || b.isPlayer)) bad.push('next landed on a racer who is not in the race');
+    cycleSpectate(-1);
+    if(camSubject() !== a) bad.push('prev did not come back to the first target');
+
+    // ---- automatic advance ------------------------------------------------
+    camSwitchT = 0;
+    const watched = camSubject();
+    watched.finished = true; watched.finishTime = raceTime;   // they qualify too
+    updateHud();
+    const after = camSubject();
+    if(after === watched) bad.push('camera stayed on a racer who had just qualified');
+    if(after && (after.finished || after.lavaOut)) bad.push('advanced onto a racer who is also done');
+    if(camSwitchT <= 0) bad.push('target changed with no blend, so the cut is a teleport');
+
+    return { name:'# camera clears geometry; spectator picks and advances', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : sampled+' orbit angles clear, '+shortened+' shortened by geometry, reach '+camReach.toFixed(0)
+                 +'; qualified -> '+(s1?nameOf(s1):'?')+', advanced to '+(after?nameOf(after):'?') };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -4682,6 +4983,7 @@
       ['Y',checkY],['Z',checkZ],['1',check1],
       ['2',check2],['3',check3],['b',checkB2],['d',checkDiscField],['p',checkPlank],['v',checkChevron],['s',checkSmallDiscs],['4',check4],['5',check5],['a',check5b],['e',check5c],['u',check5d],
       ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
+      ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
     ];
     // slow: five layouts a map, so only when asked for

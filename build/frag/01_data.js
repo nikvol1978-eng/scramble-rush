@@ -2,9 +2,18 @@
     keys:{ forward:'w', back:'s', left:'a', right:'d', jump:' ', dive:'shift' },
     camDist:1.0, botCount:23, difficulty:'normal', invertX:false, sound:true, hints:true, shake:true, touch:isTouch, shadows:true,
     freeLook:true, lookSens:1.0, invertLook:false, camRelative:true,
+    padSens:1.0,
     // Free-orbit mouse look is opt-in: the camera should follow you, not be
     // something you have to steer as well.
-    mouseLook:false, autoCentre:true,
+    mouseLook:false,
+    // AUTO-RECENTRE IS OFF BY DEFAULT, and that is a decision rather than an
+    // oversight. It was on at a 0.6s delay, which is short enough that letting
+    // go of the mouse for half a breath swung the view back on its own. With
+    // camera-relative movement now live it is worse than cosmetic: recentring
+    // the yaw also turns the direction W is pushing you, so a hands-off moment
+    // curves your run. It stays available for anyone who wants the camera to
+    // tidy itself up, at a delay and a rate that no longer fight the hand.
+    autoCentre:false,
     // §4.5: High is everything, Medium drops the occlusion and the bloom, Low
     // skips the composer altogether. Medium is the default because it is the
     // one that holds a frame budget: the occlusion pass on High costs a second
@@ -13,6 +22,99 @@
     quality:'medium'
   };
   let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+
+  // ============================================================
+  // CAMERA — every tuning number the chase/orbit camera has
+  // ============================================================
+  // It lives HERE rather than beside syncCamera because the PerspectiveCamera
+  // is constructed further up the file than the camera fragment lands, and a
+  // field of view written in two places is a field of view that will one day
+  // disagree with itself. One object, read by the construction and by every
+  // frame after it.
+  //
+  // Units are the simulation's, where the bean's RADIUS is 17 and the lane is
+  // 520 across. Angles are radians; each comment gives the degrees, because a
+  // reviewer checks degrees and the code needs radians.
+  const CAM = {
+    // ---- framing -------------------------------------------------------
+    // Boom length and the angle it sits above horizontal. v24 ran 205 back by
+    // 155 up: a boom of 257 at 37 degrees, high enough that the course read as
+    // a map of itself rather than as ground you are standing on. The boom keeps
+    // its length; it is the ANGLE that comes down.
+    DIST: 258,
+    // 28.1 deg. CHOSEN BY LOOKING, against a sweep at 18/24/28/32/37 on the same
+    // frame of the same course (docs/camera-review/camera-pitch-*.png).
+    //
+    // The brief that asked for this work suggested 10-25 deg. That is the right
+    // band for a character a couple of units tall; it is the wrong band here,
+    // and the sweep is why. At 18 deg the horizon sits across the middle of the
+    // screen, the ground ahead collapses to a flat wash and you cannot tell a
+    // hammer disc from the floor it is lying on -- unreadable, not cinematic. At
+    // 37 (v24's angle) the course reads well but the frame is a map of itself.
+    // 28 keeps the discs reading as discs, keeps the pack and the ribbon ahead
+    // on screen, and still shows the sides of pillars rather than their lids.
+    PITCH: 0.49,          // 28.1 deg above horizontal — the resting tilt
+    // What the boom orbits: a point above the racer's feet, not the racer's own
+    // transform. Attaching to the transform hands every squash, stumble and
+    // landing bounce straight to the lens.
+    TARGET_H: 26,
+    // What the camera AIMS at, measured up from the orbit point. Aiming above
+    // the thing you orbit is what puts the bean in the lower-middle of the frame
+    // instead of dead centre, and it costs nothing but this number.
+    AIM_RISE: 24,
+    // ...and a little up the course, so the frame shows what is coming rather
+    // than what has been survived.
+    LEAD: 52,
+
+    // ---- the lens ------------------------------------------------------
+    FOV: 72,              // vertical; read by the PerspectiveCamera construction
+
+    // ---- orbit limits --------------------------------------------------
+    // YAW IS NOT CLAMPED AND MUST NOT BE. The camera goes all the way round:
+    // look.yaw may wind past a full turn either way and is only ever reduced
+    // modulo 2pi for display, never for control.
+    PITCH_MIN: 0.10,      // 5.7 deg: flat enough to sight down a long straight
+    PITCH_MAX: 0.92,      // 52.7 deg: steep enough to read a drop, short of top-down
+
+    // ---- sensitivity ---------------------------------------------------
+    MOUSE_YAW: 0.0030, MOUSE_PITCH: 0.0026,
+    DRAG_GAIN: 3.4,       // one short finger/mouse drag should turn the view
+    LOCK_GAIN: 3.0,       // pointer-locked mouse movement
+    WHEEL_GAIN: 1.0,      // a trackpad two-finger swipe sends both axes
+    PAD_YAW: 2.9, PAD_PITCH: 2.0,   // right stick, radians per second at full tilt
+    PAD_DEAD: 0.18,       // stick centres are noisy; below this it is not input
+
+    // ---- smoothing -----------------------------------------------------
+    // Horizontal and vertical are separate on purpose. Horizontal can afford
+    // weight; vertical cannot chase a jump one-for-one without the whole frame
+    // pumping, and cannot lag so far that the landing leaves the screen.
+    FOLLOW_XZ: 14,
+    FOLLOW_Y: 9,          // grounded
+    FOLLOW_Y_AIR: 5.0,    // airborne: softer, so a jump rises THROUGH the frame
+    AIR_BLEND_H: 90,      // height by which the vertical follow has fully relaxed
+
+    // ---- auto-recentre (off by default — see settings.autoCentre) -------
+    RECENTRE_DELAY: 3.2,
+    RECENTRE_RATE: 0.55,
+
+    // ---- obstruction ---------------------------------------------------
+    BLOCK_PAD: 16,        // stop this far short of whatever the boom hits
+    BLOCK_MIN: 58,        // never closer, or the lens is inside the bean
+    BLOCK_IN: 60,         // closing is near-immediate: the wall is in the way NOW
+    BLOCK_OUT: 5,         // opening is slow, or clearing a pillar pops the frame
+
+    // ---- crowd ---------------------------------------------------------
+    CROWD_NEAR: 230,      // sim units counted as "on top of you"
+    CROWD_MAX: 0.12,      // at most 12% further out when the pack is thick
+
+    // ---- spectator hand-overs ------------------------------------------
+    // Switching target moves the pivot the length of the course in one frame.
+    // At the normal follow weight that reads as a whip-pan; for this long the
+    // follow is slackened right off so it reads as a glide instead.
+    SWITCH_BLEND: 0.75,   // seconds
+    SWITCH_FOLLOW: 3.2,   // the follow weight used during it
+  };
+
   const custom = { name:'YOU', skin:'pink', pattern:'none', hat:'crown', eyes:'round' };
   const HATS = [['none','None'],['crown','Crown'],['party','Party'],['halo','Halo'],['horns','Horns'],['prop','Propeller']];
   const EYES = [['round','Round'],['happy','Happy'],['angry','Angry'],['sleepy','Sleepy']];
