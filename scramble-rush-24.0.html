@@ -871,10 +871,37 @@
     transform:skewX(-8deg) rotate(-2deg);letter-spacing:1px;transition:transform .08s,filter .1s;}
   .playBig:hover{filter:brightness(1.06);}
   .playBig:active{transform:skewX(-8deg) rotate(-2deg) translateY(5px);box-shadow:0 2px 0 var(--line);}
+  /* v27: THE STRIP GETS THE TOP ROW TO ITSELF.
+     The rules that used to be here placed .lobbyTabs and .lobbyCurrency into
+     grid areas of .lobbyTop -- but both of them moved into #menuChrome, which
+     is a sibling of #home and not a grid item at all, so every one of those
+     declarations had been dead since. What was actually happening below 760 was
+     nothing: the strip kept its desktop padding of 340px on the left and 210px
+     on the right, which on a 430px phone is more padding than there is screen,
+     and the pills, the wordmark and the coin chips all landed on top of one
+     another with the right-hand chip hanging off the edge.
+     Six pills and two chips do not fit beside a wordmark at this width, so they
+     stop trying: the strip and the chips take the top line together, and the
+     lobby's own content starts below them. */
   @media (max-width:760px){
-    .lobbyTop{grid-template-columns:1fr auto;grid-template-areas:'brand cur' 'tabs tabs';}
-    .lobbyBrand{grid-area:brand;} .lobbyTabs{grid-area:tabs;justify-self:center;} .lobbyCurrency{grid-area:cur;}
+    #menuChrome{ padding:10px 8px; justify-content:center; align-items:flex-start; }
+    #menuChrome .lobbyTabs{ gap:2px; padding:5px 6px; }
+    #menuChrome .tabPill{ width:40px; min-width:40px; height:34px; padding:0; }
+    #menuChrome .tabPill svg{ width:19px; height:19px; }
+    /* out of the corner and into the row, so it is laid out WITH the strip
+       instead of on top of it */
+    #menuChrome .lobbyCurrency{ position:static; margin-left:6px; gap:5px; }
+    #menuChrome .crownChip, #menuChrome .coinChip{ padding:4px 8px; font-size:0.8rem; }
+    #home.lobby{ padding-top:60px; }
     .nameCard{min-width:0;} .playBig{font-size:1.5rem;padding:8px 28px 8px 20px;}
+  }
+  /* Small phones. The daily badge hangs off the PLAY pill's top corner, so the
+     strip needs a little headroom of its own as well as a narrower pill. */
+  @media (max-width:430px){
+    #menuChrome .tabPill{ width:34px; min-width:34px; height:31px; }
+    #menuChrome .tabPill svg{ width:17px; height:17px; }
+    #menuChrome .crownChip, #menuChrome .coinChip{ padding:3px 6px; font-size:0.74rem; }
+    #home.lobby{ padding-top:54px; }
   }
 
   /* ============ ROUND REVEAL ============ */
@@ -883,7 +910,10 @@
     background:repeating-radial-gradient(circle at center,#ffd45a 0 9vmax,#ffb020 9vmax 18vmax);opacity:0.95;}
   .revealRings::after{content:'';position:absolute;inset:0;border-radius:50%;
     background:repeating-conic-gradient(from 0deg,rgba(255,255,255,0.16) 0 8deg,rgba(255,255,255,0) 8deg 24deg);animation:ringSpin 40s linear infinite;}
-  @keyframes ringSpin{to{transform:rotate(360deg)}}
+  /* ringSpin is declared once, up with #menuRings. A second copy lived here and
+     -- being later in the file -- was the one that actually won for BOTH users
+     of it, which is the sort of thing that makes a change to the first copy
+     appear to do nothing. */
   .revealBar{position:relative;z-index:2;width:100%;background:var(--line);color:var(--cream);font-family:'Fredoka',sans-serif;font-weight:700;
     font-size:clamp(1.4rem,3.4vw,2.2rem);padding:12px 4vw;text-align:left;letter-spacing:1px;box-shadow:0 4px 0 rgba(0,0,0,0.3);}
   .revealStage{position:relative;z-index:2;flex:1;width:100%;display:flex;align-items:center;overflow:hidden;}
@@ -4019,7 +4049,7 @@ const QUALITY = {
       bones[boneIndex].add(p);
       return p;
     };
-    const hatProbes = [];
+    const hatProbes = [], eyeProbes = [];
     let mouthProbe = null;
 
     // The shoe and the cuff are the limb colour taken down and up a step. Two
@@ -4144,23 +4174,65 @@ const QUALITY = {
     const dotScale = eyes==='happy'  ? [1.30, 0.50, 0.45]
                    : eyes==='sleepy' ? [1.40, 0.26, 0.45]
                    :                   [1.00, 1.10, 0.16];
+    // v27: LIE THE EYE ON THE CAP, DO NOT PUSH IT THROUGH.
+    //
+    // Both eyes were built perfectly symmetric -- the probes still say
+    // dxAsymmetry 0, dyMismatch 0, sizeMismatch 0 -- and they still rendered as
+    // two different ragged slivers, one thin and one fat. The constants were
+    // never the bug. The bug was that a flat disc 0.125 deep was placed with
+    // its CENTRE on a sphere that falls away by about 0.36 across the disc's
+    // own width, with no rotation to match the surface: what reached the screen
+    // was the intersection of a plane and a sphere, which is not an oval and is
+    // not the same shape on the left as on the right once the head is turned a
+    // few degrees.
+    //
+    // So the eye is now oriented to the surface normal at the point it sits on,
+    // and stood off along that normal by more than its own half-depth, which
+    // puts the whole disc outside the plate instead of half inside it. EYE_PROUD
+    // also has to cover however far the idle slides the eye sideways, or the
+    // slide walks it back into the cap -- see the travel limit in 05_profile.js.
+    const EYE_PROUD = 0.34;
+    // The cap's normal at a point on it. Azimuth from the horizontal radius at
+    // that height, elevation from `faceOn`, which already works out how far to
+    // pitch something so it lies flat on the curve.
+    const faceQuat = (dy, dx)=>{
+      const rxh = beanRadiusAt(RIG.faceY + dy) + RIG.facePROUD;
+      const phi = Math.asin(Math.max(-0.95, Math.min(0.95, dx/rxh)));
+      // YXZ: swing sideways, then tilt up -- the order that lands the disc's
+      // +Z on the normal. Composing it the other way round leaves a roll.
+      return new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(-faceOn(dy, dx).pitch, phi, 0, 'YXZ'));
+    };
+    const faceXf = (dy, dx, bone, sx, sy, sz, extra)=>{
+      const on = faceOn(dy, dx, EYE_PROUD + (extra||0));
+      const m = new THREE.Matrix4().compose(
+        // the bone stands on the bare cap, so the local offset is however far
+        // the proud point is from it
+        new THREE.Vector3(dx - bone.position.x, dy - bone.position.y, on.z - bone.position.z),
+        faceQuat(dy, dx), new THREE.Vector3(sx, sy, sz));
+      return m;
+    };
     [[BONE.scleraL, BONE.pupilL, -1],[BONE.scleraR, BONE.pupilR, 1]].forEach(([sb,pb,s],i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
-      // v26b: the eyes were spheres standing off the plate, and at this size
-      // that is all you saw. Flattened to 0.14 of their depth they sit in the
-      // panel instead of in front of it.
       // no sclera bead: the reference has a dark slot, not an eyeball
-      // A little bigger than v22's 2.0: at tile size the old dot read as a
-      // pinprick, and the highlight below needs something to sit on.
-      at(pb, new THREE.SphereGeometry(0.72*FS, 18, 14), DARK,
-         xf(0,0,0, dotScale[0]*0.92, dotScale[1]*1.80, dotScale[2]*0.55));
+      const eyeGeo = new THREE.SphereGeometry(0.72*FS, 18, 14);
+      const eyeXf  = faceXf(pupilDY, s*eyeX, bones[pb],
+                            dotScale[0]*0.92, dotScale[1]*1.80, dotScale[2]*0.55);
+      // A probe per eye, for the same reason the face plate has one: after the
+      // merge there is one geometry for the whole trim mesh and no way to ask
+      // it where an eye is. The checks measure THIS rather than re-deriving the
+      // constants above, so a transform that silently stops matching them is
+      // caught instead of being asserted against itself. Made before `at`,
+      // which bakes the transform into the geometry in place.
+      eyeProbes.push(probeOf(pb, eyeGeo, eyeXf));
+      at(pb, eyeGeo, DARK, eyeXf);
       // OUR OWN EYE, not a copy of anyone's: one small catchlight, top-left on
       // both eyes because a single light source does not mirror itself. On the
       // pupil bone, so it tracks the locker's look-at instead of sliding off.
-      // v26b: flattened and pulled back to match. The pupil is 0.16 deep now,
-      // so a full-depth catchlight sat proud of it as a separate white bead.
+      // Stood off a little further than the eye it sits on, for the same reason
+      // the eye is stood off the plate.
       at(pb, new THREE.SphereGeometry(0.72*FS*0.15, 8, 6), WHITE,
-         xf(-0.15*FS, 0.50*FS, 0.12*FS, 1, 1.2, 0.35));
+         faceXf(pupilDY + 0.50*FS, s*eyeX - 0.15*FS, bones[pb], 1, 1.2, 0.35, 0.10));
       if(eyes==='angry'){
         const browAt = faceOn(2.9*FS, s*eyeX);
         at(BONE.face, new THREE.BoxGeometry(3.4*FS, 1.0*FS, 0.7), DARK,
@@ -4371,7 +4443,7 @@ const QUALITY = {
     kneeL.rotation.x = kneeR.rotation.x = REST.kneeX;           // soft knees, weight on them
     return {group, tilt, aura, bodyMat, partsMat, outMat, outline, body, trim, skeleton,
             head, faceGroup, hatGroup, pupils, scleras, tongue,
-            facePlate, hatProbes, mouth:mouthProbe,
+            facePlate, hatProbes, eyeProbes, mouth:mouthProbe,
             arms:armPivots, legs:legPivots, armPivots, legPivots, feet, hands,
             kneePivots, footPivots, elbowPivots, handPivots, bodyBone,
             neutral, REST, RIG};
@@ -11520,20 +11592,74 @@ const QUALITY = {
   let lobbyBackdrop=null, stageFloor=null;
   // Concentric warm rings with a faint sunburst over them; the plane that
   // carries it turns slowly, so the rays drift.
+  //
+  // v27: BUILT IN LAYERS, so it has somewhere to go.
+  // The first version painted seventeen flat discs two steps apart in the same
+  // yellow, then laid an 18-ray sunburst at 0.16 white over the lot. Under the
+  // tone mapper that arrived as a pale, even field with one bright horizontal
+  // bar across it -- busy enough to be noise, flat enough to have no depth, and
+  // the one thing it did read as was a seam behind the character's head.
+  //
+  // What replaces it is a warm radial gradient for the depth, fewer and WIDER
+  // bands drawn as translucent light and shade ON that gradient rather than as
+  // opaque fills replacing it, and twice as many sunburst rays at less than
+  // half the alpha -- which is what stops any single ray reading as a bar. The
+  // gradient also darkens toward the rim, so the middle of the screen, where
+  // the character stands, is the brightest part of the frame.
+  //
+  // Still one canvas, painted once and cached: the rotation that animates it is
+  // a transform on the plane, so nothing here runs per frame.
   let _lobbyRingTex=null;
   function lobbyRingTexture(){
     if(_lobbyRingTex) return _lobbyRingTex;
     const N=1024, cv=document.createElement('canvas'); cv.width=cv.height=N; const g=cv.getContext('2d');
     const cx=N/2, cy=N/2;
-    for(let r=N*0.75; r>0; r-=N*0.045){
-      g.fillStyle = (Math.round(r/(N*0.045))%2===0) ? '#ffd45a' : '#ffb020';
+    // ---- base: bright warm centre falling to a deeper gold at the rim.
+    //
+    // THESE ARE NOT THE COLOURS THAT REACH THE SCREEN, and they are not meant
+    // to be. The game composites through an EffectComposer whose OutputPass
+    // applies ACES filmic tone mapping to the finished frame, so a material
+    // flag cannot opt out of it -- the curve runs on the composite, after every
+    // material has had its say. ACES rolls the top end off hard: a plain
+    // unlit surface can never exceed 0.62 linear through it, which is why the
+    // old backdrop sampled #e2d39b on screen -- milk -- against the reference's
+    // #f2c700. The blue channel is the tell: 0x9b against 0x00.
+    //
+    // Exposing the plane into HDR to get above the rolloff was tried and is
+    // wrong: the bloom pass threshold is 1.15, so anything bright enough to
+    // beat the curve is also bright enough to bloom, and the backdrop came back
+    // paler still (#f4e69e) with a white haze over it. The ceiling is real.
+    //
+    // So these stops are chosen UNDER it, solved against the curve rather than
+    // eyeballed: deep oranges here, which ACES lifts and desaturates into the
+    // saturated mid-golds named beside them. They read wrong in this file and
+    // right on the screen, which is the deal. The result is a little deeper
+    // than the reference's #f2c700 -- that exact value is not reachable through
+    // this pipeline -- and a rich gold beats a bright cream.
+    const base=g.createRadialGradient(cx,cy,0, cx,cy,N*0.62);
+    base.addColorStop(0,   '#ffc800');   // lands ~#d6b628
+    base.addColorStop(0.55,'#ff9e00');   // lands ~#d99416
+    base.addColorStop(1,   '#b85f00');   // lands ~#a84c02
+    g.fillStyle=base; g.fillRect(0,0,N,N);
+    // ---- the rings. BAND is a little over twice the old 0.045, which is what
+    //      takes them from a fine corduroy to something that reads as rings at
+    //      the size they actually arrive on screen.
+    const BAND=N*0.098;
+    for(let r=N*0.92, i=0; r>0; r-=BAND, i++){
+      g.globalAlpha = (i%2===0) ? 0.34 : 0.20;
+      g.fillStyle   = (i%2===0) ? '#ffdc55' : '#7a3a00';
       g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fill();
     }
-    g.globalAlpha=0.16; g.fillStyle='#ffffff';
-    for(let a=0;a<Math.PI*2;a+=Math.PI/9){
-      g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/27); g.closePath(); g.fill();
+    // ---- the sunburst: 36 rays at 0.07, not 18 at 0.16
+    g.globalAlpha=0.07; g.fillStyle='#ffffff';
+    for(let a=0;a<Math.PI*2;a+=Math.PI/18){
+      g.beginPath(); g.moveTo(cx,cy); g.arc(cx,cy,N,a,a+Math.PI/54); g.closePath(); g.fill();
     }
-    g.globalAlpha=1;
+    // ---- a last soft darkening at the very edge, so the corners of a wide
+    //      monitor fall away instead of ending on a flat colour
+    const vig=g.createRadialGradient(cx,cy,N*0.30, cx,cy,N*0.72);
+    vig.addColorStop(0,'rgba(120,52,0,0)'); vig.addColorStop(1,'rgba(120,52,0,0.30)');
+    g.globalAlpha=1; g.fillStyle=vig; g.fillRect(0,0,N,N);
     _lobbyRingTex=new THREE.CanvasTexture(cv); _lobbyRingTex.colorSpace=THREE.SRGBColorSpace;
     return _lobbyRingTex;
   }
@@ -11581,6 +11707,9 @@ const QUALITY = {
     pedBase.position.y=-RADIUS-18; pedBase.receiveShadow=true; previewGroup.add(pedBase);
     lobbyBackdrop=new THREE.Mesh(new THREE.PlaneGeometry(7000,7000),
       new THREE.MeshBasicMaterial({map:lobbyRingTexture(), fog:false}));
+    // No exposure gain on this material, deliberately: it is what the texture
+    // paints and nothing more. See the note in lobbyRingTexture for why the
+    // obvious fix -- expose it past the tone curve -- makes it worse.
     lobbyBackdrop.position.set(0, 0, 1900); lobbyBackdrop.rotation.y = Math.PI;
     previewGroup.add(lobbyBackdrop);
     // The gold ring follows the drum in rather than staying at the old width,
@@ -11627,12 +11756,84 @@ const QUALITY = {
     menuBlob=makeCharacter({skin:skinOf(previewSkin||custom.skin), pattern:patternOf(previewPattern||custom.pattern),
                             hat:(_try && _try.hat) || custom.hat, eyes:(_try && _try.eyes) || custom.eyes});
     previewGroup.add(menuBlob.group);
+    // WHAT THE LOBBY LENS FRAMES, measured off the character rather than
+    // written down as a pair of constants. Taken here because the group is at
+    // its bind pose for exactly this moment -- once the idle starts it is being
+    // scaled, hopped and turned every frame, and a box round that is a
+    // different box every frame. Cached on the blob, so the per-frame camera
+    // code reads two numbers instead of walking the hierarchy.
+    //
+    // It has to be measured, not assumed, because the tall hats are part of the
+    // silhouette: framing sole-to-crown put the top of the crown through the
+    // navigation bar, and any fixed allowance for it is a number that goes
+    // wrong the next time a hat is added.
+    {
+      const b = new THREE.Box3().setFromObject(menuBlob.group);
+      menuBlob.frameTop = b.max.y; menuBlob.frameBottom = b.min.y;
+      // AND HOW FAR THE FRONT OF IT STANDS TOWARD THE LENS. The camera sits at
+      // negative z looking back at the origin, so the smaller z is the nearer
+      // surface. Framing that ignores this measures the visible height on the
+      // plane through the origin and puts the character's belly a good ten
+      // units in front of it -- where the frame is narrower, and where the
+      // crown is consequently off the top of it.
+      menuBlob.frameNear = b.min.z;
+    }
     previewGroup.visible=true;
     idle = {act:'settle', t:0, dur:0.8, seed:0};
+    // The lobby has ONE default pose, and this is where it is restored. Every
+    // route back to the home screen -- goHome, backToLobby, an equip -- comes
+    // through here, so none of them can land you on a character still turned
+    // from the last time you dragged it.
+    resetPreviewSpin();
   }
 
   // ---- drag the character round with the mouse (or a finger)
   const spin = { angle:0, vel:0, dragging:false, lastX:0, active:false };
+  // Put the turn back where a player lands on it. Used by goHome and by the
+  // review harness, so a screenshot is of the resting pose rather than of
+  // wherever the last drag left the character.
+  function resetPreviewSpin(){ spin.angle=0; spin.vel=0; spin.dragging=false; }
+  const wrapPi = (a)=>{ let x=(a+Math.PI)%(Math.PI*2); if(x<0) x+=Math.PI*2; return x-Math.PI; };
+  const idleAct = ()=> idle && idle.act;
+  // The clear strip of the lobby between the top chrome and the bottom button
+  // row, as fractions of the viewport height:
+  //   frac   -- how much of the height is clear
+  //   offset -- how far that strip's centre sits BELOW the frame's centre
+  //
+  // Read from the DOM rather than written down, because the tab strip and the
+  // button row resize at the CSS breakpoints and a copy of their heights in
+  // here would be a second source of truth for them. Cached per viewport size:
+  // getBoundingClientRect forces layout, and this is wanted every frame.
+  let _band = null, _bandFor = '';
+  function lobbySafeBand(){
+    const key = W+'x'+H;
+    if(_bandFor === key && _band) return _band;
+    const chrome = $('menuChrome');
+    // A little air beyond the chrome itself, so the silhouette does not sit
+    // exactly against it.
+    const PAD = 8;
+    let topPx = 0;
+    if(chrome && !chrome.classList.contains('hidden')){
+      const r = chrome.getBoundingClientRect();
+      topPx = Math.max(0, r.bottom) + PAD;
+    }
+    // THE TOP IS RESERVED, THE BOTTOM IS NOT, and the difference is where the
+    // chrome sits across the width. The tab strip is CENTRED -- it is directly
+    // above the character, so the character has to stop below it. The bottom
+    // row is a name card hard left and PLAY hard right with nothing between
+    // them, so the middle of that band is clear and the plinth is welcome to
+    // run down through it and off the bottom edge. Reserving the row's full
+    // height here cost about a sixth of the character's size to protect space
+    // that was never occupied.
+    const botPx = PAD;
+    // Never let the measurement starve the character: if the chrome really
+    // does cover most of a very short window, the character keeps half the
+    // frame and overlaps rather than shrinking to nothing.
+    const clear = Math.max(H*0.5, H - topPx - botPx);
+    _band = { frac: clear/H, offset: ((topPx - botPx)/2)/H };
+    _bandFor = key;
+    return _band;
+  }
   function previewDragActive(){
     return state==='menu' && (!$('profile').classList.contains('hidden') || !$('home').classList.contains('hidden'));
   }
@@ -11644,24 +11845,65 @@ const QUALITY = {
   canvas.addEventListener('pointermove', e=>{
     if(!spin.dragging) return;
     const dx=e.clientX-spin.lastX; spin.lastX=e.clientX;
-    spin.angle += dx*0.012; spin.vel = dx*0.012;
+    // Bounded at the source as well as at the clamp in applyIdle, so a long
+    // drag does not wind up a number the release then has to unwind: the
+    // character stops turning at the limit instead of storing the rest of the
+    // gesture and paying it back when you let go.
+    spin.angle = clamp(spin.angle + dx*0.012, -LOBBY_YAW_MAX, LOBBY_YAW_MAX);
+    spin.vel = dx*0.012;
   });
   const endSpin=()=>{ spin.dragging=false; };
   canvas.addEventListener('pointerup', endSpin);
   canvas.addEventListener('pointercancel', endSpin);
 
   // The blob performs a random little routine on the menu.
+  //
+  // v27: NOTHING IN THIS LIST TURNS THE CHARACTER AWAY FROM THE PLAYER.
+  // `spin` added a full 2*PI of yaw and `flip` a full 2*PI of pitch, each one
+  // in nine, every couple of seconds -- so the lobby put the bean's back or its
+  // soles to camera several times a minute, on no input, and a screenshot of
+  // the home screen caught a different pose every time. Measured over sixty
+  // seconds of lobby before this change: 343 degrees of yaw travel and 345 of
+  // pitch. Both acts are gone rather than slowed, because a turn that shows the
+  // back is not a turn that is too fast, and the amplitudes left here are held
+  // under LOBBY_YAW_MAX below so the face never leaves the shot.
+  //
+  // The rest stay: they are hops, stretches and weight shifts, which read as a
+  // character standing there being alive rather than as a turntable.
   const IDLE_ACTS = [
     {name:'look',    dur:3.4},
     {name:'hop',     dur:2.2},
     {name:'face',    dur:2.4},
-    {name:'spin',    dur:1.8},
     {name:'wobble',  dur:2.6},
     {name:'stretch', dur:2.0},
-    {name:'flip',    dur:1.6},
     {name:'nod',     dur:1.9},
-    {name:'peek',    dur:2.8}
+    {name:'peek',    dur:2.8},
+    {name:'settle',  dur:2.6}
   ];
+  // How far off dead-ahead the lobby will ever let the character face, by any
+  // route -- idle act, drag, or the two adding up. 0.30 rad is 17 degrees: far
+  // enough to read as a glance, near enough that the face plate stays square to
+  // the player and two screenshots taken a few seconds apart show the same
+  // character. Asserted by the lobby checks.
+  const LOBBY_YAW_MAX = 0.30;
+  // THE IDLE'S ENVELOPE, AND THE HEADROOM THE LENS LEAVES FOR IT.
+  //
+  // These belong together, which is why they are declared together. The camera
+  // frames the character's RESTING silhouette, measured once at its bind pose;
+  // the idle then hops it, stretches it and leans it toward the lens, and
+  // whatever that adds has to fit in the gap the lens left or the crown ends up
+  // behind the tab strip -- which is exactly what happened when the framing was
+  // derived from the bind pose alone and the amplitudes below were the ones a
+  // full-screen locker preview had been tuned for.
+  //
+  // So they came down. A lobby hero is meant to breathe, not perform: the hop
+  // was 26 units on a 36-unit character, the stretch scaled it by a third, and
+  // 'peek' halved its distance to the lens, which read less as curiosity and
+  // more as the character lunging at the screen. HEADROOM covers the worst
+  // case these leave -- a stretch at full extension, about 5.7 units above
+  // rest -- with a little to spare for the floating hats.
+  const IDLE_HOP = 5, IDLE_STRETCH = 0.08, IDLE_RISE = 3, IDLE_PEEK = 8;
+  const IDLE_HEADROOM = 7;
   let idle = {act:'settle', t:0, dur:1, seed:0};
   function nextIdleAct(){
     const a = IDLE_ACTS[Math.floor(Math.random()*IDLE_ACTS.length)];
@@ -11689,8 +11931,13 @@ const QUALITY = {
       }
       case 'hop': {
         // three quick hops with a squash on each landing
+        // v27: IDLE_HOP, not 26. The character is 36 tall, so the old hop
+        // lifted it most of its own height clear of the podium -- at any moment
+        // during one of these the lobby showed a bean floating in mid-air well
+        // above the thing it is meant to be standing on, which is most of what
+        // made the home screen read as unanchored.
         const hops = 3, ph = (p*hops)%1;
-        y = Math.abs(Math.sin(ph*Math.PI))*26;
+        y = Math.abs(Math.sin(ph*Math.PI))*IDLE_HOP;
         const land = Math.max(0, 1-Math.abs(ph-0.98)*30);
         sy -= land*0.22; sx += land*0.16; sz += land*0.16;
         break;
@@ -11703,11 +11950,7 @@ const QUALITY = {
         sx += ease*0.06; sy -= ease*0.04;
         break;
       }
-      case 'spin': {
-        ry += p*Math.PI*2;
-        y = Math.sin(p*Math.PI)*14;
-        break;
-      }
+      // 'spin' and 'flip' used to live here. See IDLE_ACTS.
       case 'wobble': {
         // shifting weight foot to foot
         rz = Math.sin(idle.t*5.2)*0.17;
@@ -11718,13 +11961,8 @@ const QUALITY = {
       case 'stretch': {
         // reach tall, then squash, then settle
         const s = Math.sin(p*Math.PI);
-        sy += s*0.30; sx -= s*0.13; sz -= s*0.13;
-        y = s*10;
-        break;
-      }
-      case 'flip': {
-        rx = p*Math.PI*2;
-        y = Math.sin(p*Math.PI)*46;
+        sy += s*IDLE_STRETCH; sx -= s*IDLE_STRETCH*0.43; sz -= s*IDLE_STRETCH*0.43;
+        y = s*IDLE_RISE;
         break;
       }
       case 'nod': {
@@ -11735,8 +11973,8 @@ const QUALITY = {
       case 'peek': {
         // lean in close to the camera, look you up and down, lean back
         const s = Math.sin(p*Math.PI);
-        g.position.z = -s*26;
-        sx += s*0.05; sy += s*0.05; sz += s*0.05;
+        g.position.z = -s*IDLE_PEEK;
+        sx += s*0.03; sy += s*0.03; sz += s*0.03;
         pupilY = Math.sin(idle.t*3.4)*1.2;
         break;
       }
@@ -11746,7 +11984,15 @@ const QUALITY = {
     }
 
     if(idle.act!=='peek') g.position.z += (0 - g.position.z)*0.15;
-    g.rotation.set(rx, ry, rz);
+    // ONE PLACE DECIDES HOW FAR THE CHARACTER CAN TURN. Clamping the total here
+    // rather than trimming each act's amplitude is what makes the guarantee
+    // hold for the SUM of them: `look` at its full swing plus a drag plus the
+    // breathing used to add up to something no individual number in this
+    // function looked responsible for. The pitch is held the same way, so a
+    // nod can never become a flip.
+    g.rotation.set(clamp(rx, -LOBBY_YAW_MAX, LOBBY_YAW_MAX),
+                   Math.PI + clamp(ry - Math.PI, -LOBBY_YAW_MAX, LOBBY_YAW_MAX),
+                   rz);
     g.position.y = y;
     g.scale.set(sx, sy, sz);
 
@@ -11762,7 +12008,18 @@ const QUALITY = {
       if(pu.userData.baseX === undefined) pu.userData.baseX = pu.position.x;
       if(pu.userData.baseY === undefined) pu.userData.baseY = pu.position.y;
     }
-    b.pupils.forEach(pu=>{ pu.position.x = pu.userData.baseX + pupilX; pu.position.y = pu.userData.baseY + pupilY; });
+    // THE WHOLE EYE MOVES, NOT A PUPIL INSIDE IT. There is no sclera bead --
+    // the face is a dark slot on a pale plate -- so what this slides is the eye
+    // itself, across a plate that is a curved cap. The old travel was 1.5, more
+    // than an eye-width, which slid one eye toward the nose and the other toward
+    // the rim and buried whichever of them the curve had moved away under. The
+    // rig now stands each eye EYE_PROUD (0.34) off the cap, so the travel has to
+    // stay inside what that clearance covers: at this azimuth 0.25 costs about
+    // 0.06 of depth, which it does. Small enough to read as life, not as a face
+    // coming apart.
+    const EYE_TRAVEL = 0.25;
+    const px = clamp(pupilX, -1, 1)*EYE_TRAVEL, py = clamp(pupilY, -1, 1)*EYE_TRAVEL;
+    b.pupils.forEach(pu=>{ pu.position.x = pu.userData.baseX + px; pu.position.y = pu.userData.baseY + py; });
     b.scleras.forEach(sc=>{ sc.scale.y = (custom.eyes==='happy'||custom.eyes==='sleepy'? (custom.eyes==='happy'?0.55:0.5) : 1) * (1 - squint*0.55); });
     b.tongue.scale.setScalar(tongue ? 1 : 0.0001);
   }
@@ -11770,11 +12027,19 @@ const QUALITY = {
   function syncPreview(t,dt){
     if(!menuBlob) return;
     menuT+=dt;
-    // spin inertia — let go and they keep turning, then settle
+    // LET GO AND THEY STOP, then drift back to facing you.
+    // The inertia used to be the point of this block: release still carried the
+    // turn for the better part of a second, which on an unbounded angle is how
+    // a drag ended with the bean's back to the room. The coast is now short
+    // enough to read as the hand leaving rather than as a throw, and what
+    // follows it is a return to the resting angle rather than a stop wherever
+    // the momentum ran out -- so the lobby has one default pose and always
+    // comes back to it.
     if(!spin.dragging){
       spin.angle += spin.vel;
-      spin.vel *= Math.pow(0.06, dt);
+      spin.vel *= Math.pow(0.0004, dt);
       if(Math.abs(spin.vel)<0.0004) spin.vel=0;
+      spin.angle += (0 - spin.angle) * Math.min(1, dt*2.2);
     }
     applyIdle(menuBlob, dt);
     animateAura(menuBlob, menuT);
@@ -11838,6 +12103,83 @@ const QUALITY = {
     // The v22 character is shorter than the v20 one it replaces, so the shot
     // comes down with it rather than framing the empty air above its head.
     camera.position.set(0,34,camZ); camera.lookAt(0,1,0);
+    // ---- the LOBBY's own lens.
+    //
+    // Everything above is the locker's and the profile's shot, and the home
+    // screen had been borrowing it: a camera 34 units up looking down at a
+    // character whose crown is at 18.6, from 86 away. That is above the bean's
+    // head pointing down at it, which is why the podium read as a lid seen from
+    // above and why the character came out about 29% of the frame height
+    // against the reference's two thirds.
+    //
+    // So the lobby gets its own, derived rather than dialled in: fill FILL of
+    // the frame with a figure SOLE..CROWN tall, and the distance follows from
+    // the vertical field of view. Retuning the framing is then a matter of
+    // changing FILL, and the locker -- which is a different shot for a
+    // different job -- is left alone.
+    const homeOpen = !$('home').classList.contains('hidden');
+    if(homeOpen && menuBlob.frameTop !== undefined){
+      // A slice of the podium, so the character reads as standing ON something
+      // rather than as cut off at the ankles by the bottom of the screen.
+      const PLINTH = 5;
+      // IDLE_HEADROOM, because frameTop is the RESTING silhouette and the idle
+      // goes above it -- see where the envelope is declared.
+      const top = menuBlob.frameTop + IDLE_HEADROOM;
+      const bottom = Math.min(menuBlob.frameBottom, -16) - PLINTH;
+      // HOW MUCH OF THE FRAME IS CLEAR, MEASURED RATHER THAN ASSUMED.
+      //
+      // This was a fraction of the height, and a fraction is the wrong unit.
+      // The chrome the character has to stay clear of is a tab strip and a
+      // button row whose heights are in PIXELS and barely move, so they take a
+      // sixth of a 1080-tall frame and nearly a quarter of a 720-tall one: the
+      // single figure that framed the character correctly on a big monitor put
+      // the crown's points behind the tab strip at 1280x720. Writing pixel
+      // figures here instead would be no better -- the strip resizes at the CSS
+      // breakpoints, so they would be a third copy of numbers that already
+      // live in 04_menu.css and would go stale the first time one changed.
+      //
+      // So it asks the DOM. lobbySafeBand gives the clear strip between the
+      // bottom of the chrome and the top of the button row, and the character
+      // is fitted into that -- wherever the stylesheet has put it.
+      const band = lobbySafeBand();
+      let half = (top - bottom)/(2*band.frac);
+      // On a frame narrower than it is tall the limit is the character's WIDTH,
+      // not its height, and a shot framed only on height crops the arms off.
+      const needHalfW = RIG.maxR*1.7;
+      if(half*camera.aspect < needHalfW) half = needHalfW/camera.aspect;
+      // THE FRAME IS MEASURED AT THE NEAREST PART OF THE CHARACTER, NOT AT THE
+      // ORIGIN. `half` is a visible half-height, and a perspective frame is
+      // narrower the closer you are: this lens is about 73 degrees, so the ten
+      // units the bean's belly stands toward the camera cost roughly a quarter
+      // of the frame's height. Framed on the origin plane the numbers all said
+      // the character fitted and the crown still went through the tab strip --
+      // the envelope sweep in tools/lobby-shots.mjs is what caught it, at ndc
+      // 1.12 where 1.0 is the edge. Standing off by the near surface's own
+      // depth is what makes the fit real.
+      //
+      // `peek`'s lean is deliberately NOT added here. It looked like it should
+      // be, but the sweep says the worst top belongs to `wobble`, which has no
+      // lean at all -- so allowing for both at once reserves room for a pose
+      // that cannot happen and costs the character about a fifth of its size
+      // for it. The sweep is what says this is safe, and it is re-run whenever
+      // the framing changes.
+      const near = menuBlob.frameNear || 0;
+      const dist = half/Math.tan(camera.fov*Math.PI/360) - near;
+      // Put the character's own centre at the centre of that clear strip, which
+      // is not the centre of the frame: the strip at the top and the row at the
+      // bottom are different heights. band.offset is how far the clear middle
+      // sits below the frame's middle, as a fraction of the height; world units
+      // per fraction is 2*half, and screen-up is world-up, so it subtracts.
+      const aim = (top + bottom)/2 - band.offset*2*half;
+      // Near eye level, tilted down just enough to keep the podium reading as a
+      // disc the character stands ON rather than as a line it stands behind.
+      camera.position.set(0, aim + 7.5, -dist); camera.lookAt(0, aim, 0);
+    }
+    // The review harness's face close-up. Here rather than in the harness
+    // because the lobby rewrites the camera every frame, so a lens the tool set
+    // from outside would be thrown away before the shutter. Shipped code never
+    // sets the flag.
+    if(window.__faceCam){ camera.position.set(0, RIG.faceY, -30); camera.lookAt(0, RIG.faceY, 0); }
     // dim the room so the spotlight reads
     // Dimmed for the spotlight to read against, not extinguished. At 0.30 and
     // 0.20 under physical lights the character was a silhouette.

@@ -197,7 +197,62 @@ hook = """
     shots:()=>shots.length,
     preview:()=>({ visible:previewGroup.visible, x:+previewGroup.position.x.toFixed(1),
                    hasBlob:!!menuBlob, state, W, camZ:+camera.position.z.toFixed(1),
+                   // ry is measured RELATIVE TO FACING THE CAMERA: the rig's
+                   // rest yaw is PI, so a raw rotation.y of PI reads as 0 here
+                   // and a trace of these numbers says how far the character
+                   // ever turns away from the player. rx is already absolute.
+                   ry: menuBlob? +wrapPi(menuBlob.group.rotation.y - Math.PI).toFixed(3) : null,
+                   rx: menuBlob? +wrapPi(menuBlob.group.rotation.x).toFixed(3) : null,
+                   camY:+camera.position.y.toFixed(1), act: idleAct(),
                    blobWorldX: menuBlob? +menuBlob.group.getWorldPosition(new THREE.Vector3()).x.toFixed(1) : null }),
+    // Put the lobby up from wherever the game is, with the turn reset, so a
+    // harness photographs the screen a player lands on rather than whatever
+    // state the previous check left behind.
+    lobby:()=>{ goHome(); openLobbyTab('play'); resetPreviewSpin(); syncMenuChrome(); updateHud();
+                return window.__dbg.preview(); },
+    // The face, big enough to judge an eye by. Moving the LENS rather than
+    // cropping the PNG: a crop of a 1280-wide lobby frame has about ninety
+    // pixels of face in it. Call with false to put the lobby camera back.
+    faceCam:(on)=>{ window.__faceCam = (on===undefined) ? true : !!on;
+                    renderFrame(); return window.__faceCam; },
+    // Where the eyes and the face plate actually ARE, in the face bone's own
+    // frame, after every transform the rig bakes in. The numbers the eye checks
+    // assert, and the only honest way to ask whether an eye is symmetric: the
+    // source constants say what was intended, this says what was built.
+    // The character's top and bottom in NDC, for the review harness's
+    // envelope sweep: anything outside -1..1 is off the screen. Asked of the
+    // live pose, so it answers for whatever the idle is doing right now.
+    previewExtent:()=>{
+      if(!menuBlob) return null;
+      const b = new THREE.Box3().setFromObject(menuBlob.group);
+      const hi = new THREE.Vector3(0, b.max.y, b.getCenter(new THREE.Vector3()).z).project(camera);
+      const lo = new THREE.Vector3(0, b.min.y, b.getCenter(new THREE.Vector3()).z).project(camera);
+      return { top:hi.y, bottom:lo.y, act:idleAct() }; },
+    faceMetrics:()=>{
+      if(!menuBlob || !menuBlob.eyeProbes || menuBlob.eyeProbes.length!==2) return null;
+      const face = menuBlob.facePlate, fb = new THREE.Box3().setFromObject(face);
+      const inv = new THREE.Matrix4().copy(menuBlob.faceGroup.matrixWorld).invert();
+      const local = (m)=>{ const b=new THREE.Box3(); const g=m.geometry.clone();
+        g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+        g.computeBoundingBox(); b.copy(g.boundingBox); g.dispose(); return b; };
+      const e = menuBlob.eyeProbes.map(local), f = local(face);
+      const dim = (b)=>({ w:+(b.max.x-b.min.x).toFixed(3), h:+(b.max.y-b.min.y).toFixed(3),
+                          d:+(b.max.z-b.min.z).toFixed(3),
+                          cx:+((b.max.x+b.min.x)/2).toFixed(3), cy:+((b.max.y+b.min.y)/2).toFixed(3),
+                          cz:+((b.max.z+b.min.z)/2).toFixed(3) });
+      const L=dim(e[0]), R=dim(e[1]), F=dim(f);
+      return { left:L, right:R, face:F,
+               aspect:+((L.h/L.w+R.h/R.w)/2).toFixed(3),
+               sep:+Math.abs(R.cx-L.cx).toFixed(3),
+               sepOverFaceW:+(Math.abs(R.cx-L.cx)/F.w).toFixed(3),
+               dyMismatch:+Math.abs(R.cy-L.cy).toFixed(4),
+               dxAsymmetry:+Math.abs(Math.abs(R.cx-F.cx)-Math.abs(L.cx-F.cx)).toFixed(4),
+               sizeMismatch:+Math.max(Math.abs(R.w-L.w), Math.abs(R.h-L.h)).toFixed(4),
+               // how far down the plate the eye pair sits, 0 at the top edge
+               dropFrac:+(((F.cy+F.h/2)-L.cy)/F.h).toFixed(3),
+               insideX:+((F.w/2 - (Math.abs(L.cx-F.cx)+L.w/2))).toFixed(3),
+               insideY:+((F.h/2 - (Math.abs(L.cy-F.cy)+L.h/2))).toFixed(3),
+               worldFaceY:+fb.getCenter(new THREE.Vector3()).y.toFixed(2) }; },
     warns:()=>obstacles.filter(o=>o.type==='cannon')
       .reduce((n,o)=>n+((o.meshes||[]).filter(m=>m.warn&&m.warn.visible).length),0),
     cannons:()=>obstacles.filter(o=>o.type==='cannon').slice(0,3).map(o=>({
