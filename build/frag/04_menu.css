@@ -740,10 +740,37 @@
     transform:skewX(-8deg) rotate(-2deg);letter-spacing:1px;transition:transform .08s,filter .1s;}
   .playBig:hover{filter:brightness(1.06);}
   .playBig:active{transform:skewX(-8deg) rotate(-2deg) translateY(5px);box-shadow:0 2px 0 var(--line);}
+  /* v27: THE STRIP GETS THE TOP ROW TO ITSELF.
+     The rules that used to be here placed .lobbyTabs and .lobbyCurrency into
+     grid areas of .lobbyTop -- but both of them moved into #menuChrome, which
+     is a sibling of #home and not a grid item at all, so every one of those
+     declarations had been dead since. What was actually happening below 760 was
+     nothing: the strip kept its desktop padding of 340px on the left and 210px
+     on the right, which on a 430px phone is more padding than there is screen,
+     and the pills, the wordmark and the coin chips all landed on top of one
+     another with the right-hand chip hanging off the edge.
+     Six pills and two chips do not fit beside a wordmark at this width, so they
+     stop trying: the strip and the chips take the top line together, and the
+     lobby's own content starts below them. */
   @media (max-width:760px){
-    .lobbyTop{grid-template-columns:1fr auto;grid-template-areas:'brand cur' 'tabs tabs';}
-    .lobbyBrand{grid-area:brand;} .lobbyTabs{grid-area:tabs;justify-self:center;} .lobbyCurrency{grid-area:cur;}
+    #menuChrome{ padding:10px 8px; justify-content:center; align-items:flex-start; }
+    #menuChrome .lobbyTabs{ gap:2px; padding:5px 6px; }
+    #menuChrome .tabPill{ width:40px; min-width:40px; height:34px; padding:0; }
+    #menuChrome .tabPill svg{ width:19px; height:19px; }
+    /* out of the corner and into the row, so it is laid out WITH the strip
+       instead of on top of it */
+    #menuChrome .lobbyCurrency{ position:static; margin-left:6px; gap:5px; }
+    #menuChrome .crownChip, #menuChrome .coinChip{ padding:4px 8px; font-size:0.8rem; }
+    #home.lobby{ padding-top:60px; }
     .nameCard{min-width:0;} .playBig{font-size:1.5rem;padding:8px 28px 8px 20px;}
+  }
+  /* Small phones. The daily badge hangs off the PLAY pill's top corner, so the
+     strip needs a little headroom of its own as well as a narrower pill. */
+  @media (max-width:430px){
+    #menuChrome .tabPill{ width:34px; min-width:34px; height:31px; }
+    #menuChrome .tabPill svg{ width:17px; height:17px; }
+    #menuChrome .crownChip, #menuChrome .coinChip{ padding:3px 6px; font-size:0.74rem; }
+    #home.lobby{ padding-top:54px; }
   }
 
   /* ============ ROUND REVEAL ============ */
@@ -752,7 +779,10 @@
     background:repeating-radial-gradient(circle at center,#ffd45a 0 9vmax,#ffb020 9vmax 18vmax);opacity:0.95;}
   .revealRings::after{content:'';position:absolute;inset:0;border-radius:50%;
     background:repeating-conic-gradient(from 0deg,rgba(255,255,255,0.16) 0 8deg,rgba(255,255,255,0) 8deg 24deg);animation:ringSpin 40s linear infinite;}
-  @keyframes ringSpin{to{transform:rotate(360deg)}}
+  /* ringSpin is declared once, up with #menuRings. A second copy lived here and
+     -- being later in the file -- was the one that actually won for BOTH users
+     of it, which is the sort of thing that makes a change to the first copy
+     appear to do nothing. */
   .revealBar{position:relative;z-index:2;width:100%;background:var(--line);color:var(--cream);font-family:'Fredoka',sans-serif;font-weight:700;
     font-size:clamp(1.4rem,3.4vw,2.2rem);padding:12px 4vw;text-align:left;letter-spacing:1px;box-shadow:0 4px 0 rgba(0,0,0,0.3);}
   .revealStage{position:relative;z-index:2;flex:1;width:100%;display:flex;align-items:center;overflow:hidden;}

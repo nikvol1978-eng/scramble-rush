@@ -5335,6 +5335,205 @@
                : 'covered '+JSON.stringify(seen)+', peak fadeables '+maxFadeables };
   }
 
+  // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
+  // The home screen used to pick from a nine-act idle repertoire that included
+  // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
+  // the first thing a player saw turned its back or its soles to them, and no
+  // two screenshots of the home screen framed the same character.
+  //
+  // This is written as a TRACE rather than as a look at the constants: the
+  // guarantee that matters is about the TOTAL of every contribution -- the act,
+  // the drag, the breathing -- and the old bug was exactly that no single
+  // number in applyIdle looked responsible for it. Ninety simulated seconds is
+  // long enough that each act in the list is drawn several times over.
+  function checkLobbyPose(){
+    const bad = [];
+    goHome();
+    if(typeof openLobbyTab === 'function') openLobbyTab('play');
+    resetPreviewSpin();
+    window.__dbg.tick(30, 1/60);
+    if(state !== 'menu') bad.push('goHome did not leave the menu state (in "'+state+'")');
+    if($('home').classList.contains('hidden')) bad.push('#home is hidden on the lobby');
+    if(!menuBlob) return { name:'~ lobby pose, no auto-spin, lobby chrome', pass:false,
+                           detail:'no character on the lobby to measure' };
+
+    // ---- 90 seconds of lobby, and the character never turns away ----------
+    let yawMax=0, pitchMax=0, rollMax=0, floatMax=0;
+    const seen = new Set();
+    for(let i=0;i<5400;i++){
+      window.__dbg.tick(1, 1/60);
+      const g = menuBlob.group;
+      yawMax   = Math.max(yawMax,   Math.abs(wrapPi(g.rotation.y - Math.PI)));
+      pitchMax = Math.max(pitchMax, Math.abs(wrapPi(g.rotation.x)));
+      rollMax  = Math.max(rollMax,  Math.abs(wrapPi(g.rotation.z)));
+      floatMax = Math.max(floatMax, g.position.y);
+      seen.add(idleAct());
+    }
+    const LIM = LOBBY_YAW_MAX + 1e-3;
+    if(yawMax   > LIM)  bad.push('character turned '+yawMax.toFixed(2)+' rad off centre (limit '+LOBBY_YAW_MAX+')');
+    if(pitchMax > LIM)  bad.push('character pitched '+pitchMax.toFixed(2)+' rad (limit '+LOBBY_YAW_MAX+')');
+    if(rollMax  > 0.35) bad.push('character rolled '+rollMax.toFixed(2)+' rad');
+    // The bean is meant to be STANDING on the podium. A hop is fine; leaving
+    // the frame is the thing that made the old lobby read as unanchored.
+    if(floatMax > 18)   bad.push('character rose '+floatMax.toFixed(0)+' above the podium');
+    // The repertoire itself, so a re-added 'spin' is caught by name and not
+    // only by whatever the trace happened to sample.
+    for(const act of ['spin','flip']){
+      if(IDLE_ACTS.some(a=>a.name===act)) bad.push("the '"+act+"' idle act is back in the lobby repertoire");
+    }
+    if(seen.size < 3) bad.push('only '+seen.size+' idle act(s) ran in 90s -- the trace is not exercising the list');
+
+    // ---- a drag stops when it is released, and settles back to front-on ---
+    spin.dragging = true;
+    for(let i=0;i<40;i++){ spin.angle = clamp(spin.angle + 0.05, -LOBBY_YAW_MAX, LOBBY_YAW_MAX); spin.vel = 0.05; }
+    spin.dragging = false;
+    window.__dbg.tick(1, 1/60);
+    const justReleased = Math.abs(spin.angle);
+    window.__dbg.tick(180, 1/60);                       // three seconds later
+    const settled = Math.abs(spin.angle);
+    if(settled > justReleased + 1e-6) bad.push('the turn grew after release ('+justReleased.toFixed(3)+' -> '+settled.toFixed(3)+')');
+    if(settled > 0.05) bad.push('released drag did not settle back to front-on (left at '+settled.toFixed(3)+' rad)');
+
+    // ---- the lobby's chrome exists and PLAY is the primary action ---------
+    const play = $('playBtn');
+    if(!play) bad.push('no #playBtn');
+    else {
+      if(!/PLAY/i.test(play.textContent||'')) bad.push('#playBtn does not say PLAY');
+      if(play.classList.contains('hidden')) bad.push('#playBtn is hidden on the lobby');
+      // Primary means primary: it has to be the biggest button on the screen.
+      const pr = play.getBoundingClientRect();
+      const inv = $('mpBtn') ? $('mpBtn').getBoundingClientRect() : {width:0,height:0};
+      if(pr.width*pr.height <= inv.width*inv.height)
+        bad.push('PLAY is not larger than the secondary action beside it');
+      if(pr.width < 120 || pr.height < 40) bad.push('PLAY is only '+Math.round(pr.width)+'x'+Math.round(pr.height));
+    }
+    for(const id of ['tabPlay','profileBtn','badgesBtn','shopBtn','passBtn','settingsBtn'])
+      if(!$(id)) bad.push('lobby navigation is missing #'+id);
+    if(!$('seasonLevel') || !$('seasonFill')) bad.push('the lobby progression readout is missing');
+
+    // ---- everything you need to see or press is ON the screen ------------
+    //
+    // This started out as `documentElement.scrollWidth > clientWidth` and that
+    // was a BAD PROXY: it fired at 385px, and the offender was #menuRings,
+    // which is `inset:-30%` on purpose so its corners stay covered while it
+    // turns. html and body are already `overflow:hidden`, so nothing about
+    // that bleed is visible or scrollable -- the metric was reporting a
+    // deliberate decoration as a layout fault.
+    //
+    // What the phone bug actually was is this instead: the right-hand coin chip
+    // laid out past the edge of the viewport. So the assertion names the
+    // elements a player has to be able to see or press, and requires each of
+    // them to be inside it. Decorative bleed is not on the list and cannot
+    // trip it.
+    const inView = (el, label)=>{
+      if(!el) return;
+      const r = el.getBoundingClientRect();
+      if(r.width <= 0 || r.height <= 0) return;             // hidden is not off-screen
+      const over = [];
+      if(r.left   < -1)      over.push('left by '+Math.round(-r.left)+'px');
+      if(r.top    < -1)      over.push('top by '+Math.round(-r.top)+'px');
+      if(r.right  > W + 1)   over.push('right by '+Math.round(r.right - W)+'px');
+      if(r.bottom > H + 1)   over.push('bottom by '+Math.round(r.bottom - H)+'px');
+      if(over.length) bad.push(label+' is off screen: '+over.join(', ')+' (viewport '+W+'x'+H+')');
+    };
+    inView($('playBtn'), 'PLAY');
+    inView($('mpBtn'), 'the invite button');
+    inView($('nameCard'), 'the name card');
+    inView($('homeCrowns'), 'the crown chip');
+    inView($('homeCoins'), 'the coin chip');
+    inView(document.querySelector('.lobbyTabs'), 'the tab strip');
+    inView(document.querySelector('.lobbyBrand'), 'the wordmark and season bar');
+    document.querySelectorAll('.tabPill').forEach(p=>inView(p, 'tab '+(p.dataset.lobby||'?')));
+    // And the two things that must never be covered are still reachable: the
+    // strip and PLAY both take clicks, at their own centres.
+    for(const [what, el] of [['PLAY', $('playBtn')], ['the tab strip', document.querySelector('.tabPill.sel')]]){
+      if(!el) continue;
+      const r = el.getBoundingClientRect();
+      if(r.width <= 0 || r.height <= 0){ bad.push(what+' has no box'); continue; }
+      const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+      if(hit && !el.contains(hit) && !hit.contains(el))
+        bad.push(what+' is covered by .'+(hit.className||hit.tagName));
+    }
+
+    // ---- the preview camera is pointed at something ----------------------
+    if(!isFinite(camera.position.x+camera.position.y+camera.position.z))
+      bad.push('preview camera position is not finite');
+    const c = new THREE.Box3().setFromObject(menuBlob.group).getCenter(new THREE.Vector3());
+    const n = c.clone().project(camera);
+    if(Math.abs(n.x) > 0.6 || Math.abs(n.y) > 0.6)
+      bad.push('character is not near the middle of the shot (ndc '+n.x.toFixed(2)+','+n.y.toFixed(2)+')');
+
+    return { name:'~ lobby pose, no auto-spin, lobby chrome', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : '90s of lobby: yaw <= '+yawMax.toFixed(2)+', pitch <= '+pitchMax.toFixed(2)
+                 +', rise <= '+floatMax.toFixed(0)+', '+seen.size+' acts, drag settles to '+settled.toFixed(3)
+                 +', PLAY present and dominant' };
+  }
+
+  // ---------- ^: two eyes, matched, upright, and ON the face plate ----------
+  // The eyes were built perfectly symmetric and still rendered as two different
+  // ragged slivers, so a check that only compared the left constant with the
+  // right one would have passed throughout the bug. What was actually wrong was
+  // that a flat disc was placed with its centre ON a curved cap with no
+  // rotation to match it, leaving most of each eye inside the plate and the
+  // visible remainder a different shape on each side.
+  //
+  // So the load-bearing assertion here is the last one: no vertex of either eye
+  // may lie behind the cap surface AT ITS OWN x AND y. That is the property the
+  // old code broke, and it is not one a symmetric mistake can satisfy.
+  function checkLobbyFace(){
+    const bad = [];
+    goHome();
+    window.__dbg.tick(10, 1/60);
+    const b = menuBlob;
+    if(!b || !b.eyeProbes || b.eyeProbes.length !== 2)
+      return { name:'^ eyes: two, matched, upright, on the plate', pass:false,
+               detail:'expected 2 eye probes, found '+((b&&b.eyeProbes&&b.eyeProbes.length)||0) };
+    if(!b.facePlate) bad.push('no face plate');
+
+    const m = window.__dbg.faceMetrics();
+    if(!m) return { name:'^ eyes: two, matched, upright, on the plate', pass:false, detail:'no face metrics' };
+
+    // ---- matched pair -----------------------------------------------------
+    if(m.dyMismatch    > 0.02) bad.push('eyes sit at different heights (by '+m.dyMismatch+')');
+    if(m.dxAsymmetry   > 0.02) bad.push('eyes are not mirrored about the face centre (by '+m.dxAsymmetry+')');
+    if(m.sizeMismatch  > 0.02) bad.push('eyes are different sizes (by '+m.sizeMismatch+')');
+    // ---- upright vertical ovals, not pins and not slabs -------------------
+    if(m.aspect < 1.55) bad.push('eyes are not vertically elongated (aspect '+m.aspect+')');
+    if(m.aspect > 2.80) bad.push('eyes are too tall and narrow (aspect '+m.aspect+')');
+    // ---- placed like a face, with margin ---------------------------------
+    if(m.sepOverFaceW < 0.32) bad.push('eyes are too close together ('+m.sepOverFaceW+' of the plate)');
+    if(m.sepOverFaceW > 0.62) bad.push('eyes are too far apart ('+m.sepOverFaceW+' of the plate)');
+    if(m.dropFrac < 0.45 || m.dropFrac > 0.80)
+      bad.push('the eye line sits at '+m.dropFrac+' down the plate');
+    if(m.insideX <= 0.15) bad.push('eyes reach the side edge of the plate (margin '+m.insideX+')');
+    if(m.insideY <= 0.15) bad.push('eyes reach the top or bottom edge of the plate (margin '+m.insideY+')');
+
+    // ---- THE ONE THAT MATTERS: no eye vertex is buried in the plate -------
+    const inv = new THREE.Matrix4().copy(b.faceGroup.matrixWorld).invert();
+    let worst = Infinity, worstAt = null;
+    for(const probe of b.eyeProbes){
+      const g = probe.geometry.clone();
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, probe.matrixWorld));
+      const pos = g.attributes.position;
+      for(let i=0;i<pos.count;i++){
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        // how far this vertex stands in front of the cap directly behind it
+        const proud = z - faceOn(y, x).z;
+        if(proud < worst){ worst = proud; worstAt = [x.toFixed(2), y.toFixed(2)]; }
+      }
+      g.dispose();
+    }
+    if(worst < 0.005)
+      bad.push('an eye vertex is sunk '+(-worst).toFixed(3)+' into the plate at x '+worstAt[0]+' y '+worstAt[1]
+               +' -- the eye is not lying on the cap');
+
+    return { name:'^ eyes: two, matched, upright, on the plate', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'aspect '+m.aspect+', sep '+m.sepOverFaceW+' of plate, drop '+m.dropFrac
+                 +', margins '+m.insideX+'/'+m.insideY+', nearest vertex stands '+worst.toFixed(3)+' proud' };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -5347,7 +5546,22 @@
       ['6',check6],['7',check7],['8',check8],['9',check9],['0',check0],
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
-      ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest]
+      ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
+      // LAST, AND DELIBERATELY SO. The suite runs in ONE page and shares state
+      // across checks -- Math.random() is never reseeded and window.__T, which
+      // obstacle phases are functions of, accumulates every tick any check
+      // takes. So a check's result can depend on what ran before it: [r] builds
+      // a 23-bot race and measures the worst idle in a bend, and it passes 12
+      // out of 12 run on its own at a dozen different stream positions while
+      // having failed once inside a full run.
+      //
+      // [~] steps ninety simulated seconds of lobby, which is a large nudge to
+      // that shared clock. Registering these two at the END means every
+      // pre-existing check meets exactly the state it met before they were
+      // added, so nothing downstream of them can be perturbed by them. These
+      // two read no obstacle phase and draw no randomness that matters, so
+      // running last costs them nothing.
+      ['~',checkLobbyPose],['^',checkLobbyFace]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

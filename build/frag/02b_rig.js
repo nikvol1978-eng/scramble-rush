@@ -1288,7 +1288,7 @@
       bones[boneIndex].add(p);
       return p;
     };
-    const hatProbes = [];
+    const hatProbes = [], eyeProbes = [];
     let mouthProbe = null;
 
     // The shoe and the cuff are the limb colour taken down and up a step. Two
@@ -1413,23 +1413,65 @@
     const dotScale = eyes==='happy'  ? [1.30, 0.50, 0.45]
                    : eyes==='sleepy' ? [1.40, 0.26, 0.45]
                    :                   [1.00, 1.10, 0.16];
+    // v27: LIE THE EYE ON THE CAP, DO NOT PUSH IT THROUGH.
+    //
+    // Both eyes were built perfectly symmetric -- the probes still say
+    // dxAsymmetry 0, dyMismatch 0, sizeMismatch 0 -- and they still rendered as
+    // two different ragged slivers, one thin and one fat. The constants were
+    // never the bug. The bug was that a flat disc 0.125 deep was placed with
+    // its CENTRE on a sphere that falls away by about 0.36 across the disc's
+    // own width, with no rotation to match the surface: what reached the screen
+    // was the intersection of a plane and a sphere, which is not an oval and is
+    // not the same shape on the left as on the right once the head is turned a
+    // few degrees.
+    //
+    // So the eye is now oriented to the surface normal at the point it sits on,
+    // and stood off along that normal by more than its own half-depth, which
+    // puts the whole disc outside the plate instead of half inside it. EYE_PROUD
+    // also has to cover however far the idle slides the eye sideways, or the
+    // slide walks it back into the cap -- see the travel limit in 05_profile.js.
+    const EYE_PROUD = 0.34;
+    // The cap's normal at a point on it. Azimuth from the horizontal radius at
+    // that height, elevation from `faceOn`, which already works out how far to
+    // pitch something so it lies flat on the curve.
+    const faceQuat = (dy, dx)=>{
+      const rxh = beanRadiusAt(RIG.faceY + dy) + RIG.facePROUD;
+      const phi = Math.asin(Math.max(-0.95, Math.min(0.95, dx/rxh)));
+      // YXZ: swing sideways, then tilt up -- the order that lands the disc's
+      // +Z on the normal. Composing it the other way round leaves a roll.
+      return new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(-faceOn(dy, dx).pitch, phi, 0, 'YXZ'));
+    };
+    const faceXf = (dy, dx, bone, sx, sy, sz, extra)=>{
+      const on = faceOn(dy, dx, EYE_PROUD + (extra||0));
+      const m = new THREE.Matrix4().compose(
+        // the bone stands on the bare cap, so the local offset is however far
+        // the proud point is from it
+        new THREE.Vector3(dx - bone.position.x, dy - bone.position.y, on.z - bone.position.z),
+        faceQuat(dy, dx), new THREE.Vector3(sx, sy, sz));
+      return m;
+    };
     [[BONE.scleraL, BONE.pupilL, -1],[BONE.scleraR, BONE.pupilR, 1]].forEach(([sb,pb,s],i)=>{
       // the "sclera" slot is kept so the idle blink still has something to squash
-      // v26b: the eyes were spheres standing off the plate, and at this size
-      // that is all you saw. Flattened to 0.14 of their depth they sit in the
-      // panel instead of in front of it.
       // no sclera bead: the reference has a dark slot, not an eyeball
-      // A little bigger than v22's 2.0: at tile size the old dot read as a
-      // pinprick, and the highlight below needs something to sit on.
-      at(pb, new THREE.SphereGeometry(0.72*FS, 18, 14), DARK,
-         xf(0,0,0, dotScale[0]*0.92, dotScale[1]*1.80, dotScale[2]*0.55));
+      const eyeGeo = new THREE.SphereGeometry(0.72*FS, 18, 14);
+      const eyeXf  = faceXf(pupilDY, s*eyeX, bones[pb],
+                            dotScale[0]*0.92, dotScale[1]*1.80, dotScale[2]*0.55);
+      // A probe per eye, for the same reason the face plate has one: after the
+      // merge there is one geometry for the whole trim mesh and no way to ask
+      // it where an eye is. The checks measure THIS rather than re-deriving the
+      // constants above, so a transform that silently stops matching them is
+      // caught instead of being asserted against itself. Made before `at`,
+      // which bakes the transform into the geometry in place.
+      eyeProbes.push(probeOf(pb, eyeGeo, eyeXf));
+      at(pb, eyeGeo, DARK, eyeXf);
       // OUR OWN EYE, not a copy of anyone's: one small catchlight, top-left on
       // both eyes because a single light source does not mirror itself. On the
       // pupil bone, so it tracks the locker's look-at instead of sliding off.
-      // v26b: flattened and pulled back to match. The pupil is 0.16 deep now,
-      // so a full-depth catchlight sat proud of it as a separate white bead.
+      // Stood off a little further than the eye it sits on, for the same reason
+      // the eye is stood off the plate.
       at(pb, new THREE.SphereGeometry(0.72*FS*0.15, 8, 6), WHITE,
-         xf(-0.15*FS, 0.50*FS, 0.12*FS, 1, 1.2, 0.35));
+         faceXf(pupilDY + 0.50*FS, s*eyeX - 0.15*FS, bones[pb], 1, 1.2, 0.35, 0.10));
       if(eyes==='angry'){
         const browAt = faceOn(2.9*FS, s*eyeX);
         at(BONE.face, new THREE.BoxGeometry(3.4*FS, 1.0*FS, 0.7), DARK,
@@ -1640,7 +1682,7 @@
     kneeL.rotation.x = kneeR.rotation.x = REST.kneeX;           // soft knees, weight on them
     return {group, tilt, aura, bodyMat, partsMat, outMat, outline, body, trim, skeleton,
             head, faceGroup, hatGroup, pupils, scleras, tongue,
-            facePlate, hatProbes, mouth:mouthProbe,
+            facePlate, hatProbes, eyeProbes, mouth:mouthProbe,
             arms:armPivots, legs:legPivots, armPivots, legPivots, feet, hands,
             kneePivots, footPivots, elbowPivots, handPivots, bodyBone,
             neutral, REST, RIG};
