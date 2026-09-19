@@ -56,11 +56,41 @@
          window.__dbg.hold(settings.keys.jump, false); }catch(e){}
   }
 
+  // The seed the runner pinned for the check currently executing, and how many
+  // rounds that check has started. begin() reads both; nothing else should.
+  let _checkSeed = 0, _beginNth = 0;
+
   function begin(mapKey, round){
     wipeRoundState();
     window.__forceMap = mapKey || null;
     ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
     startRound(round||1, null);
+    // RE-PIN AFTER THE BUILD, for the reason beginSeeded already does it.
+    //
+    // Warming every skin and every map makes the ROSTER deterministic -- same
+    // names, skins, speeds and lanes whatever ran before. It does not quite
+    // make the build consume a fixed number of DRAWS: measured on `slide`,
+    // 14559 on a warmed fresh page against 14535 after three other checks, a
+    // residue of two dozen that lands after the roster is built. That residue
+    // cannot change who is racing, but it does change where in the stream the
+    // race starts, and seventy-two seconds of bot decisions taken from a
+    // stream twenty-four draws out of step is a different race.
+    //
+    // So the stream is re-pinned here, between the build and the first tick.
+    // From this line on the race is a function of the check's own seed, the
+    // map, and WHICH ROUND OF THIS CHECK THIS IS -- and of nothing that
+    // happened earlier in the page.
+    //
+    // The round counter is not decoration. Several checks start a round in a
+    // loop precisely to sample independent ones: [N] runs nine and takes the
+    // median, and says why in its own comment -- "a median of five samples
+    // lands on that tail often enough to fail a good build". Re-pinning every
+    // call to one seed would have handed it nine races from an identical
+    // stream, turning a nine-sample median back into something much closer to
+    // a single sample. That is a weakening dressed as a determinism fix, and it
+    // is what this counter exists to avoid: nine different rounds, and the same
+    // nine every time.
+    if(_checkSeed) Math.random = seededRandom((_checkSeed ^ 0x9E3779B9 ^ Math.imul(_beginNth++, 0x85EBCA6B)) >>> 0);
     window.__dbg.tick(TO_RACING);
   }
 
@@ -2854,6 +2884,79 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
+  // The seed a check gets when the runner pins the stream for it. Derived from
+  // the check's OWN id (FNV-1a over the id string) rather than from a counter,
+  // because a counter is a position: renumber the registry and every check
+  // downstream of the change would meet a different stream and could change its
+  // answer, which is the property this is here to remove. An id-derived seed
+  // makes the stream a property of the check, so registration order stops
+  // mattering -- and adding a check stops being able to disturb its neighbours.
+  function seedForCheck(id){
+    let h = 0x811c9dc5;
+    for(let i=0;i<id.length;i++){ h ^= id.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return h >>> 0;
+  }
+
+  // THE THIRD THING THAT LEAKED, AND THE ONLY ONE A SEED CANNOT FIX.
+  //
+  // Pinning Math.random and the clock per check is not enough on its own: with
+  // both pinned, the same seed still raced differently the FIRST time and
+  // identically every time after -- runs two and three agreed to the last
+  // decimal while run one disagreed with both, which is a cold cache, not
+  // randomness.
+  //
+  // The cause is the one `beginSeeded` already documents: building a round does
+  // not consume a fixed number of draws, because skin materials roll fresh
+  // parameters on a cold cache and skip them on a warm one. beginSeeded re-pins
+  // the stream AFTER startRound, which fixes the race -- but the ROSTER is
+  // drawn during startRound, after the materials and before that re-pin. So on
+  // a cold page the bots came out as different bots: name, skin, hat, speed and
+  // lane all shifted, and at index 2 that is the difference between "Splat" and
+  // "Pickle". A seed cannot fix that, because the draws are being consumed
+  // before the seed is applied.
+  //
+  // So the page is warmed once, before anything is measured, and every check
+  // then runs against the same warm cache the second and third rounds always
+  // had. Verified: with this, three identical seeded rounds differ in 0 of 24
+  // racers; without it, 23 of 24.
+  // EVERY skin, not just the ones one round happened to use. Warming with a
+  // single round only caches the two dozen skins that round's roster drew, so
+  // the next check that rolls a skin nobody has worn yet still pays that skin's
+  // texture in draws off the shared stream -- and the roster built after it
+  // shifts. Which skins are still cold is itself a function of every roster
+  // that came before, which is the order-dependence wearing a different hat.
+  //
+  // skinCanvas is the only thing in the texture path that draws at all (the
+  // galaxy, oil and speckle types scatter blobs with Math.random; patterns draw
+  // deterministically), and it is memoised per skin, so touching each skin once
+  // is enough to make every later lookup free and the draw count fixed.
+  let _warmed = false;
+  function warmCaches(){
+    if(_warmed) return;
+    _warmed = true;
+    // Seeded and clock-pinned like any check, so warming cannot itself be a
+    // source of variation, and wiped afterwards so the first real check starts
+    // on a clean round rather than on this one's leftovers.
+    withSeed(0x5EED, ()=>{
+      try { for(const s of SKINS) skinCanvas(s); }catch(e){}
+      // AND EVERY MAP, for the same reason as every skin.
+      //
+      // Warming the skins alone was not enough: building a round on `slide`
+      // still consumed 14663 draws on a fresh page against 14543 after three
+      // other checks had run, with the clock identical at both. The remaining
+      // 120 are the per-map mesh and obstacle work, which is memoised the same
+      // way the skin textures are -- so a map that some earlier check already
+      // visited costs a different number of draws than one nobody has touched,
+      // and everything drawn after it, the roster included, shifts.
+      //
+      // Which maps are cold is a function of which checks ran, which is the
+      // order-dependence again. Touching every map once removes the variable
+      // rather than trying to predict it. One round per map, once per page.
+      try { for(const m of [...MAPS, ...MINIGAMES]) beginSeeded(m.key, 1); }catch(e){}
+      beginSeeded('sunny', 1);
+    });
+    wipeRoundState();
+  }
   // Test-scoped on purpose: the game goes on calling Math.random exactly as it
   // does in a real round, and only the source of the values is fixed. Both the
   // generator and the clock go back in `finally`, so a throw cannot leave the
@@ -5534,6 +5637,57 @@
                  +', margins '+m.insideX+'/'+m.insideY+', nearest vertex stands '+worst.toFixed(3)+' proud' };
   }
 
+  // ---------- &: the harness hands every check the same starting state ----------
+  // The guard on the reset in __checks.run. Without something asserting it, the
+  // reset is a line of code with no witness: delete it and the suite still goes
+  // green, and the order-dependence quietly comes back -- which is exactly how
+  // it went unnoticed the first time, because the symptom was one marginal
+  // check failing occasionally rather than anything failing outright.
+  //
+  // It asserts the CONTRACT (the clock is pinned, the stream is pinned, and the
+  // stream is the one this check's id asks for) rather than a downstream
+  // consequence of it, so it fails for the actual reason.
+  function checkDeterministicStart(){
+    // FIRST STATEMENT IN THE BODY, on purpose: this is draw number one of the
+    // stream the runner just pinned, and comparing it to a fresh generator on
+    // the same seed is what proves the pinning happened AND that it used this
+    // check's own id rather than a counter or a position.
+    const firstDraw = Math.random();
+    const bad = [];
+    const want = seededRandom(seedForCheck('&'))();
+    if(Math.abs(firstDraw - want) > 1e-12)
+      bad.push('Math.random was not pinned to this check\'s own seed (got '
+               + firstDraw.toFixed(12) + ', expected ' + want.toFixed(12) + ')');
+    if(window.__T !== H_T0)
+      bad.push('the simulation clock was not pinned at entry: __T=' + window.__T + ', expected ' + H_T0);
+
+    // ---- and the same seed really does reproduce a round ------------------
+    // Two identical seeded rounds, digested. If this ever disagrees, the seed
+    // is not the only input to a race any more and the suite has lost the
+    // property the reset above is meant to give it.
+    const digest = ()=>{
+      let h = 0x811c9dc5;
+      const push = (n)=>{ h ^= (Math.round(n*64)|0); h = Math.imul(h, 0x01000193); };
+      for(const r of racers){ push(r.x); push(r.y); push(r.h); }
+      push(window.__T);
+      return h >>> 0;
+    };
+    const run = ()=>{ beginSeeded('sunny', 12345); window.__dbg.tick(240); return digest(); };
+    const a = withSeed(777, run), b = withSeed(777, run);
+    if(a !== b) bad.push('the same seed raced differently twice: ' + a + ' vs ' + b);
+
+    // ---- and the clock does not leak out of a seeded block ----------------
+    const before = window.__T;
+    withSeed(999, ()=>{ window.__dbg.tick(120); });
+    if(window.__T !== before)
+      bad.push('withSeed leaked the clock: __T was ' + before + ', is ' + window.__T);
+
+    return { name:'& every check starts on the same clock and stream', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+               : 'clock pinned at ' + H_T0 + ', stream pinned to seed ' + seedForCheck('&')
+                 + ', same seed digests ' + a + ' twice, no clock leak' };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -5547,21 +5701,17 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
-      // LAST, AND DELIBERATELY SO. The suite runs in ONE page and shares state
-      // across checks -- Math.random() is never reseeded and window.__T, which
-      // obstacle phases are functions of, accumulates every tick any check
-      // takes. So a check's result can depend on what ran before it: [r] builds
-      // a 23-bot race and measures the worst idle in a bend, and it passes 12
-      // out of 12 run on its own at a dozen different stream positions while
-      // having failed once inside a full run.
+      // These two used to be pinned to the end of the registry as a WORKAROUND:
+      // the suite shared one Math.random stream and one accumulating clock, [~]
+      // steps ninety simulated seconds of lobby into that clock, and putting it
+      // last was the cheapest way to stop it disturbing anything downstream.
       //
-      // [~] steps ninety simulated seconds of lobby, which is a large nudge to
-      // that shared clock. Registering these two at the END means every
-      // pre-existing check meets exactly the state it met before they were
-      // added, so nothing downstream of them can be perturbed by them. These
-      // two read no obstacle phase and draw no randomness that matters, so
-      // running last costs them nothing.
-      ['~',checkLobbyPose],['^',checkLobbyFace]
+      // That workaround is retired. __checks.run now pins the clock and the
+      // stream per check, keyed on the check's own id, so no check can move
+      // another one's starting state and position carries no meaning. They stay
+      // here because there is no reason to renumber the registry, not because
+      // anything depends on it -- and [&] is the check that keeps it that way.
+      ['~',checkLobbyPose],['^',checkLobbyFace],['&',checkDeterministicStart]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
@@ -5575,15 +5725,59 @@
     // touches no game state; it exists so a runner can discover the suite
     // instead of being told what is in it.
     list(opts){ return checkRegistry(opts).map(entry => entry[0]); },
+    // The one-time page warm-up, exposed so a probe can put itself in the same
+    // starting state a check is in. Without this a tool that calls __dbg
+    // directly measures an unwarmed page against a warmed one and reports the
+    // warm-up as if it were the leak.
+    warm(){ warmCaches(); },
     run(opts){
       opts = opts||{};
       const only = opts.only ? new Set(opts.only.split('')) : null;
-      const all = checkRegistry(opts);
+      let all = checkRegistry(opts);
+      // ORDER IS AN INPUT NOW, SO THAT IT CAN BE SHOWN NOT TO MATTER.
+      // `order:'reverse'` or `order:<seed>` runs the same set in a different
+      // sequence. It exists for the determinism verification: the claim that
+      // registration order no longer affects a result is only worth as much as
+      // the run that tried to break it, and before this the harness had no way
+      // to try. Nothing in CI passes it; the default is registration order.
+      if(opts.order === 'reverse') all = all.slice().reverse();
+      else if(typeof opts.order === 'number'){
+        const rnd = seededRandom(opts.order >>> 0);
+        all = all.slice();
+        for(let i=all.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); const t=all[i]; all[i]=all[j]; all[j]=t; }
+      }
+      // Before anything is measured, and once per page. See warmCaches.
+      warmCaches();
       const results = [];
       for(const [id,fn] of all){
         if(only && !only.has(id)) continue;
-        try { results.push(fn()); }
+        // EVERY CHECK STARTS FROM THE SAME PLACE, WHEREVER IT RUNS IN THE ORDER.
+        //
+        // The suite runs in one page and two things used to survive from each
+        // check into the next: Math.random, which nothing reseeded, and
+        // window.__T, which every tick() adds to and which obstacle phase is a
+        // function of. So a check's result could depend on what ran before it.
+        // [r] was the one that showed it -- it builds a 23-bot race and
+        // measures the worst idle in a bend, and it passed twelve times out of
+        // twelve run on its own while having failed inside a full run -- but it
+        // was never specific to [r]: of the check bodies here, five pin the
+        // stream with withSeed and seventy-seven call the unseeded begin().
+        // [r] was simply the one close enough to its threshold to notice.
+        //
+        // withSeed already pins both and restores both in a `finally`; what was
+        // missing was anyone applying it to every check rather than to five.
+        // The seed is derived from the check's OWN id, so it is a property of
+        // the check and not of its position -- run [r] alone, first, last or
+        // after any subset and it meets the same stream and the same clock.
+        //
+        // This lives in the harness, not in the game: checks.js is spliced only
+        // into __debug.html, the game goes on calling Math.random exactly as it
+        // does in a real round, and the real generator and clock are back in
+        // place before the next check starts. Nothing here is shipped.
+        _checkSeed = seedForCheck(id); _beginNth = 0;   // begin() re-pins from these
+        try { results.push(withSeed(_checkSeed, fn)); }
         catch(e){ results.push({ name:id+' THREW', pass:false, detail:e.message }); }
+        finally { _checkSeed = 0; _beginNth = 0; }
       }
       const failed = results.filter(r=>!r.pass);
       return {

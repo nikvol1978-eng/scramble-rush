@@ -4,8 +4,14 @@
 
 > **Status: done in v21.** Everything below shipped in the §-commits
 > 62193b8 → 26f5636 (6 Sep 2026), plus 0bfb853 for the debug freeze flag used to
-> take the acceptance shots. Suite 43/43, five-seed acceptance green, and the
-> reference image lives at `docs/reference/v21-course-reference.png`.
+> take the acceptance shots. Suite 43/43, five-seed acceptance green.
+>
+> **The reference image this brief was written against has been deleted.** It
+> was third-party material attached to the brief, not our render — §4 below
+> says so itself, contrasting its "glossy plastic under a real sky" with our
+> flat Lambert — and this repository serves its root over GitHub Pages, so a
+> committed copy was a published copy. What it was a reference *for* is written
+> out in §1, which is the part that was ever load-bearing.
 >
 > **Two targets in §4 were not met, and were reported rather than rewritten:**
 >
@@ -32,9 +38,11 @@
 
 # Scramble Rush v21 — authored courses and a real renderer
 
-One reference image is attached: an overhead render of an obstacle course in the
-sky. It is a **reference for course structure and material quality**, not a
-plan to copy. What matters in it:
+This section was written against an attached reference image — an overhead
+render of an obstacle course in the sky — which has since been deleted for the
+reason given at the top of this file. It was a **reference for course structure
+and material quality**, never a plan to copy, and what mattered in it is listed
+here rather than left to the picture:
 
 - The course is *authored*. It has distinct sections in a fixed order — a wide
   start platform, a field of spinning discs, a plank bridge with a hanging

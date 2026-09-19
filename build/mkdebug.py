@@ -228,6 +228,34 @@ hook = """
       const hi = new THREE.Vector3(0, b.max.y, b.getCenter(new THREE.Vector3()).z).project(camera);
       const lo = new THREE.Vector3(0, b.min.y, b.getCenter(new THREE.Vector3()).z).project(camera);
       return { top:hi.y, bottom:lo.y, act:idleAct() }; },
+    // Build one seeded round and report, SEPARATELY: how many Math.random
+    // draws the build consumed, a hash of the roster it produced, and a hash of
+    // the race that followed. Separating them is what tells "the build drew a
+    // different number of times" apart from "an identical roster raced
+    // differently", which a single digest cannot.
+    buildProbe:(map, seed)=>{
+      const S = window.__checks.seeded;
+      const real = Math.random;
+      let n = 0;
+      const H = (vals)=>{ let h = 0x811c9dc5; for(const v of vals){ h ^= (Math.round(v*64)|0); h = Math.imul(h, 0x01000193); } return h >>> 0; };
+      let buildDraws = 0, rosterHash = 0, raceHash = 0, T0 = 0;
+      S.withSeed(seed >>> 0, ()=>{
+        const pinned = Math.random;
+        Math.random = function(){ n++; return pinned(); };
+        T0 = +window.__T.toFixed(3);
+        wipeRoundState();
+        window.__forceMap = map;
+        startRound(1, null);
+        buildDraws = n;
+        Math.random = pinned;
+        rosterHash = H(racers.flatMap(r=>[r.speed||0, (r.aiRoute===undefined?-1:r.aiRoute), r.x, r.y]));
+        window.__dbg.tick(600);
+        raceHash = H(racers.flatMap(r=>[r.x, r.y, r.h]));
+      });
+      return { buildDraws, rosterHash, raceHash, T0 }; },
+    racerDump:()=>racers.map(r=>({ n:r.name, bot:!r.isPlayer, x:+r.x.toFixed(3), y:+r.y.toFixed(3),
+      h:+r.h.toFixed(3), sp:+(r.speed||0).toFixed(4), route:+(r.aiRoute===undefined?-1:r.aiRoute).toFixed(4),
+      tx:+(r.targetX||0).toFixed(3), skin:r.skinId, hat:r.hat, eyes:r.eyes, col:r.color })),
     faceMetrics:()=>{
       if(!menuBlob || !menuBlob.eyeProbes || menuBlob.eyeProbes.length!==2) return null;
       const face = menuBlob.facePlate, fb = new THREE.Box3().setFromObject(face);
