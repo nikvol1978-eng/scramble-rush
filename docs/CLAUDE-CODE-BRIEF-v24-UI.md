@@ -4,8 +4,16 @@ Addendum to `CLAUDE-CODE-BRIEF-v24.md`. Do this **after** §3 and §4 are
 committed and the suite is green; it is menu-only and must not touch a
 gameplay number.
 
-Four reference screenshots are in `docs/reference/`: `ui-lobby.png`,
-`ui-locker.png`, `ui-shop.png`, `ui-pass.png`. They are references for
+This brief was written against four screenshots of another studio's game, which
+used to sit in `docs/reference/`. **They have been deleted and are not coming
+back.** Reference is a fine thing to design from and a bad thing to ship, and
+this repository publishes its root to GitHub Pages, so for as long as they were
+committed they were being served to anyone who asked for them. Nothing else
+changes: no part of the build, the release HTML or the check suite ever loaded
+them, so what follows is the brief exactly as it was written, minus the four
+filenames it used to point at.
+
+What they were references for still holds, and is the important half of it:
 **layout, hierarchy, panel shapes and motion only**. No logo, wordmark,
 character, costume, item name, currency name or text from them may appear
 in the game. Everything on screen is Scramble Rush's own: our title art, our
@@ -26,7 +34,7 @@ Shared language across all four screens, taken from the references:
 - Rarity is a small pill above an item card, colour-coded and using our
   existing tiers (Common · Rare · Super Rare · Epic · Legendary · Special).
 
-## 5.1 Lobby (`ui-lobby.png`)
+## 5.1 Lobby
 
 Already close from v20. Bring it to the reference's proportions:
 
@@ -40,7 +48,7 @@ Already close from v20. Bring it to the reference's proportions:
 - Bottom-right: "Invite players" line above the large angled **PLAY!**
   button, with the keyboard key drawn as a key-cap, not a gamepad glyph.
 
-## 5.2 Locker (`ui-locker.png`)
+## 5.2 Locker
 
 Replace the current profile/locker screen with a two-pane layout:
 
@@ -60,7 +68,7 @@ Replace the current profile/locker screen with a two-pane layout:
 - The tile renders come from a small offscreen render target, cached per
   item, so opening the locker does not stutter.
 
-## 5.3 Shop (`ui-shop.png`)
+## 5.3 Shop
 
 > **Two things the locker learned, which apply to every screen that renders an
 > item on the stumbler — the shop's cards and the pass's tier tiles included:**
@@ -96,7 +104,7 @@ Replace the current shop with:
   stumbler; buying plays the existing coin sound and pops the chip.
 - Keyboard: arrows move between cards, Enter opens, Esc back.
 
-## 5.4 Season pass (`ui-pass.png`)
+## 5.4 Season pass
 
 > **Two things the locker learned, which apply to every screen that renders an
 > item on the stumbler — the shop's cards and the pass's tier tiles included:**
