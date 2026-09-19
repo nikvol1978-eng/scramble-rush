@@ -9421,6 +9421,21 @@ const QUALITY = {
     sky.visible = false;
     if(on) skyMeshFor();
     if(skyDome) skyDome.visible = !!on;
+    // v27: THE SKYLINE AND THE CLOUDS ARE PART OF THE SKY, and this is the one
+    // switch that is supposed to say so. Both groups hang off `scene` rather
+    // than off courseGroup, so goHome's `courseGroup.visible = false` never
+    // reached them and showSky only ever turned the dome off -- which left a
+    // bank of white cloud sprites and the blue skyline drifting across the
+    // lobby after every race, in front of the ring backdrop. It is not a new
+    // fault; canonical main does it too, and rather more of it, because its
+    // lobby camera stands further back. It only became easy to see once the
+    // backdrop stopped being pale.
+    //
+    // Fixed here rather than in goHome so that every caller gets it: the lobby
+    // asks for showSky(false), play and the map reel ask for showSky(true),
+    // and 07_rounds saves and restores exactly this flag around the reel.
+    if(skylineGroup) skylineGroup.visible = !!on;
+    if(cloudGroup)   cloudGroup.visible   = !!on;
   }
 
   function sunVector(elevDeg, azimDeg){
