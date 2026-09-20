@@ -2,7 +2,7 @@
 // These measure visible limb geometry, not the legacy hidden hand/foot probes.
 function characterLimbs(){
   return [-1,1].flatMap((side,i)=>[
-    {name:'arm'+side, segments:30, ...armGeometry(RIG,side,1,4+i,19+i,21+i)},
+    {name:'arm'+side, segments:40, ...armGeometry(RIG,side,1,4+i,19+i,21+i)},
     {name:'leg'+side, segments:24, ...lowerLimbGeometry(RIG,side,2+i,15+i,17+i)}
   ]);
 }
@@ -118,6 +118,12 @@ function checkCharacterSole(){
   const m=makeCharacter({color:'#eb5aa2'});m.neutral();const sole=characterSole(m);
   const meshes=[m.body,m.trim],vertices=meshes.reduce((s,m)=>s+m.geometry.attributes.position.count,0),triangles=meshes.reduce((s,m)=>s+m.geometry.index.count/3,0);
   return {name:': visible skinned sole and complexity budget',
-    pass:Math.abs(sole-(-17.63703519246488))<.03&&vertices<=11800&&triangles<=23100&&m.skeleton.bones.length===23,
+    // The ceiling sits just over the V5 hand, not comfortably over it. The
+    // three-digit hand costs 13259 vertices and 26016 triangles, and the ~1.8%
+    // left over is room for a deliberate row or two, not room for a mistake:
+    // one more digit ring costs 80 vertices and 160 triangles across the pair,
+    // so this budget absorbs exactly THREE and rejects the fourth. Anything
+    // that scales -- a doubled DIG_RINGS, a bumped SEG -- is orders past it.
+    pass:Math.abs(sole-(-17.63703519246488))<.03&&vertices<=13500&&triangles<=26500&&m.skeleton.bones.length===23,
     detail:'sole '+sole.toFixed(8)+'; '+vertices+' vertices / '+triangles+' triangles; '+m.skeleton.bones.length+' bones'};
 }
