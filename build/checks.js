@@ -5711,7 +5711,9 @@
       // another one's starting state and position carries no meaning. They stay
       // here because there is no reason to renumber the registry, not because
       // anything depends on it -- and [&] is the check that keeps it that way.
-      ['~',checkLobbyPose],['^',checkLobbyFace],['&',checkDeterministicStart]
+      ['~',checkLobbyPose],['^',checkLobbyFace],['&',checkDeterministicStart],
+      ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
+      ['?',checkCharacterFace],[':',checkCharacterSole]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

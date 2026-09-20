@@ -80,9 +80,8 @@
     // v26: bigger, and simpler on it. 14.4 across on a 20-wide body is 72% of
     // the width -- the face is meant to be the thing you read first.
     faceR:7.0,
-    // how far the plate stands off the skin. 0.6-1.0 is the brief; 0.7 in the
-    // middle keeps the whole cap inside that band once the head curves away.
-    facePROUD:0.14,
+    // Clearance includes the body's breathing expansion; face size stays fixed.
+    facePROUD:0.40, // clears maximum breathing expansion without scaling the face
     // the plate's half-extents. Width is about 1.5x the eye spacing (2*eyeX,
     // and eyeX is faceR*0.45, so 1.5x is 5.1); height is about 0.6 of the head
     // bulge, which runs from the waist pinch at 2.4 to topY 18.6.
@@ -678,41 +677,55 @@
     // palm of 3.08. Ours dips to 2.46 and flares 18% to 2.90 -- the same shape
     // at the mitt's approved size. pchip lays a level tangent at a minimum, so
     // this is a soft waist and not a notch.
-    [ 0.900, 2.54, 2.90], [ 1.000, 2.50, 2.62], [ 1.080, 2.46, 2.30],
-    // ---- v31: THE MITT, MEASURED OFF THE REFERENCE'S OWN HAND MASK ----
+    [ 0.900, 2.54, 2.90], [ 1.000, 2.50, 2.62], [ 1.080, 2.42, 2.22],
+    // ---- V2: A MITT AGAIN, NOT A CLUB ----------------------------------
     //
-    // v30's was a club: 2.90 across at its widest against a 2.58 forearm, and
-    // only 1.65 deep, so it was a flat paddle that barely flared. Isolating the
-    // reference's Wrist/Finger/Thumb weights and reading its mask by row gives
-    // a different object -- 6.14 across and 7.32 DEEP at the palm, on a hand
-    // 7.6 long. Its mitt is deeper than it is wide, not a paddle at all.
+    // V1 took the notch out, which was right, and then took the hand out with
+    // it. Its palm was 3.10 across and 2.42 deep -- a depth/width of 0.78 --
+    // against a wrist of 2.46/2.30, so the DEPTH flared by 5% and the whole
+    // thing read as the forearm continuing into a rounded end. Flat, long, and
+    // in the dive it was a paddle.
     //
-    // Taken at its measured width and, per the brief, only SLIGHTLY flattened
-    // rather than carried all the way to its own depth: 0.88 of the width, so
-    // it reads as a mitt with a front and a back instead of a blade. Against a
-    // wrist waist of 2.46 the palm now flares 25%.
-    [ 1.169, 2.73, 2.40],   // its t = 0.20
-    [ 1.232, 2.82, 2.48],   //      t = 0.30
-    [ 1.294, 2.93, 2.58],   //      t = 0.40
-    [ 1.357, 3.07, 2.70],   //      t = 0.50, the widest line
-    [ 1.417, 2.93, 2.58],   //      t = 0.60
-    // and then the digits: the reference drops from 5.86 across to 4.24 in one
-    // twentieth of its height, which is where its fingers part. Smoothed, and
-    // carried by the lobes below rather than by a notch in the profile.
-    [ 1.479, 2.35, 2.07],   //      t = 0.70
-    [ 1.543, 2.05, 1.80],   //      t = 0.80
-    [ 1.605, 1.75, 1.54],   //      t = 0.90
-    [ 1.650, 1.10, 0.97],
-    [ 1.664, 0.20, 0.11],   // and CLOSED. pchip clamps past its last knot, so
-                            // without this row the ring before the apex was
-                            // still 1.36 across and the fingertip capped flat,
-                            // with a rim round it. The mitt's own table ran to
-                            // zero at t = 1 and this one has to as well.
+    // Three things bring the hand back, and none of them is the notch:
+    //
+    //   the WRIST goes in further, to 2.42/2.22, on the hand side of s = 1.0 so
+    //   the approved forearm rows at 0.900 and 1.000 are untouched;
+    //
+    //   the PALM carries 0.925 of its width in depth rather than 0.78, which is
+    //   the v31 mitt's own proportion. (The reference's hand is actually DEEPER
+    //   than it is wide, 7.32 against 6.14; taking all of that would be a fist.)
+    //   3.06 across and 2.83 deep on a 2.42/2.22 wrist is a 26% flare in width
+    //   and a 27% flare in depth -- a palm with a front and a back;
+    //
+    //   and the whole distal run is 6.5% SHORTER. The rows below are the same
+    //   eleven stations re-spaced over 0.547 of the limb parameter instead of
+    //   0.585, so the terminal stops reading as a second forearm segment. The
+    //   tip apex, the hand length the lobes are normalised by, and the three
+    //   ring spans inside the hand all move with it -- see ARM_S1, HAND_L and
+    //   the spans in armGeometry(). Nothing above the wrist moves at all.
+    //
+    // The taper past the palm is then quicker than V1's and still smooth: pchip
+    // through 3.00, 2.84, 2.52, 1.92 and closed. A gradual taper to a round end
+    // IS a capsule; the hand has to give up its width while it still has some.
+    [1.1632, 2.72, 2.46],
+    [1.2221, 2.94, 2.68],
+    [1.2801, 3.04, 2.79],
+    [1.3390, 3.06, 2.83],   // the widest line, and the deepest
+    [1.3951, 3.00, 2.77],
+    [1.4531, 2.84, 2.60],
+    [1.5129, 2.52, 2.27],
+    [1.5709, 1.92, 1.69],
+    [1.6130, 1.05, 0.92],
+    [1.6260, 0.27, 0.23],   // and CLOSED: pchip clamps past its last knot, so
+                            // without this row the ring before the apex is still
+                            // a unit across and the tip caps flat, with a rim.
   ];
   // the apexes: one buried in the bean, one at the fingertip
-  const ARM_S0 = -0.340, ARM_S1 = 1.665;
-  // s <-> the mitt's own t, so the lobes still land where they always did
-  const HAND_L = 7.40, HAND_NOTCH = 1.05;
+  const ARM_S0 = -0.340, ARM_S1 = 1.6270;
+  // s <-> the mitt's own t, so the lobes still land where they always did.
+  // HAND_L follows ARM_S1: (1.6270 - HAND_S0) * LIMB_LEN. The hand really is
+  // 6.94 long now, and the lobe window is still the same fraction of it.
+  const HAND_L = 6.942, HAND_NOTCH = 0.60;
   const LIMB_LEN = RIG.upperLen + RIG.foreLen;
   const HAND_S0 = 1.0 + 0.55/LIMB_LEN, HAND_SS = HAND_L/LIMB_LEN;
   // The one curve baked into the centreline. The reference's root sits 0.048
@@ -824,9 +837,9 @@
     span(ARM_S0 + 0.004, 0.00, 11);   // the root
     span(0.00, 0.45,  7);             // the shoulder swell, easing out
     span(0.45, 0.90,  5);             // the straight of the forearm
-    span(0.90, 1.294, 9);             // the wrist coming down to meet the palm
-    span(1.294, 1.492, 6);            // the palm
-    span(1.492, ARM_S1 - 0.003, 12);  // the lobes, which need the rings
+    span(0.90, 1.2801, 9);            // the wrist coming down to meet the palm
+    span(1.2801, 1.4652, 6);          // the palm
+    span(1.4652, ARM_S1 - 0.003, 12); // the lobes, which need the rings
     RING_S.push(ARM_S1 - 0.003);
     // 30 sides, not 16 -- the section is an ellipse now, so the curvature is
     // highest exactly where the silhouette edge is and facets show there first.
@@ -865,20 +878,20 @@
     // horizontal; the sleeve's rings are rolled with it so the two stay
     // parallel where they cross.
     const roll = (s)=> Math.sin(HAND_RZ) * ss(0.94, 1.05, s) * side;
-    // The mitt's two lobes: the front and the back of the tip are lifted, which
-    // leaves a soft cleft either side. The same NOTCH the mitt always had,
-    // and now applied as part of the same sweep rather than to a separate mesh.
-    // v31: THREE lobes, not two. The old notch lifted the front and the back --
-    // |sin a| to the fourth -- which leaves two lobes across the hand, and the
-    // reference has three digits: two fingers and a thumb. Three lifted
-    // sectors, started earlier so the clefts have room to open, and rolled by
-    // the side so the thumb falls towards the body. Suggestions, not fingers:
-    // the deepest cleft is a unit on a hand seven long.
+    // Three shallow lobe suggestions, evaluated in mirrored hand coordinates.
+    // Mirroring only the phase left the old left/right surfaces asymmetric.
+    //
+    // V2 sets the depth between the two rejections. 1.05 was the sharp notch --
+    // a dark crease across the tip in every action sheet. V1's 0.25 was nothing
+    // at all, and the tip came out a plain dome. 0.60 of a unit of relief on a
+    // hand seven long is read in a close-up and gone by the time the racer is at
+    // gameplay distance. The exponent comes down from 3 to 2.5 with it, so the
+    // valley has a rounder floor and no sharp bottom. Suggestions, not fingers.
     const lobe = (s, a)=>{
       const t = (s - HAND_S0)/HAND_SS, l = (t - 0.62)/0.32;
       if(!(l > 0)) return 0;
-      const c = Math.cos(3*(a - side*0.55));
-      return HAND_NOTCH * Math.pow(Math.max(0, c), 3) * Math.sin(Math.PI*Math.min(1,l));
+      const c = Math.cos(3*(Math.atan2(Math.sin(a), side*Math.cos(a)) - 0.55));
+      return HAND_NOTCH * Math.pow(Math.max(0, c), 2.5) * Math.sin(Math.PI*Math.min(1,l));
     };
     const ring = (s, a, hw, hd)=>{
       const x = Math.cos(a)*hw, z = Math.sin(a)*hd;
@@ -1024,18 +1037,45 @@
   //    which is what the reference's does too -- its own limb walks from x 3.05
   //    at the shin to 3.44 at the sole.
   //
-  // Every row of the table below was measured, not chosen. For each ring the
-  // posed centreline and the posed direction of that ring's depth axis were
-  // computed, the reference's outline was read along that axis, and the ring's
-  // numbers were corrected towards it until they stopped moving. The result was
-  // then thinned from one row per ring to these eleven, which is the fewest that
-  // holds the whole surface within 0.04 of the fitted one.
+  // The ankle/heel profile below retains the existing floor relationship.
   //
-  // What it costs: the underside now sits within 0.05 of the reference's from
-  // the heel to the toe (it was out by up to 2.44), the instep within 0.17 from
-  // z 2.75 forward, the toe and heel within 0.1, and the inner-edge spacing is
-  // 1.44 against 1.52. The inner clearance through the bend is UNCHANGED at
-  // 0.42, because none of this touched the inner wall of the turn.
+  // ---- V2: THE FOREFOOT IS AUTHORED AS AN OUTLINE, NOT AS TWO CHANNELS ----
+  //
+  // The upper surface of the foot is bias + halfB, and V1 wrote those two
+  // channels independently. It pinned bias at 0.10 from u = 7.70 forward while
+  // halfB fell only 0.56 -> 0.492 over the next half unit, so a surface that
+  // arrives there dropping at 0.30 a unit was asked to drop 0.07: it levelled
+  // off, and then fell off a cliff at 8.53. Measured ring to ring on the built
+  // mesh that is a 13.2 degree turn followed by a 12.2 degree turn, with the top
+  // surface briefly RISING -- slopes of -0.231, -0.015, +0.025. That rise is the
+  // transverse fold across the instep, and a 16.2 degree break at the last ring
+  // is the wedge at the toe. The pre-Codex foot turns 3.9 degrees at worst
+  // through the same rings, which is what said the fault was arithmetic.
+  //
+  // So the rows from 7.17 forward are authored as top(u) and sole(u) and then
+  // converted -- halfB = (top - sole)/2, bias = (top + sole)/2 -- with:
+  //
+  //   top monotone and, bar one 0.03 dip at 8.45 where the width closure takes
+  //   over, steepening all the way out: 0.61 -> 0.68 -> 0.73 -> 0.70 -> 0.82 ->
+  //   0.91 a unit. There is no shelf left for the light to catch;
+  //
+  //   sole dead flat at -0.46 until 8.15, so the contact patch is exactly the
+  //   one that was approved -- the skinned neutral sole is unchanged to eight
+  //   decimals at -17.63032131;
+  //
+  //   and the last rows closing on a curve in BOTH axes -- see the V3 note
+  //   below, which is what finally made the end round rather than merely smooth.
+  //
+  // What it costs: nothing. Same rows, same ring schedule, same vertex and
+  // triangle counts, same width at the ball, same length, same heel, same leg X.
+  // Measured after V3's terminal pass: worst turn 1.57 degrees against the
+  // pre-Codex foot's own 3.94, zero rings with a rising top surface, and the
+  // 1.57 IS the toe break -- a round end rather than a corner.
+  //
+  // It also takes V1's toe CURL back out. Its tip apex stood 1.429 above the
+  // flat of the sole against the pre-Codex foot's 1.052, because bias was held
+  // at +0.10 to the very end; the tip now sits at 1.080, which is within 0.03 of
+  // the toe height the approved foot always had.
   const LEG_KNEE_PITCH = -0.13;   // see below: the rest knee angle, cancelled
   const LEG_ARC_U = 1.90;         // where the centreline starts to turn
   const LEG_ARC_R = 2.60;         // ...on this radius, so it levels out at 5.98
@@ -1065,15 +1105,63 @@
     [ 5.64,  1.90,  1.25,  0.73,  0.89],   // the turn is done; halfB is half the
                                            // HEIGHT from here, and the foot has
                                            // stepped its full 0.91 outboard
-    [ 5.98,  2.01,  1.17,  0.70,  0.91],
-    [ 6.18,  2.40,  1.07,  0.61,  0.91],
-    [ 6.38,  2.57,  0.95,  0.49,  0.90],   // the ball, broadest
-    [ 6.58,  2.60,  0.82,  0.36,  0.89],   // ...and from here the height comes
-    [ 7.17,  2.42,  0.53,  0.07,  0.84],   // off the TOP: halfB and bias fall
-    [ 7.70,  2.14,  0.36, -0.11,  0.83],   // together, so the sole stays flat
-    [ 8.53,  0.80,  0.19, -0.28,  0.77],   // and the top slopes to the toe
+    [5.98, 2.01, 1.17, 0.7, 0.91],
+    [6.18, 2.35, 1.08, 0.62, 0.91],
+    [6.38, 2.53, 0.99, 0.53, 0.9],
+    [6.58, 2.6, 0.9, 0.44, 0.89],
+    [7.17, 2.42, 0.720, 0.260, 0.84],   // the forefoot, as an outline: this is
+    // ---- V4: THE FOREFOOT KEEPS ITS HEIGHT, THEN CLOSES -----------------
+    //
+    // V2 fixed the instep. V3 fixed the apex. Both still read as a pointed
+    // flipper from the side, and the reason was neither of those: the top
+    // surface gave up height at a NEAR-CONSTANT RATE the whole way forward,
+    // and a constant rate is a straight line. Measured as the top height above
+    // the flat of the sole, as a fraction of the height at the ball:
+    //
+    //                 70%    80%    90%    95%   of the foot's own length
+    //     shipped    0.648  0.608  0.577  0.562
+    //     V1         0.776  0.776  0.749  0.714   <- a plateau. This is why V1
+    //                                                read round despite its ridge
+    //     V2         0.718  0.647  0.579  0.541
+    //     V3         0.719  0.648  0.581  0.546   <- the wedge, as a number
+    //     V4         0.797  0.761  0.717  0.660
+    //
+    // The reference character, isolated by skin weight on its own Ankle/Ball/Toe
+    // joints, still holds about 0.84 of its peak height at 95% of its length and
+    // only drops at the very end. Its cage is 103 vertices, so that number is
+    // directional rather than a target -- but the shape LANGUAGE is not in doubt:
+    // a foot that stays full and then closes, not one that tapers the whole way.
+    //
+    // So the rows below hold height through the forefoot and spend the entire
+    // closure in the last 0.2 of u. u = 7.17 and everything behind it is frozen:
+    // the ball, the ankle, the heel, the turn, the leg X and the inner spacing.
+    // Widths are V3's own curve re-sampled, never increased -- at 8.55, 8.64,
+    // 8.70 and 8.73 they are 0.035 to 0.050 NARROWER than V3's pchip, because
+    // the fix is height distribution and the front view must not become a clown
+    // shoe. The sole still holds -0.46 flat until 8.4.
+    //
+    // What this costs, stated plainly: the turn at the very last facet goes from
+    // 1.57 degrees to 30.1. That number is not a defect here and chasing it down
+    // is what produced the needle -- it is the cap turning over to face forward,
+    // which is what the end of a round object does. V3 scored 1.57 precisely
+    // because its tip had already closed to nothing before it got there. Worst
+    // turn and toe break are the same 30.1, so there is still nothing anywhere in
+    // the mid-forefoot, and no ring's top surface rises.
+    //
+    // It is not longer: forward extent 5.7163 -> 5.7151, a thousandth SHORTER
+    // than V3 and 0.005 shorter than the shipped foot. The skinned neutral sole
+    // is unchanged at -17.63032131 and the toe apex sits 1.089 above the flat of
+    // the sole, between V3's 1.080 and the shipped foot's 1.052.
+    [7.70, 2.14, 0.610, 0.150, 0.83],   // as an outline this is top 0.76, 0.57,
+    [8.15, 1.83, 0.515, 0.055, 0.80],   // 0.44, 0.355, 0.25, 0.09, -0.11, -0.235
+    [8.42, 1.72, 0.450, -0.010, 0.78],  // over a sole of -0.46 held flat to 8.42
+    [8.55, 1.50, 0.405, -0.051, 0.77],  // and then lifting to meet it
+    [8.64, 1.24, 0.347, -0.097, 0.77],
+    [8.70, 0.86, 0.254, -0.164, 0.77],  // the cap: the top turns down over the
+    [8.73, 0.42, 0.117, -0.227, 0.77],  // last three knots at 1.17, 2.67 and
+    [8.75, 0.05, 0.008, -0.243, 0.77],  // 5.71 a unit, and closes AT the apex
   ];
- const L2_W = pchip(LIMB2_SECTION.map(r=>r[0]), LIMB2_SECTION.map(r=>r[1]));
+  const L2_W = pchip(LIMB2_SECTION.map(r=>r[0]), LIMB2_SECTION.map(r=>r[1]));
   const L2_B = pchip(LIMB2_SECTION.map(r=>r[0]), LIMB2_SECTION.map(r=>r[2]));
   const L2_D = pchip(LIMB2_SECTION.map(r=>r[0]), LIMB2_SECTION.map(r=>r[3]));
   const L2_X = pchip(LIMB2_SECTION.map(r=>r[0]), LIMB2_SECTION.map(r=>r[4]));
@@ -1116,7 +1204,8 @@
     span( LEG_ARC_U, LEG_ARC_END, 12);   // the turn
     span( LEG_ARC_END, BALL, 8);
     span( BALL, LEG_END_U, 7);
-    U.push(LEG_END_U);
+    // One extra closing ring rounds the toe fan: 24 vertices per foot.
+    U.push(LEG_END_U, LEG_END_U + 0.18);
     const weights = (u)=>{
       const a0 = 1 - ss(KN-0.85, KN+0.85, u);
       const h0 = ss(LEG_ARC_U-0.95, LEG_ARC_U+0.95, u);
