@@ -72,6 +72,8 @@ s = s.replace(old, new)
 
 CHECKS = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "checks.js"),
                  encoding="utf-8").read()
+CHECKS += "\n" + io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "character-checks.js"), encoding="utf-8").read()
 
 hook = """
   // ---- debug hook (test build only) ----
