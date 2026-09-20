@@ -710,22 +710,107 @@
     [1.1632, 2.72, 2.46],
     [1.2221, 2.94, 2.68],
     [1.2801, 3.04, 2.79],
-    [1.3390, 3.06, 2.83],   // the widest line, and the deepest
-    [1.3951, 3.00, 2.77],
-    [1.4531, 2.84, 2.60],
-    [1.5129, 2.52, 2.27],
-    [1.5709, 1.92, 1.69],
-    [1.6130, 1.05, 0.92],
-    [1.6260, 0.27, 0.23],   // and CLOSED: pchip clamps past its last knot, so
-                            // without this row the ring before the apex is still
-                            // a unit across and the tip caps flat, with a rim.
+    [1.3390, 3.10, 2.72],   // the palm's widest, and where the digits start
+    // ---- PAST HERE THE ROWS ARE THE PALM'S, NOT THE HAND'S ----------------
+    //
+    // The rows below no longer close the hand -- the digits do, each rounding
+    // off to its own tip (see the field in armGeometry). What this table
+    // describes from here on is the PALM alone, which flattens and then rounds
+    // away behind them, so width is held and only depth comes off. That is what
+    // the reference does: scanned along its own hand, its width is still 74% of
+    // its maximum at 79% of the hand's length while its depth has fallen to 45%
+    // of the palm's. Three digits lying side by side keep a hand wide and make
+    // it flat; the table this replaced did the opposite, which is why that hand
+    // read as a rounded club.
+    //
+    // Note what these rows do NOT do any more: they no longer size the digits.
+    // The digits are measured once at the knuckle -- see hwK -- precisely so
+    // that the palm can taper away without taking them with it.
+    [1.4200, 3.14, 2.48],
+    [1.5000, 3.12, 2.22],
+    [1.5700, 3.06, 2.00],
+    [1.6100, 3.00, 1.88],
+    [1.6240, 2.96, 1.82],
   ];
   // the apexes: one buried in the bean, one at the fingertip
   const ARM_S0 = -0.340, ARM_S1 = 1.6270;
+  // ---- V5: THREE DIGITS, BECAUSE THE REFERENCE HAS THREE ------------------
+  //
+  // Not a guess and not inherited from the old three-lobe code: the reference
+  // character's own skeleton carries Finger01, Finger02 and Thumb -- two joints
+  // each -- and no other digit. Measured off its skinned hand, isolated by
+  // weight on those joints: the digits begin 34% of the way along the hand, so
+  // the palm is the first third and the digits are the forward two thirds; the
+  // thumb is as long as the fingers (1.07x) and sits about 39% of the palm's
+  // width to one side; the fingers splay slightly, base gap 0.44 of the palm's
+  // width opening to 0.51 at the tips.
+  //
+  // WHAT THE REFERENCE ACTUALLY MEASURES (tools/reference-hand.mjs, and the
+  // cluster pass that backs it). Its hand was read in the WRIST's own frame,
+  // one side only, with each vertex assigned to the joint that owns it, which
+  // is the only way to get numbers out of a mesh this coarse -- the whole
+  // character is 2360 vertices and a hand is 336 of them, so slicing it into
+  // stations and binning vertices gives noise, and cutting its triangles gives
+  // readings of 99% "valley" that are really the section falling into separate
+  // islands, because its fingers are genuinely detached. Ours cannot be: one
+  // surface, one draw call, skinned as one. That is a real ceiling on how far
+  // this can be matched, and it is why the targets below are the proportions
+  // and not the topology.
+  //
+  //   palm thickness / palm width  = 0.575     (ours at the palm: 0.877)
+  //   digit length / hand length   = 0.28..0.30 (V5's digits: 0.52..0.64)
+  //   digit radius / palm width    = 0.107..0.175
+  //   digit spacing / palm width   = 0.31 and 0.36, evenly across the palm
+  //   thumb set back thickness-wise by 0.144 of the palm's width
+  //
+  // The two that matter most are the ones V5 got furthest wrong. Its digits
+  // were roughly TWICE the reference's length, and a long thin digit on a
+  // nearly round section is a claw -- which is the word that came back. So
+  // DIG_S0 moves out from 0.38 to 0.58: the palm is now the inner three fifths
+  // of the hand and the digits are the outer two, which is the reference's
+  // split rather than its inverse.
+  //
+  // The flatness is NOT taken all the way to 0.575, deliberately. V1's palm was
+  // 0.78 and was rejected for reading as a paddle in the dive; going flatter
+  // still would walk straight back into a rejection this project has already
+  // had. The reference gets away with 0.575 because its fingers are separate
+  // objects and unmistakable. Ours keeps the palm chunky and takes the
+  // flattening out along the digit run, which is also what the reference's own
+  // profile does -- 0.53 thick at the base of its palm, 0.31 out at the digits.
+  //
+  // DIG_KX places each digit across the hand; DIG_KZ sets the thumb back
+  // towards the palm's spine, which is what gives the hand a front and a thumb
+  // side. DIG_C0/DIG_TIP are where each digit starts rounding off and where it
+  // closes: the middle one runs past the apex so the last ring is still open
+  // and the tip fan closes it, and the other two stop short, so the hand ends
+  // in three tips at three stations rather than one blunt end.
+  //
+  // DIG_FILLET is the radius of the smooth union, IN UNITS OF THE MODEL -- how
+  // near two parts have to come before their join starts being rounded. It is
+  // the knob that decides whether the valleys read as moulded or stamped, and
+  // it has to be generous for a reason worth stating, because the obvious guess
+  // is backwards: a bigger fillet measured SMOOTHER and DEEPER at once. The
+  // hand is sampled 40 ways round, 9 degrees a step, and a valley rounded over
+  // less than that is a valley the mesh never sees the bottom of -- it samples
+  // the two walls and joins them, so a sharp groove arrives as a V with a
+  // crease in it while a rounded one arrives as the U it really is.
+  const DIG_S0 = 0.40, DIG_KNUCKLE = 0.72;
+  const DIG_FILLET = 1.50;
+  // PALM_C0 must not precede DIG_S0: the palm has to still be its exact
+  // elliptical self where the field takes over, or the join steps.
+  const PALM_C0 = 0.46, PALM_TIP = 0.74;   // the palm's own rounding-off
+  const DIG_MIN = 0.02;        // digit size at DIG_S0: nothing, so the join is exact
+  const DIG_SPREAD = 0.66;     // digit centre offset, as a fraction of half-width
+  const DIG_KX  = [-1.00, 0.00, 1.00];
+  const DIG_KZ  = [ 0.30, 0.00, 0.00];
+  const DIG_AX  = [ 0.38, 0.40, 0.38];   // digit half-width, of the section's
+  const DIG_AZ  = [ 0.66, 0.86, 0.78];   // digit half-depth, of the section's
+  const DIG_C0  = [ 0.74, 0.84, 0.78];   // where each digit starts to round off
+  const DIG_TIP = [ 0.95, 1.03, 0.98];   // and where it has closed
   // s <-> the mitt's own t, so the lobes still land where they always did.
   // HAND_L follows ARM_S1: (1.6270 - HAND_S0) * LIMB_LEN. The hand really is
   // 6.94 long now, and the lobe window is still the same fraction of it.
-  const HAND_L = 6.942, HAND_NOTCH = 0.60;
+  const HAND_L = 6.942;
   const LIMB_LEN = RIG.upperLen + RIG.foreLen;
   const HAND_S0 = 1.0 + 0.55/LIMB_LEN, HAND_SS = HAND_L/LIMB_LEN;
   // The one curve baked into the centreline. The reference's root sits 0.048
@@ -838,9 +923,41 @@
     span(0.00, 0.45,  7);             // the shoulder swell, easing out
     span(0.45, 0.90,  5);             // the straight of the forearm
     span(0.90, 1.2801, 9);            // the wrist coming down to meet the palm
-    span(1.2801, 1.4652, 6);          // the palm
-    span(1.4652, ARM_S1 - 0.003, 12); // the lobes, which need the rings
-    RING_S.push(ARM_S1 - 0.003);
+    // ---- V6: THE STATIONS GO WHERE THE SURFACE MOVES ----------------------
+    //
+    // The same twenty-five stations as V5, re-aimed. V5 spaced them on a sine,
+    // which crowds them into the fingertip, and it was right to for V5: its
+    // digits closed on sqrt(1 - reach^2), whose slope runs to INFINITY at a
+    // tip, so uniform stations stepped further and further apart in RADIUS the
+    // nearer they got and the surface banded. V6's caps are smoothsteps on a
+    // distance-scaled field and are gentle right through the tip, so that
+    // crowding is now spent where nothing happens.
+    //
+    // Where this surface actually moves is the MIDDLE of the hand: the digits
+    // grow out of the palm between t = 0.58 and 0.72, and the palm rounds off
+    // between 0.72 and 0.88. Under the sine those two bands shared four or five
+    // stations, and both of the ridges left across the hand sat exactly there --
+    // 57 degrees of dihedral at t = 0.67 and 55 at t = 0.83, on a surface whose
+    // median is 4. The palm below the digits is a plain ellipse changing slowly
+    // and can spare them. The mild bias that is left leans on the tip, because
+    // three caps closing still turn faster than a palm that is only widening.
+    const DS0 = 1.2801, DS1 = ARM_S1 - 0.003;
+    // Clamped, because DSM splits the station list and a DSM below DS0 makes
+    // span() count BACKWARDS -- stations out of order, quads wound through
+    // each other, and a surface that measures 180 degrees of dihedral. A
+    // sweep of DIG_S0 found that in one line; it is one clamp, not a comment.
+    const DSM = Math.min(DS1, Math.max(DS0, HAND_S0 + DIG_S0*HAND_SS));
+    // ...and PRE drops to zero when the digits begin at or before DS0, because
+    // span(DS0, DS0, 6) is six stations at the SAME s: six coincident rings and
+    // every quad between them degenerate. The clamp stops DSM running backwards
+    // and this stops it landing exactly on the start -- the two failures either
+    // side of the same edge. Twenty-five stations whichever branch runs, so the
+    // complexity budget does not move.
+    const PRE = DSM > DS0 + 1e-6 ? 6 : 0, DIG_RINGS = 24 - PRE;
+    if(PRE) span(DS0, DSM, PRE);               // the palm, still just an ellipse
+    for(let j=0;j<DIG_RINGS;j++)
+      RING_S.push(DSM + (DS1 - DSM)*(1 - Math.pow(1 - j/DIG_RINGS, 1.35)));
+    RING_S.push(DS1);
     // 30 sides, not 16 -- the section is an ellipse now, so the curvature is
     // highest exactly where the silhouette edge is and facets show there first.
     // 30 and not 24 because that is what the MITT has: the two surfaces cross
@@ -848,7 +965,7 @@
     // grids the seam comes out scalloped. On the same grid it is a clean ring.
     // The rings the extra sides cost are taken back off the straight of the
     // forearm, which needs four and had six.
-    const SEG = 30, pos = [], idx = [], si = [], sw = [];
+    const SEG = 40, pos = [], idx = [], si = [], sw = [];
     // Weights. wB is the torso's share of the root and is zero as shipped --
     // see ARM_BLEND0. The rest is the usual three-bone fall-off, which is what
     // lets one surface fold at two joints without showing where either of them
@@ -878,25 +995,230 @@
     // horizontal; the sleeve's rings are rolled with it so the two stay
     // parallel where they cross.
     const roll = (s)=> Math.sin(HAND_RZ) * ss(0.94, 1.05, s) * side;
-    // Three shallow lobe suggestions, evaluated in mirrored hand coordinates.
-    // Mirroring only the phase left the old left/right surfaces asymmetric.
+    // ---- V6: THE HAND IS A LEVEL SET, NOT A UNION OF OUTLINES -------------
     //
-    // V2 sets the depth between the two rejections. 1.05 was the sharp notch --
-    // a dark crease across the tip in every action sheet. V1's 0.25 was nothing
-    // at all, and the tip came out a plain dome. 0.60 of a unit of relief on a
-    // hand seven long is read in a close-up and gone by the time the racer is at
-    // gameplay distance. The exponent comes down from 3 to 2.5 with it, so the
-    // valley has a rounder floor and no sharp bottom. Suggestions, not fingers.
-    const lobe = (s, a)=>{
-      const t = (s - HAND_S0)/HAND_SS, l = (t - 0.62)/0.32;
-      if(!(l > 0)) return 0;
-      const c = Math.cos(3*(Math.atan2(Math.sin(a), side*Math.cos(a)) - 0.55));
-      return HAND_NOTCH * Math.pow(Math.max(0, c), 2.5) * Math.sin(Math.PI*Math.min(1,l));
+    // V5 built each ring by taking, for every ray out of the section's centre,
+    // the FURTHEST intersection with any of three digit ellipses. That is the
+    // exact union, and the exact union is the wrong object, for a reason that
+    // is worth writing down because it survives every amount of parameter
+    // tuning:
+    //
+    //   a ray's far intersection with an ellipse is (-B + sqrt(B^2-4AC))/2A,
+    //   and at the angle where the ray becomes TANGENT to that ellipse the
+    //   discriminant is zero. dr/da there is INFINITE. So at every angle where
+    //   one digit's contribution starts or stops mattering, the outline has a
+    //   vertical tangent, and a vertical tangent in the angular direction is a
+    //   crease running the length of the hand.
+    //
+    // Measured on the shipped V5 surface, the dihedral angle across the edges
+    // that run ALONG the hand was 90 degrees at the 95th percentile and 125 at
+    // the worst -- on a surface sampled 40 ways round, where a smooth section
+    // should be near 9. Those folds are the reported ribbing, and the pinched
+    // faceted valleys are the same folds seen where two digits cross. The
+    // p-norm smoothing V5 put on top could not fix it: a p-norm blends the two
+    // radii once they are comparable, and the singularity is at the moment one
+    // of them APPEARS, where they are not comparable at all.
+    //
+    // So V6 stops solving for the outline and starts solving for a surface.
+    // Each part of the hand is an implicit quadratic -- a polynomial, finite
+    // and smooth for every (x, z), including everywhere the old formula had no
+    // intersection to return:
+    //
+    //   f(x,z) = (1 - cap) - ((x-cx)/ax)^2 - ((z-cz)/az)^2
+    //
+    // positive inside, zero on the surface, negative outside and still perfectly
+    // well behaved there. The hand is the outermost r where the smooth maximum
+    // of those fields is zero. Because the field is smooth and dF/dr is strictly
+    // negative at the outer surface, the implicit function theorem makes the
+    // radius a smooth function of angle: the crease is gone by construction
+    // rather than by tuning.
+    //
+    // FOUR PARTS, not three. The palm is a field too, with its own rounding-off,
+    // so the place where the digits leave the palm is a smooth union -- a
+    // fillet -- instead of the old linear cross-fade between two different
+    // formulas. That fade was the harsh seam at the knuckles.
+    //
+    // The cap term is what closes a part. It rises from 0 to 1 over the part's
+    // last stretch, so (1 - cap) shrinks the whole field to nothing: a rounded
+    // end, reached without any axis shrinking to zero. V5 closed its digits by
+    // scaling their half-axes to zero while their CENTRES stayed 1.9 units off
+    // the hand's axis, which is precisely what produced the fingertip slivers --
+    // a vanishing ellipse still sitting out to one side is hit by a handful of
+    // rays at nearly full radius while its neighbours are at a third of it. No
+    // axis goes to zero here and no centre has to be dragged home to compensate.
+    const smax = (a, b)=>{
+      // Cubic smooth maximum: exactly max() once the two are further apart than
+      // DIG_FILLET, and C2 across the join. C2 matters -- a C1 join leaves a
+      // curvature step, and a curvature step is a visible band under smooth
+      // shading even though the surface is technically continuous.
+      const d = Math.abs(a - b), m = a > b ? a : b;
+      if(d >= DIG_FILLET) return m;
+      const h = DIG_FILLET - d;
+      return m + h*h*h/(6*DIG_FILLET*DIG_FILLET);
+    };
+    // A part, reduced along one ray to f(r) = -(A r^2 + B r + C).
+    //
+    // THE FIELD IS SCALED TO A LENGTH, and that is not cosmetic. The raw
+    // quadratic 1 - Q is dimensionless: 1 at the centre and 0 at the surface
+    // however big the part is, so its gradient is steep on a small part and
+    // shallow on a big one. Blending two of those against a fixed threshold
+    // makes the fillet's real size depend on which parts happen to be meeting,
+    // and the threshold that finally rounded the valleys inflated the palm by
+    // 0.6 of a unit: the hand swelled from 3.14 to 3.34 exactly as the digits
+    // arrived, a step of 0.11 between two stations where every other step was
+    // 0.01. That step was the last band across the hand.
+    //
+    // Near the surface 1 - Q is about twice the distance over the radius, so
+    // multiplying by half the radius turns it into a distance. DIG_FILLET is
+    // then a LENGTH -- round this join over so many units -- it means the same
+    // thing wherever it is applied, and the swelling it can cause is bounded by
+    // a sixth of it per join rather than by the size of the parts joining.
+    //
+    // The cap shrinks a part's AXES rather than lowering its field. Same
+    // surface -- Q = 1 - cap and Q/(1 - cap) = 1 have the same zero set -- but
+    // a closing digit now gets a shrinking fillet with it, so it lets go of its
+    // neighbours as gently as it arrived.
+    // THE DIGITS ARE SIZED AT THE KNUCKLE, ONCE -- not from the section they
+    // happen to be passing through. This is the difference between a hand with
+    // fingers on it and a paddle with grooves pressed into it, and getting it
+    // wrong is what made every earlier attempt photograph as a mitten however
+    // the digit constants were set.
+    //
+    // Scaling a digit by the profile table's half-width AT ITS OWN STATION ties
+    // it to the palm: the palm is that width by definition, so a digit built as
+    // a fraction of it is always INSIDE it, and the union's outer boundary is
+    // the palm's everywhere. The digits could then only ever appear as dimples
+    // in the palm's surface, and only over the short stretch after the palm's
+    // cap had shrunk it and before their own caps closed them. No amount of
+    // spreading them or fattening them changes that, because the thing they are
+    // measured against moves with them.
+    //
+    // Measured from one fixed station instead, a digit keeps its size while the
+    // palm tapers away from behind it, so the digits carry the end of the hand
+    // and stand out of the palm the way the reference's do. It is also what a
+    // finger does: it does not get thinner because the palm behind it did.
+    const sK = HAND_S0 + DIG_KNUCKLE*HAND_SS;
+    const hwK = ARM_SEC_W(sK), hdK = ARM_SEC_D(sK);
+    const PA = new Float64Array(4), PB = new Float64Array(4), PC = new Float64Array(4);
+    const part = (n, dx, dz, cx, cz, ax, az, cap)=>{
+      const c = Math.max(0.06, Math.sqrt(Math.max(0, 1 - cap)));
+      const AX = ax*c, AZ = az*c, sc = 0.5*(AX < AZ ? AX : AZ);
+      const ix = sc/(AX*AX), iz = sc/(AZ*AZ);
+      PA[n] = dx*dx*ix + dz*dz*iz;
+      PB[n] = -2*(cx*dx*ix + cz*dz*iz);
+      PC[n] = cx*cx*ix + cz*cz*iz - sc;
+      return n + 1;
+    };
+    const fieldAt = (r, n)=>{
+      let F = -(PA[0]*r*r + PB[0]*r + PC[0]);
+      for(let i=1;i<n;i++) F = smax(F, -(PA[i]*r*r + PB[i]*r + PC[i]));
+      return F;
+    };
+    // ramp: 0 below a, 1 above b, smooth in between. Used for every emergence
+    // and every closing, so nothing in the hand turns on or off abruptly.
+    const ramp = (a, b, t)=>{
+      const u = Math.min(1, Math.max(0, (t - a)/(b - a)));
+      return u*u*(3 - 2*u);
     };
     const ring = (s, a, hw, hd)=>{
-      const x = Math.cos(a)*hw, z = Math.sin(a)*hd;
+      const dx = Math.cos(a), dz = Math.sin(a);
+      // the plain elliptical section, as a radius along this same ray
+      const re = (hw > 1e-9 && hd > 1e-9)
+        ? 1/Math.sqrt((dx*dx)/(hw*hw) + (dz*dz)/(hd*hd)) : 0;
+      const t = (s - HAND_S0)/HAND_SS;
+      let r = re;
+      if(t > DIG_S0 && re > 1e-9){
+        // The palm: the approved elliptical section, carrying its own closure.
+        // Squaring the ramp gives the palm a round end rather than a flat one,
+        // the same way the digit caps do.
+        const pq = ramp(PALM_C0, PALM_TIP, t);
+        let n = part(0, dx, dz, 0, 0, hw, hd, pq*pq);
+        // The digits, growing out of the palm and each closing on its own.
+        //
+        // A CLOSING DIGIT COMES HOME TO THE AXIS. This is the one thing that
+        // cannot be left out, and it is what both V5 failures were really made
+        // of. A digit closed by its cap alone shrinks to a POINT that is still
+        // sitting out at its full offset -- 1.7 units off the hand's axis while
+        // the rest of that ring is at 0.64. That point is a genuine part of the
+        // level set, so the ring has to reach out and touch it, and one ring
+        // reaching sideways past its neighbours is exactly the sliver in V5 and
+        // exactly the spike that replaced it here. It is not a numerical
+        // accident and no epsilon removes it.
+        //
+        // The honest cause is that our topology is ONE closed ring per station.
+        // A real hand ends its three digits at three different places, which
+        // needs three separate loops at the stations in between, and a single
+        // ring cannot be three loops. So a digit that ends early has to have
+        // rejoined the others BEFORE it ends. Scaling the offset by (1 - u^3)
+        // does that: u^3 is flat while the digit has any size, so the fingers
+        // stay apart over their whole visible length, and it goes to one only
+        // as the digit rounds off, so what finally vanishes is a point on the
+        // axis, deep inside the digit that is still open. Nothing sticks out.
+        const g = DIG_MIN + (1 - DIG_MIN)*ramp(DIG_S0, DIG_KNUCKLE, t);
+        for(let i=0;i<3;i++){
+          const u = ramp(DIG_C0[i], DIG_TIP[i], t);
+          const o = g*(1 - u*u*u);
+          n = part(n, dx, dz,
+                   side*DIG_KX[i]*hwK*DIG_SPREAD*o, DIG_KZ[i]*hdK*o,
+                   DIG_AX[i]*hwK*g, DIG_AZ[i]*hdK*g, u*u);
+        }
+        // The outermost zero of the field. The exact union's outer radius is a
+        // lower bound for it -- a smooth maximum is never less than a maximum --
+        // so the bracket starts there and only has to grow far enough to clear
+        // the fillet, which is a few per cent. Bisection, not Newton: it cannot
+        // be thrown by the fillet's flat spots and it costs the same here.
+        let lo = 0;
+        for(let i=0;i<n;i++){
+          const disc = PB[i]*PB[i] - 4*PA[i]*PC[i];
+          if(disc > 0) lo = Math.max(lo, (-PB[i] + Math.sqrt(disc))/(2*PA[i]));
+        }
+        if(lo > 0){
+          // Bisection needs the field POSITIVE at lo and negative at hi. The
+          // first is free -- lo sits on some part's own surface, where that
+          // part's field is zero and a smooth maximum cannot be less. The
+          // second has to be found, and if it is not found the bracket is a
+          // lie: bisecting it converges on hi, and hi after twelve doublings
+          // is thousands of units out. That is a spike through the arm, from
+          // a loop that looks like it merely gave up. So a failed search
+          // falls back to lo, which is a real point on the surface and at
+          // worst loses the fillet on that one ray.
+          let hi = lo*1.02 + 1e-4, guard = 0;
+          while(fieldAt(hi, n) > 0 && guard++ < 12) hi = lo + (hi - lo)*2;
+          if(fieldAt(hi, n) > 0) r = lo;
+          else {
+            // Sixteen halvings, not the twenty-two this started with. The
+            // bracket that reaches here is about 2% of the radius -- six
+            // hundredths of a unit -- so sixteen leaves it under a millionth,
+            // which is already far finer than a surface whose vertices are
+            // written into a Float32 attribute can express. The extra six were
+            // costing a fifth of the hand's build time to move nothing.
+            for(let i=0;i<16;i++){
+              const mid = (lo + hi)*0.5;
+              if(fieldAt(mid, n) > 0) lo = mid; else hi = mid;
+            }
+            r = (lo + hi)*0.5;
+          }
+        } else r = 0;
+        // NO CROSS-FADE, DELIBERATELY. There was one, easing the plain ellipse
+        // into the field over the first tenth of the digit run, and it was the
+        // worst defect left on the surface: a ridge straight across the hand at
+        // the knuckles, 47 degrees of dihedral where the rest of the hand was
+        // under 10. A cross-fade between two formulas that DISAGREE always
+        // shows, however smooth the weight ramp is, because the ramp is smooth
+        // and the gap it is hiding is not.
+        //
+        // It is unnecessary once the two agree at the join, and two constants
+        // make them agree exactly rather than approximately. DIG_MIN starts the
+        // digits at nothing instead of at half size, so at DIG_S0 they put no
+        // surface anywhere and the smooth maximum of a single part is that part
+        // unchanged. PALM_C0 sits at or after DIG_S0, so the palm has not begun
+        // to round off and its field IS the approved elliptical section. Both
+        // sides of the join are then the same number to the last decimal, and
+        // there is nothing left to fade.
+      }
+      const x = dx*r, z = dz*r;
       pos.push(x + tipX(s) + lean(s) + bias(s),
-               -s*L + x*roll(s) + lobe(s, a),
+               -s*L + x*roll(s),
                z + bow(s) + tipZ(s));
     };
     ring(ARM_S0, 0, 0, 0); weights(ARM_S0);                 // root apex, in the bean
