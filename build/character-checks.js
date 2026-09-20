@@ -36,6 +36,12 @@ function characterTopology(geo, weights, crossings=false){
   }
   if(crossings){
     result.crossingPoints=[];
+    // ...and WHICH TWO PARTS crossed, not just where. A coordinate tells you
+    // that something near the thumb is intersecting something; it does not say
+    // whether that is the palm, the next digit, or the same digit folding
+    // through itself, and those three have opposite fixes. Recording one vertex
+    // of each triangle is enough for tools/hand-topo.mjs to name both parts.
+    result.crossingPairs=[];
     triangles.sort((a,b)=>a.box.min.x-b.box.min.x);
     const hit=new THREE.Vector3(),direction=new THREE.Vector3(),ray=new THREE.Ray();
     const intersects=(a,b)=>a.pts.some((from,j)=>{
@@ -46,7 +52,11 @@ function characterTopology(geo, weights, crossings=false){
     for(let i=0;i<triangles.length;i++)for(let j=i+1;j<triangles.length;j++){
       const a=triangles[i],b=triangles[j];if(b.box.min.x>a.box.max.x)break;
       if(!a.box.intersectsBox(b.box)||a.ids.some(id=>b.ids.includes(id)))continue;
-      if(intersects(a,b)||intersects(b,a)){result.crossings++;result.crossingPoints.push(hit.toArray());}
+      if(intersects(a,b)||intersects(b,a)){result.crossings++;result.crossingPoints.push(hit.toArray());
+        // the HIGHEST index of each, not the first. A digit's first quad row is
+        // built on the opening's own vertices, which belong to the palm, so
+        // taking ids[0] files the root of a digit under "palm x palm".
+        result.crossingPairs.push([Math.max(...a.ids),Math.max(...b.ids)]);}
     }
     // Segment/triangle crossing test; coplanar overlaps are not certified.
   }
@@ -70,13 +80,53 @@ function characterFaceClearance(m){
   }
   return {min,max};
 }
+// WHERE VERTEX i's MIRROR LIVES ON THE OTHER LIMB -- AND THE TWO LIMBS DO NOT
+// ANSWER THAT THE SAME WAY, SO EACH ONE SAYS WHICH RULE IT OBEYS.
+//
+// 'identity' -- the ARM. Its section is authored in an ANATOMICAL frame: pt()
+// carries side on the width, so ring index k is the outboard flank on both
+// arms and the end face walks that ring in the same order on both. The two
+// limbs therefore emit the same vertices in the same order with x already
+// negated, and vertex i's opposite number is vertex i.
+//
+// 'ring' -- the LEG, unchanged. Its section is authored in raw coordinates and
+// carries no side; it is symmetric in x, so the same index is the same ANGLE
+// on both legs and the opposite number is the reflected index.
+//
+// Taking one rule for both is exactly what went wrong when the arm moved to
+// the anatomical frame: identity over a leg that had not changed reported a
+// 5.2-unit error against geometry that was, and remains, perfectly symmetric.
+// A limb-independent mirror map is an assumption, not a fact.
+//
+// Note also that 'identity' is STRICTER than the reflection, not weaker. The
+// claim is "the left limb is the right limb with x negated", and under identity
+// a term that FORGETS to carry side lands at +x on both arms and shows up here
+// as a coordinate error -- which is how the digit frame's cross product was
+// caught pointing forward on one hand and backward on the other. Under a ring
+// reflection that mistake can hide, because reflecting the index undoes it.
+//
+// Getting this wrong does not fail loudly. The mapping before last ran the ring
+// formula over the whole buffer, so for the end face and the digits it produced
+// indices past the end, getX returned undefined, the error came out NaN, and
+// `NaN > 1e-5` is FALSE -- the check reported "maximum coordinate error NaN"
+// and PASSED. A symmetry check that passes on NaN is not checking anything, so
+// the guard below rejects a non-finite error explicitly rather than trusting a
+// comparison, and that guard stays whatever the map is.
+function mirrorIndex(i,count,seg,rings,mode){
+  if(mode!=='ring') return i;                    // the arm, and anything new
+  if(i===0||i===count-1) return i;
+  const ringEnd=1+rings*seg;
+  if(i>=ringEnd) return i;
+  return 1+Math.floor((i-1)/seg)*seg+(seg/2-(i-1)%seg+seg)%seg;
+}
 function checkCharacterSymmetry(){
   const limbs=characterLimbs(),bad=[];let error=0;
   for(const kind of ['arm','leg']){
     const left=limbs.find(l=>l.name===kind+'-1'),right=limbs.find(l=>l.name===kind+'1');
     const a=left.geo.attributes.position,b=right.geo.attributes.position,seg=left.segments;
+    if(a.count!==b.count) bad.push(kind+' vertex counts differ '+a.count+' vs '+b.count);
     for(let i=0;i<a.count;i++){
-      const j=i===0||i===a.count-1?i:1+Math.floor((i-1)/seg)*seg+(seg/2-(i-1)%seg+seg)%seg;
+      const j=mirrorIndex(i,a.count,seg,left.rings,left.mirror);
       error=Math.max(error,Math.abs(a.getX(i)+b.getX(j)),Math.abs(a.getY(i)-b.getY(j)),Math.abs(a.getZ(i)-b.getZ(j)));
     }
   }
@@ -85,13 +135,14 @@ function checkCharacterSymmetry(){
   for(const [limb,offset] of [[leg,0],[arm,2*leg.geo.attributes.position.count]]){
     const count=limb.geo.attributes.position.count,seg=limb.segments,a=new THREE.Vector3(),b=new THREE.Vector3();
     for(let i=0;i<count;i++){
-      const j=i===0||i===count-1?i:1+Math.floor((i-1)/seg)*seg+(seg/2-(i-1)%seg+seg)%seg;
+      const j=mirrorIndex(i,count,seg,limb.rings,limb.mirror);
       m.trim.getVertexPosition(offset+i,a);m.trim.getVertexPosition(offset+count+j,b);
       error=Math.max(error,Math.abs(a.x+b.x),Math.abs(a.y-b.y),Math.abs(a.z-b.z));
     }
   }
   for(const l of limbs){l.geo.dispose();(l.handProbe||l.footProbe).dispose();}
-  if(error>1e-5)bad.push('mirror error '+error);
+  if(!Number.isFinite(error))bad.push('mirror error is not a number -- the index map is wrong, not the geometry');
+  else if(error>1e-5)bad.push('mirror error '+error);
   return {name:'! rest limb mirror symmetry',pass:!bad.length,detail:'maximum coordinate error '+error};
 }
 function checkCharacterTopology(){

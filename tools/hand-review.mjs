@@ -123,6 +123,30 @@ window.__hand = {
     for (const [obj, key2, was] of undo) obj[key2] = was;
     return true;
   },
+  // PRODUCTION FRAMING. The lobby stands the racer front-on at roughly the
+  // distance the menu preview uses; the Locker is the same racer about twice as
+  // close and turned, which is the nearest the shipping game ever puts a camera
+  // to a hand. These are the shots the hand is judged at -- a close-up proves
+  // the geometry, these prove it SURVIVES to the screen.
+  shootChar(angle, pose, zoom, lift) {
+    m.neutral(); m.group.position.set(0, 17, 0);
+    if (POSE[pose]) api.sync(m, POSE[pose], 0.3);
+    m.group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m.group);
+    const c = box.getCenter(new THREE.Vector3()), R = box.getSize(new THREE.Vector3()).length() / 2;
+    c.y += (lift || 0) * R;
+    const dir = new THREE.Vector3(Math.sin(angle), 0.12, Math.cos(angle)).normalize();
+    const dist = zoom * 1.5 * R / Math.tan(Math.PI / 12);
+    camera.position.copy(c).addScaledVector(dir, dist);
+    camera.up.set(0, 1, 0); camera.lookAt(c);
+    camera.aspect = 1; camera.updateProjectionMatrix();
+    key.position.copy(c).add(new THREE.Vector3(-R*2, R*3, R*2.5)); key.target.position.copy(c);
+    fill.position.copy(c).add(new THREE.Vector3(R*3, 0, R*1.5)); fill.target.position.copy(c);
+    rim.position.copy(c).add(new THREE.Vector3(0, R, -R*3)); rim.target.position.copy(c);
+    for (const l of [key, fill, rim]) { l.target.updateMatrixWorld(); scene.add(l.target); }
+    renderer.render(scene, camera);
+    return true;
+  },
   // The whole racer, for the contact sheet: same lighting, framed on the body.
   shootFull(angle, pose) {
     m.neutral(); m.group.position.set(0, 17, 0);
@@ -173,7 +197,10 @@ const serve = () => new Promise((ok, fail) => {
       if (OVERRIDE && rel.endsWith('02b_rig.js')) {
         let src = body.toString('utf8');
         for (const [k, v] of Object.entries(OVERRIDE)) {
-          const re = new RegExp(`(\\b${k}\\s*=\\s*)(\\[[^\\]]*\\]|[-\\d.]+)`);
+          // one level of nesting: DIG_DIR and DIG_HOLE are arrays OF arrays, and
+          // [^\]]* stops at the first inner ']', rewriting a fragment of the
+          // value into something that parses and is not what was asked for.
+          const re = new RegExp(`(\\b${k}\\s*=\\s*)(\\[(?:[^\\[\\]]|\\[[^\\]]*\\])*\\]|[-\\d.]+)`);
           if (!re.test(src)) throw new Error('constant not found: ' + k);
           src = src.replace(re, `$1${Array.isArray(v) ? JSON.stringify(v) : v}`);
         }
@@ -197,22 +224,33 @@ const serve = () => new Promise((ok, fail) => {
 // which is the face they are spread across, and the 3/4 is a third of a turn
 // off that rather than most of the way round to the side.
 const VIEWS = {
-  // THE DIGITS ARE SPREAD ALONG X, so a view down X looks along the fan and the
-  // three of them hide behind each other -- the first "3/4" here was 0.85 of X
-  // and it photographed a mitten every time, whatever the geometry underneath
-  // was doing. Every view meant to show fingers therefore leads with Z, which
-  // is the face they are spread across, and the 3/4 is a third of a turn off
-  // that rather than most of the way round to the side.
-  'hand-v6-front':     { view: [0, -0.30, 1], pose: 'neutral' },
-  'hand-v6-palm':      { view: [0, -0.18, -1], pose: 'neutral' },
-  'hand-v6-34':        { view: [0.45, -0.28, 0.88], pose: 'neutral' },
-  'hand-v6-side':      { view: [1, -0.10, 0], pose: 'neutral' },
-  'hand-v6-under':     { view: [0.30, -0.62, -0.72], pose: 'neutral' },
-  'hand-v6-end':       { view: [0.20, -0.85, 0.55], pose: 'neutral' },
-  'hand-v6-dive':      { view: [0.45, -0.28, 0.88], pose: 'dive' },
-  'hand-v6-jump':      { view: [0.45, -0.28, 0.88], pose: 'jump' },
-  'hand-v6-run':       { view: [0.45, -0.28, 0.88], pose: 'run' },
-  'hand-v6-wireframe': { view: [0.45, -0.28, 0.88], pose: 'neutral', wire: true },
+  // V13 ROLLED THE HAND, AND EVERY VIEW HERE MOVED WITH IT.
+  //
+  // The digits used to be spread along X, so these directions led with Z to
+  // see the fan. They are spread along Z now -- which is the whole point of
+  // the roll, because it is what the official figure does and it is what stops
+  // the hand fanning at a front camera -- so the face they are spread across
+  // is normal to X, and every view meant to SHOW fingers leads with X.
+  //
+  // The X components are NEGATIVE because these frame hands[0], the LEFT hand,
+  // and for that one outboard is -X. A camera at +X sits on the far side of
+  // the body and photographs the torso with a hand behind it.
+  //
+  // 'front' deliberately still points down Z. That one is the production
+  // camera, and what it is for is proving the hand reads as a compact mass
+  // from there, not showing the fingers off.
+  'hand-v9-front':     { view: [0, -0.30, 1], pose: 'neutral' },
+  'hand-v9-palm':      { view: [-1, -0.20, 0.10], pose: 'neutral' },
+  'hand-v9-back':      { view: [1, -0.20, 0.55], pose: 'neutral' },
+  'hand-v9-34':        { view: [-0.86, -0.26, 0.52], pose: 'neutral' },
+  'hand-v9-34b':       { view: [-0.80, -0.26, -0.56], pose: 'neutral' },
+  'hand-v9-side':      { view: [0.10, -0.12, 1], pose: 'neutral' },
+  'hand-v9-under':     { view: [-0.55, -0.78, 0.26], pose: 'neutral' },
+  'hand-v9-end':       { view: [-0.22, -0.94, 0.18], pose: 'neutral' },
+  'hand-v9-dive':      { view: [-0.86, -0.26, 0.52], pose: 'dive' },
+  'hand-v9-jump':      { view: [-0.86, -0.26, 0.52], pose: 'jump' },
+  'hand-v9-run':       { view: [-0.86, -0.26, 0.52], pose: 'run' },
+  'hand-v9-wireframe': { view: [-0.86, -0.26, 0.52], pose: 'neutral', wire: true },
 };
 
 async function main() {
@@ -242,11 +280,22 @@ async function main() {
   }
   // The contact sheet: the whole racer, so a hand pass can be checked for
   // having quietly changed something that is not a hand.
+  for (const [name, spec] of Object.entries({
+    'hand-v9-lobby':  { angle: 0,    zoom: 1.00, lift: -0.10 },
+    'hand-v9-locker': { angle: 0.62, zoom: 0.55, lift: -0.16 },
+  })) {
+    if (ONLY.length && !ONLY.includes(name)) continue;
+    await page.evaluate((a, z, l) => window.__hand.shootChar(a, 'neutral', z, l),
+                        spec.angle, spec.zoom, spec.lift);
+    const file = join(OUT, `${name}${suffix}.png`);
+    await page.screenshot({ path: file });
+    console.log('  ' + file);
+  }
   if (ONLY.length) return;
   for (const [i, pose] of ['neutral', 'run', 'jump', 'dive'].entries()) {
     for (const [j, ang] of [0, Math.PI * 0.75].entries()) {
       await page.evaluate((a, p) => window.__hand.shootFull(a, p), ang, pose);
-      const file = join(OUT, `character-v6-${pose}-${j ? '34' : 'front'}${suffix}.png`);
+      const file = join(OUT, `character-v9-${pose}-${j ? '34' : 'front'}${suffix}.png`);
       await page.screenshot({ path: file });
       console.log('  ' + file);
     }
