@@ -15,3 +15,9 @@ __pycache__/
 # editor/tool state (only launch.json is kept)
 .claude/*
 !.claude/launch.json
+
+# hand review output. These are renders, they are megabytes, and one of them is
+# a side-by-side with a reference model that is deliberately not in this repo --
+# so the whole directory stays local. tools/hand-review.mjs and
+# tools/hand-sheets.mjs write it; nothing reads it but a human.
+docs/hand-review/

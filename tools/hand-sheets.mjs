@@ -19,12 +19,28 @@ const DIR = resolve(process.env.SR_OUT || join(HERE, 'docs', 'hand-review'));
 const have = new Set(await readdir(DIR));
 const b64 = async f => `data:image/png;base64,${(await readFile(join(DIR, f))).toString('base64')}`;
 
-const COMPARE = [['hand-v6-front', 'front — the digit face straight on']];
+const REF_PAIRS = [
+  ['hand-v9-palm',  'reference/ref-palm',  'palm / front'],
+  ['hand-v9-34',    'reference/ref-34',    'three-quarter'],
+  ['hand-v9-side',  'reference/ref-side',  'side'],
+  ['hand-v9-under', 'reference/ref-back',  'underside / back'],
+  ['hand-v9-end',   'reference/ref-endon', 'end-on'],
+];
+// Three columns, not two. V6 is what is live on nikcade.win and V8 is the pass
+// that was rejected for reading as a forearm with two balls hanging off it --
+// and the interesting comparison is all three at once, because the complaint
+// about each pass was that it had not moved far enough from the one before.
+const PROD_TRIOS = [
+  ['hand-v9-lobby',  'hand-v8-lobby',  'hand-v7-lobby-v6',  'lobby distance'],
+  ['hand-v9-locker', 'hand-v8-locker', 'hand-v7-locker-v6', 'Locker distance'],
+  ['hand-v9-palm',   'hand-v8-palm',   'hand-v7-palm-v6',   'palm, close'],
+  ['hand-v9-34',     'hand-v8-34',     'hand-v7-34-v6',     'three-quarter, close'],
+];
 const FULL = [
-  ['character-v6-neutral-front', 'neutral'], ['character-v6-run-front', 'run'],
-  ['character-v6-jump-front', 'jump'], ['character-v6-dive-front', 'dive'],
-  ['character-v6-neutral-34', 'neutral 3/4'], ['character-v6-run-34', 'run 3/4'],
-  ['character-v6-jump-34', 'jump 3/4'], ['character-v6-dive-34', 'dive 3/4'],
+  ['character-v9-neutral-front','neutral'], ['character-v9-run-front','run'],
+  ['character-v9-jump-front','jump'],       ['character-v9-dive-front','dive'],
+  ['character-v9-neutral-34','neutral 3/4'],['character-v9-run-34','run 3/4'],
+  ['character-v9-jump-34','jump 3/4'],      ['character-v9-dive-34','dive 3/4'],
 ];
 
 const css = `
@@ -38,16 +54,39 @@ const css = `
   .old .tag{color:#ff8b7a} .new .tag{color:#7ee3a8}
 `;
 
-const cmpRows = [];
-for (const [name, label] of COMPARE) {
-  const o = `${name}-v5.png`, n = `${name}.png`;
-  if (!have.has(o) || !have.has(n)) continue;
-  cmpRows.push(`
-    <figure class="old"><img src="${await b64(o)}">
-      <figcaption>${label}<span class="tag">V5 — before</span></figcaption></figure>
-    <figure class="new"><img src="${await b64(n)}">
-      <figcaption>${label}<span class="tag">V6 — after</span></figcaption></figure>`);
-}
+const pair = async (rows, aTag, bTag, aCls, bCls) => {
+  const out = [];
+  for (const [A, B, label] of rows) {
+    if (!have.has(`${A}.png`)) continue;
+    const bPath = B.includes('/') ? B + '.png' : `${B}.png`;
+    let bImg = null;
+    try { bImg = await b64(bPath); } catch { continue; }
+    out.push(`
+      <figure class="${aCls}"><img src="${await b64(A + '.png')}">
+        <figcaption>${label}<span class="tag">${aTag}</span></figcaption></figure>
+      <figure class="${bCls}"><img src="${bImg}">
+        <figcaption>${label}<span class="tag">${bTag}</span></figcaption></figure>`);
+  }
+  return out.join('');
+};
+const trio = async rows => {
+  const out = [];
+  for (const [A, B, C, label] of rows) {
+    if (!have.has(`${A}.png`)) continue;
+    let bImg, cImg;
+    try { bImg = await b64(`${B}.png`); cImg = await b64(`${C}.png`); } catch { continue; }
+    out.push(`
+      <figure class="new"><img src="${await b64(A + '.png')}">
+        <figcaption>${label}<span class="tag">V9 — this pass</span></figcaption></figure>
+      <figure class="old"><img src="${bImg}">
+        <figcaption>${label}<span class="tag">V8 — rejected</span></figcaption></figure>
+      <figure class="old"><img src="${cImg}">
+        <figcaption>${label}<span class="tag">V6 — live</span></figcaption></figure>`);
+  }
+  return out.join('');
+};
+const refRows  = await pair(REF_PAIRS, 'V9', 'official model', 'new', 'old');
+const prodRows = await trio(PROD_TRIOS);
 const fullCells = [];
 for (const [name, label] of FULL) {
   if (!have.has(`${name}.png`)) continue;
@@ -60,12 +99,16 @@ const page = (title, note, grid, cols) => `<!doctype html><meta charset="utf-8">
 <h1>${title}</h1><p>${note}</p><div class="grid">${grid}</div>`;
 
 const SHEETS = [
-  ['hand-v6-before-after-front.png',
-   page('Scramble Rush hand — V5 before / V6 after, front',
-        'Same camera, same lighting, same pose. The V5 side is V5 geometry actually running: it was never committed, so it was rebuilt from the diff of the working tree it lived in and checked against the roughness the real V5 measured before it was replaced — rail p95 90.10 / max 125.50, ring p95 45.86 / max 87.01, to the hundredth.',
-        cmpRows.join(''), 2), 1500],
-  ['character-v6-contact-sheet.png',
-   page('Full character contact sheet — V6',
+  ['hand-v9-reference-compare.png',
+   page('Scramble Rush hand V9 vs the official model',
+        'REVIEW ONLY. The reference is rendered from the local GLB for visual and proportional guidance; no geometry, topology or asset from it is used, and neither it nor these sheets are tracked or shipped. Views are approximately matched, not identical cameras.',
+        refRows, 2), 1500],
+  ['hand-v9-production-compare.png',
+   page('Scramble Rush hand — V6 live / V8 rejected / V9 this pass',
+        'Same camera, same lighting, same pose in every column. V6 is the geometry currently on nikcade.win, V8 is the pass rejected for reading as a forearm with two balls hanging off it, V9 is this branch. The top two rows are production framing, which is THE gate -- the close-ups below are secondary evidence, and a hand that only works in a close-up has failed.',
+        prodRows, 3), 1900],
+  ['character-v9-contact-sheet.png',
+   page('Full character contact sheet — V9',
         'The whole racer across its poses, so a hand pass can be checked for having quietly changed something that is not a hand.',
         fullCells.join(''), 4), 1700],
 ];

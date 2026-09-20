@@ -677,140 +677,317 @@
     // palm of 3.08. Ours dips to 2.46 and flares 18% to 2.90 -- the same shape
     // at the mitt's approved size. pchip lays a level tangent at a minimum, so
     // this is a soft waist and not a notch.
-    [ 0.900, 2.54, 2.90], [ 1.000, 2.50, 2.62], [ 1.080, 2.42, 2.22],
-    // ---- V2: A MITT AGAIN, NOT A CLUB ----------------------------------
+    [ 0.900, 2.56, 2.96], [ 1.000, 2.52, 2.76], [ 1.070, 2.52, 2.55],
+    // ---- V9: THE WRIST IS THE SECTION TURNING OVER ----------------------
     //
-    // V1 took the notch out, which was right, and then took the hand out with
-    // it. Its palm was 3.10 across and 2.42 deep -- a depth/width of 0.78 --
-    // against a wrist of 2.46/2.30, so the DEPTH flared by 5% and the whole
-    // thing read as the forearm continuing into a rounded end. Flat, long, and
-    // in the dive it was a paddle.
+    // V7 and V8 both put a WIDTH waist at the wrist and flared out of it, on
+    // the reasoning that without a narrowing there is no hand. The narrowing
+    // is real. The axis was wrong.
     //
-    // Three things bring the hand back, and none of them is the notch:
+    // Re-measured off the official model's own silhouette -- not its polar
+    // "valley dip", which is dominated by how FLAT the hand is and says almost
+    // nothing about grooves; tools/reference-hand-study.mjs rasterises the
+    // outline instead and reads its runs:
     //
-    //   the WRIST goes in further, to 2.42/2.22, on the hand side of s = 1.0 so
-    //   the approved forearm rows at 0.900 and 1.000 are untouched;
+    //   its forearm section is an ellipse 0.82 as wide as it is deep
+    //   its palm at the knuckles is 2.60 as WIDE as it is deep
     //
-    //   the PALM carries 0.925 of its width in depth rather than 0.78, which is
-    //   the v31 mitt's own proportion. (The reference's hand is actually DEEPER
-    //   than it is wide, 7.32 against 6.14; taking all of that would be a fist.)
-    //   3.06 across and 2.83 deep on a 2.42/2.22 wrist is a 26% flare in width
-    //   and a 27% flare in depth -- a palm with a front and a back;
+    // Between the two the section simply turns over -- the depth falls by half
+    // while the width grows by a third -- and that rotation, spread over three
+    // units, is the whole of the wrist. There is no cuff on it anywhere.
     //
-    //   and the whole distal run is 6.5% SHORTER. The rows below are the same
-    //   eleven stations re-spaced over 0.547 of the limb parameter instead of
-    //   0.585, so the terminal stops reading as a second forearm segment. The
-    //   tip apex, the hand length the lobes are normalised by, and the three
-    //   ring spans inside the hand all move with it -- see ARM_S1, HAND_L and
-    //   the spans in armGeometry(). Nothing above the wrist moves at all.
+    // So the width barely dips now (2.58 to 2.52, two per cent) and the whole
+    // narrowing lives in DEPTH: 3.11 at the forearm, 2.55 at the joint, 1.52
+    // by the knuckles. A limb that goes from round to a broad flat blade
+    // cannot read as the end of a tube, because there is no longer a tube.
     //
-    // The taper past the palm is then quicker than V1's and still smooth: pchip
-    // through 3.00, 2.84, 2.52, 1.92 and closed. A gradual taper to a round end
-    // IS a capsule; the hand has to give up its width while it still has some.
-    [1.1632, 2.72, 2.46],
-    [1.2221, 2.94, 2.68],
-    [1.2801, 3.04, 2.79],
-    [1.3390, 3.10, 2.72],   // the palm's widest, and where the digits start
-    // ---- PAST HERE THE ROWS ARE THE PALM'S, NOT THE HAND'S ----------------
+    // WHAT "WIDTH" MEANS HERE. Since HAND_ROLL the first column is the axis the
+    // digits are spread along, which is FORE AND AFT on the standing racer, and
+    // the second is the hand's thickness, which runs inboard to outboard. The
+    // roll is applied in pt(), so the table itself is unrotated and these two
+    // are still just the section's two half-axes.
     //
-    // The rows below no longer close the hand -- the digits do, each rounding
-    // off to its own tip (see the field in armGeometry). What this table
-    // describes from here on is the PALM alone, which flattens and then rounds
-    // away behind them, so width is held and only depth comes off. That is what
-    // the reference does: scanned along its own hand, its width is still 74% of
-    // its maximum at 79% of the hand's length while its depth has fallen to 45%
-    // of the palm's. Three digits lying side by side keep a hand wide and make
-    // it flat; the table this replaced did the opposite, which is why that hand
-    // read as a rounded club.
+    // The target is the reference's own, as fractions of ITS hand length
+    // (0.4009 on a figure 1.8504 tall) multiplied by ours (7.90):
     //
-    // Note what these rows do NOT do any more: they no longer size the digits.
-    // The digits are measured once at the knuckle -- see hwK -- precisely so
-    // that the palm can taper away without taking them with it.
-    [1.4200, 3.14, 2.48],
-    [1.5000, 3.12, 2.22],
-    [1.5700, 3.06, 2.00],
-    [1.6100, 3.00, 1.88],
-    [1.6240, 2.96, 1.82],
+    //        t      its W    its D      its W/D at our scale, half
+    //      0.22     0.934    0.570          3.69   2.25
+    //      0.38     1.015    0.515          4.01   2.03
+    //      0.46     1.075    0.490          4.25   1.94
+    //      0.61     1.156    0.445          4.57   1.76
+    //      0.74     0.732    0.281          2.89   1.11
+    //
+    // The table below runs NARROWER than that right-hand column above 0.38,
+    // because ITS width up there has the thumb lobe in it and ours does not:
+    // the thumb is a branch off the flank here, so this table carries the
+    // FINGER-BEARING palm only, which at the knuckles is its 0.883 and not its
+    // 1.156. Measured on the built hand, thumb included, the widest row comes
+    // out at 1.127 of hand length against its 1.156.
+    [1.1450, 2.92, 2.30],
+    [1.2110, 3.26, 2.10],
+    [1.2774, 3.62, 1.94],
+    [1.3501, 3.94, 1.76],
+    [1.4162, 4.04, 1.62],
+    [1.4625, 3.94, 1.52],   // PALM_END: the last ring of the sweep, t = 0.63
+    // ---- PAST HERE THE ROWS ARE ONLY TANGENTS -----------------------------
+    //
+    // The sweep stops at PALM_END and these are never swept. They exist so
+    // that pchip has something to lay a tangent against at the last ring:
+    // without them it levels the profile into the weld and the palm's end
+    // comes out square, which is the cuff, drawn by an interpolator.
+    [1.5220, 3.26, 1.30],
+    [1.5940, 2.40, 0.95],
   ];
-  // the apexes: one buried in the bean, one at the fingertip
-  const ARM_S0 = -0.340, ARM_S1 = 1.6270;
+  // the apex, buried in the bean. There is only one now: the sweep ends at the
+  // palm and the fingertips are closed by each digit's own pole.
+  const ARM_S0 = -0.340;
   // ---- V5: THREE DIGITS, BECAUSE THE REFERENCE HAS THREE ------------------
   //
   // Not a guess and not inherited from the old three-lobe code: the reference
   // character's own skeleton carries Finger01, Finger02 and Thumb -- two joints
-  // each -- and no other digit. Measured off its skinned hand, isolated by
-  // weight on those joints: the digits begin 34% of the way along the hand, so
-  // the palm is the first third and the digits are the forward two thirds; the
-  // thumb is as long as the fingers (1.07x) and sits about 39% of the palm's
-  // width to one side; the fingers splay slightly, base gap 0.44 of the palm's
-  // width opening to 0.51 at the tips.
+  // each -- and no other digit.
   //
-  // WHAT THE REFERENCE ACTUALLY MEASURES (tools/reference-hand.mjs, and the
-  // cluster pass that backs it). Its hand was read in the WRIST's own frame,
-  // one side only, with each vertex assigned to the joint that owns it, which
-  // is the only way to get numbers out of a mesh this coarse -- the whole
-  // character is 2360 vertices and a hand is 336 of them, so slicing it into
-  // stations and binning vertices gives noise, and cutting its triangles gives
-  // readings of 99% "valley" that are really the section falling into separate
-  // islands, because its fingers are genuinely detached. Ours cannot be: one
-  // surface, one draw call, skinned as one. That is a real ceiling on how far
-  // this can be matched, and it is why the targets below are the proportions
-  // and not the topology.
+  // CORRECTED. This block used to go on to say that the digits begin 34% of
+  // the way along the hand, so that the palm is the first third and the digits
+  // the forward two thirds. That reading came from a polar section sweep and it
+  // is wrong, and it is what V6, V7 and V8 were each built against in turn --
+  // which is why all three put far too much of the hand in front of the palm.
   //
-  //   palm thickness / palm width  = 0.575     (ours at the palm: 0.877)
-  //   digit length / hand length   = 0.28..0.30 (V5's digits: 0.52..0.64)
-  //   digit radius / palm width    = 0.107..0.175
-  //   digit spacing / palm width   = 0.31 and 0.36, evenly across the palm
-  //   thumb set back thickness-wise by 0.144 of the palm's width
+  // The number it rested on was a "valley dip": the deepest inward notch in
+  // each section's outline. On a hand 3.25 times wider than it is thick that
+  // number is dominated by the FLATNESS -- a smooth ellipse of that aspect
+  // already dips 69% at its minor axis -- so the 79% it reported at 0.30 was
+  // very nearly all section shape and very nearly no groove at all.
   //
-  // The two that matter most are the ones V5 got furthest wrong. Its digits
-  // were roughly TWICE the reference's length, and a long thin digit on a
-  // nearly round section is a claw -- which is the word that came back. So
-  // DIG_S0 moves out from 0.38 to 0.58: the palm is now the inner three fifths
-  // of the hand and the digits are the outer two, which is the reference's
-  // split rather than its inverse.
+  // tools/reference-hand-study.mjs rasterises the silhouette and reads each
+  // row's occupied RUNS instead, which cannot confuse the two: a groove is two
+  // runs where there was one. It says the outline does not divide AT ALL below
+  // 0.64, and the two fingers not until 0.74. See the V9 block below.
   //
-  // The flatness is NOT taken all the way to 0.575, deliberately. V1's palm was
-  // 0.78 and was rejected for reading as a paddle in the dive; going flatter
-  // still would walk straight back into a rejection this project has already
-  // had. The reference gets away with 0.575 because its fingers are separate
-  // objects and unmistakable. Ours keeps the palm chunky and takes the
-  // flattening out along the digit run, which is also what the reference's own
-  // profile does -- 0.53 thick at the base of its palm, 0.31 out at the digits.
+  // ---- V7: THE DIGITS ARE OBJECTS, NOT MODULATIONS OF A SECTION --------
   //
-  // DIG_KX places each digit across the hand; DIG_KZ sets the thumb back
-  // towards the palm's spine, which is what gives the hand a front and a thumb
-  // side. DIG_C0/DIG_TIP are where each digit starts rounding off and where it
-  // closes: the middle one runs past the apex so the last ring is still open
-  // and the tip fan closes it, and the other two stop short, so the hand ends
-  // in three tips at three stations rather than one blunt end.
+  // V6 built the hand as one closed ring per station and carved the digits out
+  // of each ring's radius. It shipped, and it read as a frilly cuff -- stacked
+  // horizontal lips on the end of the arm. That was not a tuning failure and no
+  // constant here would have fixed it, because the representation cannot express
+  // the thing:
   //
-  // DIG_FILLET is the radius of the smooth union, IN UNITS OF THE MODEL -- how
-  // near two parts have to come before their join starts being rounded. It is
-  // the knob that decides whether the valleys read as moulded or stamped, and
-  // it has to be generous for a reason worth stating, because the obvious guess
-  // is backwards: a bigger fillet measured SMOOTHER and DEEPER at once. The
-  // hand is sampled 40 ways round, 9 degrees a step, and a valley rounded over
-  // less than that is a valley the mesh never sees the bottom of -- it samples
-  // the two walls and joins them, so a sharp groove arrives as a V with a
-  // crease in it while a rounded one arrives as the U it really is.
-  const DIG_S0 = 0.40, DIG_KNUCKLE = 0.72;
-  const DIG_FILLET = 1.50;
-  // PALM_C0 must not precede DIG_S0: the palm has to still be its exact
-  // elliptical self where the field takes over, or the join steps.
-  const PALM_C0 = 0.46, PALM_TIP = 0.74;   // the palm's own rounding-off
-  const DIG_MIN = 0.02;        // digit size at DIG_S0: nothing, so the join is exact
-  const DIG_SPREAD = 0.66;     // digit centre offset, as a fraction of half-width
-  const DIG_KX  = [-1.00, 0.00, 1.00];
-  const DIG_KZ  = [ 0.30, 0.00, 0.00];
-  const DIG_AX  = [ 0.38, 0.40, 0.38];   // digit half-width, of the section's
-  const DIG_AZ  = [ 0.66, 0.86, 0.78];   // digit half-depth, of the section's
-  const DIG_C0  = [ 0.74, 0.84, 0.78];   // where each digit starts to round off
-  const DIG_TIP = [ 0.95, 1.03, 0.98];   // and where it has closed
-  // s <-> the mitt's own t, so the lobes still land where they always did.
-  // HAND_L follows ARM_S1: (1.6270 - HAND_S0) * LIMB_LEN. The hand really is
-  // 6.94 long now, and the lobe window is still the same fraction of it.
-  const HAND_L = 6.942;
+  //   past the palm, a plane through two separated fingers cuts TWO DISJOINT
+  //   DISCS. One closed ring cannot be two loops. The best it can do is wrap
+  //   both in a single outline with a waist between them -- a webbed paddle
+  //   seen from the front, and a stack of bands seen from anywhere else.
+  //
+  // So the ring sweep STOPS short of the tips, and the digits are lofted from
+  // openings cut in the surface it ends in. One mesh still, one material, one
+  // draw: a digit is built on the opening's OWN vertices rather than on copies
+  // of them, so every edge of that opening still has exactly two faces and the
+  // hand stays one closed manifold shell with nothing passing through
+  // anything.
+  //
+  // WHAT THE REFERENCE ACTUALLY LOOKS LIKE (tools/reference-hand-views.mjs
+  // renders it; tools/reference-hand.mjs measures it). The numbers that matter
+  // here are not widths, they are REACHES and DIRECTIONS -- the two things a
+  // ratio-only reading of the model missed the first time:
+  //
+  //   its palm ends at 0.749 of the hand's length, and the long finger's tip is
+  //   at 1.000 -- so a QUARTER of the whole hand is free finger standing clear
+  //   of the palm mass. V6's digits projected past their envelope by nothing at
+  //   all, which is the entire failure in one number;
+  //
+  //   the short finger reaches 0.88, so the two fingers are visibly unequal;
+  //
+  //   and the thumb's tip is at 0.712 -- BEHIND where the palm ends. It does not
+  //   lengthen the hand at all. Its axis is 0.78 along the hand against 0.59
+  //   across it, so it leaves the palm SIDEWAYS. V6 put all three in the same
+  //   terminal plane, which is exactly how the third one became another lip.
+  //
+  // DIG_HOLE opens each finger's block of the end face, DIG_DIR is its
+  // centre-line as (along, across, through-the-thickness) and is normalised on
+  // use, and DIG_LEN is how far it runs in model units. What the digit is once
+  // it is clear of the palm is DIG_SEC and DIG_OFF, below; the opening decides
+  // only how broadly it is ROOTED.
+  // ---- V9: THE END FACE IS THE DISTAL PALM, AND THE DIGITS ARE ITS HALVES
+  //
+  // THE MEASUREMENT THAT REBUILT THIS. Rasterising the official model's hand
+  // from the palm direction and reading each row's occupied runs says:
+  //
+  //     t          runs                     what it is
+  //   0.22-0.61    ONE, 0.93 -> 1.16 wide   one undivided mass, still widening
+  //   0.64         two: 0.883 | 0.227       the THUMB clears the side
+  //   0.74         ONE,  0.732              the thumb has ended; fingers merged
+  //   0.76-0.86    two: 0.31|0.27 -> 0.10|0.24   the two fingers, splaying
+  //   0.88         one,  0.222              the short finger has ended
+  //   1.00         one,  0.156              the long finger's tip
+  //
+  // The hand does not divide at all below 0.64. V7 and V8 stopped the sweep at
+  // 0.37 and put a cap and three tubes in front of it, so two thirds of what
+  // they built as ATTACHMENTS is, on the reference, PALM -- which is exactly
+  // what the production shot showed: a forearm that stopped, a plate, and
+  // three things hanging off the plate.
+  //
+  // And the digits are barely digits. The long one's free projection past the
+  // palm mass is 0.251 of the hand against its own 0.281 diameter: it stands
+  // out by less than its own width. The short one projects 0.131 against a
+  // diameter of 0.390 -- a THIRD of its own width. The thumb projects -0.037,
+  // which is to say it does not reach the end of the palm at all.
+  //
+  // SO THE CAP IS NOT A CAP ANY MORE. The sweep runs to the palm's widest --
+  // PALM_END = 0.63, against the reference's own widest row at 0.605 -- and
+  // the grid in front of it is a DOME carrying the last of the distal palm
+  // from the knuckle line out to the fork. The two fingers are cut out of that
+  // dome ALMOST ENTIRELY: their openings run from the rim to the middle of the
+  // face and from its back edge to its front, so each one is half the palm's
+  // end and there is no plate left around them to read as a plate. What
+  // survives between them is a strip two quads wide, and that strip is the
+  // WEB -- the floor of the groove, not a shelf the digits stand on.
+  //
+  // The DOME IS SHALLOW on purpose. An opening that spans most of a tall dome
+  // is a deeply non-planar loop, and lofting one of those down to a compact
+  // section drags the part of it that started high BACKWARDS -- which is a
+  // digit cutting back through the palm it grew out of, and it was 24 of the
+  // crossings at CAP_LEN 2.25. Length the sweep can carry belongs to the
+  // sweep; only the last of it belongs to the face.
+  //
+  // The thumb is not on this face at all. See THUMB_AT.
+  const PALM_END = 0.630;        // where the ring sweep stops, in the hand's t
+  const CAP_LEN  = 1.00;         // how far the distal palm bulges past it
+  const CAP_N    = 11;           // 11x11 grid: its boundary is 4*10 = 40 = SEG
+  // ---- THE GROOVE IS CUT INTO THE PALM, NOT LEFT BETWEEN THE DIGITS -----
+  //
+  // WEB_DEEP takes a fraction of the dome's rise away along the line the two
+  // fingers straddle, on a gaussian of width WEB_W in the grid's own across
+  // coordinate. At the rim it is multiplied by the dome's own (1 - rho^2) and
+  // so is exactly zero, which leaves the weld untouched; at the middle of the
+  // web strip it pulls the surface a third of the dome back toward the wrist.
+  // That is what makes the separation START as a shallow dent in the palm and
+  // DEEPEN outward, instead of appearing all at once at a weld line -- which
+  // was V8's "roots too narrow, full-depth slot at the root".
+  const WEB_W = 0.190, WEB_DEEP = 0.58;
+  // ---- AND THE END FACE FALLS AWAY ON THE THUMB'S SIDE -----------------
+  //
+  // A second, much broader recess over one third of the face. The reference's
+  // palm does not end square across: the corner the thumb runs past is lower
+  // than the rest, which is what lets the thumb's mass ride up beside the long
+  // finger instead of butting into a shelf.
+  //
+  // a2 = +1 is the same end of the digit row on both hands, because the cap
+  // walks the rim in anatomical order. Since HAND_ROLL that end points FORWARD
+  // rather than outboard -- the whole section is rolled through the wrist --
+  // and the thumb is forward with it, which is where the reference keeps its
+  // own (thumb offset from the wrist, in the standing figure: 0.161 forward
+  // against 0.125 sideways).
+  const THUMB_A = 0.85, THUMB_W = 0.40, THUMB_SET = 0.22;
+  // Grid blocks (quad indices, inclusive) opened for each FINGER -- the thumb
+  // is not on this face at all any more, it is cut into the sweep's own wall
+  // further back. The short finger takes columns 0-3 and the long one 6-9, so
+  // 4-5 is the web between them, and both openings span the full depth of the
+  // face, j = 0 to 9. No palm survives in front of or behind a finger root
+  // either: there is nothing left to read as a plate with things on it.
+  const DIG_HOLE = [ [0,3,0,9], [6,9,0,9] ];
+  const DIG_DIR  = [ [1.00,-0.10, 0.02], [1.00, 0.08, 0.02] ];
+  const DIG_LEN  = [ 1.70, 2.90];
+  // ---- V10: A DIGIT STATES ITS OWN SECTION ---------------------------
+  //
+  // DIG_SEC is the digit's half-width and half-depth once it is clear of the
+  // palm, and DIG_OFF is where its centre-line sits, ACROSS the hand and
+  // THROUGH it, measured from the centre of the opening it grows out of.
+  // "Across" is the axis the digits are spread along, which HAND_ROLL puts
+  // fore and aft rather than left and right; "through" is the hand's thickness.
+  //
+  // V9 had neither. It eased each digit toward a circle of its opening's own
+  // MEAN radius about its own centroid, so both numbers were accidents of
+  // where the hole had been cut: the short finger's loop runs from the palm's
+  // rim to the web and averaged 1.57, which is a sphere, and the two centroids
+  // sat 3.0 apart, which left a 1.8-unit V between the fingers instead of a
+  // slot. The reference's are 2.07 across with 0.88 between them -- they very
+  // nearly touch, and the groove is parallel-sided.
+  //
+  // So the loft now runs from the opening's outline to an ellipse that is
+  // stated here. The opening still decides how broadly the digit is ROOTED --
+  // which is the whole point of cutting it out of the palm's own end -- and
+  // the section decides what the digit IS.
+  const DIG_SEC  = [ [1.44, 1.22], [1.08, 1.00] ];
+  const DIG_OFF  = [ [ 0.25, 0.00], [-0.25, 0.00] ];
+  // ---- V12: THE THUMB LEAVES FROM THE WALL, NOT FROM THE END FACE ------
+  //
+  // On the official model the thumb's root is at 0.376 of the hand and the
+  // palm's mass ends at 0.749: it leaves from the flank, well short of
+  // halfway, and that is why it reads as part of the hand rather than as a
+  // third finger. Four passes tried to make it read from an opening in the end
+  // face and none could, because an opening there is always level with the
+  // knuckles -- it came out as a bump beside the long finger, or a ball on a
+  // stalk, every time.
+  //
+  // So its opening is cut in the SWEEP's own grid instead. THUMB_AT is how far
+  // along the hand the patch runs and THUMB_K is the arc it covers, as [centre
+  // segment, quads]. Four ring-rows by six segments is a patch about 1.4 by
+  // 2.7 units -- a third of the palm's circumference -- and a root that broad
+  // cannot read as an insertion.
+  //
+  // The arc is centred on segment 5, which is the same end of the section the
+  // long finger's opening is at. That is the reference's arrangement and not a
+  // guess: measured off its skeleton, the thumb's offset from the wrist is 20
+  // degrees off the axis its two fingers are spread along, on the long
+  // finger's side of it. Since HAND_ROLL that end faces FORWARD.
+  //
+  // THUMB_DIR is 0.88 ALONG the hand against 0.42 across: it sweeps down the
+  // flank, it does not stick out of it, and its tip lands just short of where
+  // the palm's own mass ends -- adding nothing to the hand's length, which is
+  // the whole difference between a thumb and a third finger. It is a
+  // direction, not a size.
+  const THUMB_AT  = [0.280, 0.500];
+  const THUMB_K   = [5, 6];
+  const THUMB_DIR = [0.88, 0.42, 0.10];
+  const THUMB_LEN = 3.30;
+  const THUMB_SEC = [1.08, 0.98];
+  const THUMB_OFF = [0.30, 0.45];
+  // ---- V8: EVERY DIGIT GETS ITS OWN ROUNDING ---------------------------
+  //
+  // V7 used one fixed list of [how far along, how wide there] for all three,
+  // worked out for a finger 1.2 across on a length of 3.0. The three digits
+  // are no longer alike -- 1.44 across on 1.70 of length, 1.08 on 2.90, 1.08
+  // on 3.30 -- so one list cannot round all of them: the same tail that domes
+  // the long finger leaves the short one a cone, and a tail sized for the
+  // short one flattens the others.
+  //
+  // digProfile() takes k -- the digit's own radius over its own length -- and
+  // puts the dome exactly where a sphere of that radius would start, at 1 - k.
+  // Three samples run up the straight, the first of them a little over-size so
+  // the tube SWELLS where it meets the palm and the join reads as a webbed
+  // knuckle rather than a tube pushed into a hole; four more walk the dome as
+  // sqrt(1 - x^2); and the pole sits on the end, not past it, so the closing
+  // fan stays broad instead of drawing out into splinters.
+  //
+  // k is clamped at 0.82 because a digit whose radius approaches its length has
+  // no straight left at all, and the clamp turns the last of it into a slightly
+  // squashed dome instead of letting the samples run past the tip.
+  const DIG_WEB = 1.00;                  // no swell: the openings share walls
+  // ...and how much of the digit it takes to BECOME its stated section. The
+  // opening is whatever shape the block of grid it was cut from happens to be,
+  // and it is much larger than the digit -- the short finger's spans a third
+  // of the palm's end. Applying the whole change at the first ring collapses
+  // it inside a fifth of a unit, which is a near-vertical flare and reads as a
+  // tube pushed into a hole. Easing it over the first third instead leaves the
+  // digit RISING out of the palm, which is the webbed root the reference has.
+  const DIG_FLARE = 0.34;
+  const digProfile = (k)=>{
+    const us = 1 - Math.min(0.82, k);
+    const P = [[us*0.34, DIG_WEB], [us*0.72, 1 + (DIG_WEB-1)*0.3], [us, 1.00]];
+    for(let t=1;t<=4;t++){
+      const x = t/4.2;
+      P.push([us + (1-us)*x, Math.sqrt(Math.max(0, 1 - x*x))]);
+    }
+    return P;                            // always seven rings, whatever k is
+  };
+  const DIG_RINGS = 7;                   // digProfile() always returns this many
+  const DIG_POLE = 1.00;                 // where the closing pole sits, along the digit
+  // HOW LONG THE HAND IS, and the map between the limb's parameter s and the
+  // hand's own t that every constant above is written in. The reference's hand
+  // is 21.7% of its figure's height, which on this racer is 7.98; 7.90 keeps
+  // the hand a touch under that rather than over, and it is the number PALM_END
+  // and THUMB_AT are fractions of. ARM_S1 is gone: the sweep no longer runs to
+  // a fingertip apex, so there is no single s that means "the end of the hand".
+  const HAND_L = 7.900;
   const LIMB_LEN = RIG.upperLen + RIG.foreLen;
   const HAND_S0 = 1.0 + 0.55/LIMB_LEN, HAND_SS = HAND_L/LIMB_LEN;
   // The one curve baked into the centreline. The reference's root sits 0.048
@@ -869,6 +1046,23 @@
   // length of the hand. That was the V across the back of the mitt. So past the
   // wrist the sweep goes where the mitt goes.
   const HAND_DY = 0.55, HAND_DZ = 0.30, HAND_RZ = 0.11;
+  // ---- V13: AND THE HAND IS ROLLED, SO THE DIGITS SPREAD FORE AND AFT ----
+  //
+  // Measured off the official figure's own skeleton, standing in FG_Idle_A:
+  // the vector from its short fingertip to its long one is (-0.299, 0.067,
+  // 0.952) in the figure's frame. Its digits are spread along Z. A camera in
+  // front of that character sees the hand edge-on, one finger behind the
+  // other, and what reaches the eye at lobby distance is ONE compact mass.
+  //
+  // Ours spread along X, perpendicular to it, and so fanned straight at the
+  // camera: three separated runs in the silhouette, which is a pincer, and no
+  // amount of proportion work fixes an axis. This is the rotation that does.
+  //
+  // 80 degrees rather than 90: the reference's spread is 17 degrees off pure
+  // Z, and that tilt is what keeps the near finger from hiding the far one
+  // completely. HAND_ROLL0/1 ramp it in through the wrist, where the section
+  // is 2.52 by 2.58 -- round enough that turning it moves no silhouette at all.
+  const HAND_ROLL = 1.40, HAND_ROLL0 = 1.00, HAND_ROLL1 = 1.15;
   // ---- v29c: THE FLESH SITS OUTBOARD OF THE BONE.
   //
   // With the joints where they are and armZ at its approved 0.23, the sweep's
@@ -922,42 +1116,19 @@
     span(ARM_S0 + 0.004, 0.00, 11);   // the root
     span(0.00, 0.45,  7);             // the shoulder swell, easing out
     span(0.45, 0.90,  5);             // the straight of the forearm
-    span(0.90, 1.2801, 9);            // the wrist coming down to meet the palm
-    // ---- V6: THE STATIONS GO WHERE THE SURFACE MOVES ----------------------
+    span(0.90, 1.0700, 5);            // the wrist, where the section turns over
+    // ---- V9: TEN RINGS ON THE PALM ----------------------------------
     //
-    // The same twenty-five stations as V5, re-aimed. V5 spaced them on a sine,
-    // which crowds them into the fingertip, and it was right to for V5: its
-    // digits closed on sqrt(1 - reach^2), whose slope runs to INFINITY at a
-    // tip, so uniform stations stepped further and further apart in RADIUS the
-    // nearer they got and the surface banded. V6's caps are smoothsteps on a
-    // distance-scaled field and are gentle right through the tip, so that
-    // crowding is now spent where nothing happens.
-    //
-    // Where this surface actually moves is the MIDDLE of the hand: the digits
-    // grow out of the palm between t = 0.58 and 0.72, and the palm rounds off
-    // between 0.72 and 0.88. Under the sine those two bands shared four or five
-    // stations, and both of the ridges left across the hand sat exactly there --
-    // 57 degrees of dihedral at t = 0.67 and 55 at t = 0.83, on a surface whose
-    // median is 4. The palm below the digits is a plain ellipse changing slowly
-    // and can spare them. The mild bias that is left leans on the tip, because
-    // three caps closing still turn faster than a palm that is only widening.
-    const DS0 = 1.2801, DS1 = ARM_S1 - 0.003;
-    // Clamped, because DSM splits the station list and a DSM below DS0 makes
-    // span() count BACKWARDS -- stations out of order, quads wound through
-    // each other, and a surface that measures 180 degrees of dihedral. A
-    // sweep of DIG_S0 found that in one line; it is one clamp, not a comment.
-    const DSM = Math.min(DS1, Math.max(DS0, HAND_S0 + DIG_S0*HAND_SS));
-    // ...and PRE drops to zero when the digits begin at or before DS0, because
-    // span(DS0, DS0, 6) is six stations at the SAME s: six coincident rings and
-    // every quad between them degenerate. The clamp stops DSM running backwards
-    // and this stops it landing exactly on the start -- the two failures either
-    // side of the same edge. Twenty-five stations whichever branch runs, so the
-    // complexity budget does not move.
-    const PRE = DSM > DS0 + 1e-6 ? 6 : 0, DIG_RINGS = 24 - PRE;
-    if(PRE) span(DS0, DSM, PRE);               // the palm, still just an ellipse
-    for(let j=0;j<DIG_RINGS;j++)
-      RING_S.push(DSM + (DS1 - DSM)*(1 - Math.pow(1 - j/DIG_RINGS, 1.35)));
-    RING_S.push(DS1);
+    // It used to run to a fingertip apex; V7 cut it back to the palm's rim.
+    // The rim is further out now -- PALM_END is at the palm's WIDEST, not a
+    // third of the way along it -- and the flare it has to describe is 40% of
+    // width against 30% of depth. Seven rings over that is four per unit and
+    // the flare came out as a shoulder. Ten is enough that no single ring
+    // carries a visible share of the turn, which is the same argument the
+    // elbow's eight rings are there for.
+    const DS0 = 1.0700, DSE = HAND_S0 + PALM_END*HAND_SS;
+    span(DS0, DSE, 10);
+    RING_S.push(DSE);
     // 30 sides, not 16 -- the section is an ellipse now, so the curvature is
     // highest exactly where the silhouette edge is and facets show there first.
     // 30 and not 24 because that is what the MITT has: the two surfaces cross
@@ -995,265 +1166,338 @@
     // horizontal; the sleeve's rings are rolled with it so the two stay
     // parallel where they cross.
     const roll = (s)=> Math.sin(HAND_RZ) * ss(0.94, 1.05, s) * side;
-    // ---- V6: THE HAND IS A LEVEL SET, NOT A UNION OF OUTLINES -------------
+    // ---- V7: PALM, CAP, AND THREE WELDED DIGITS ----------------------
     //
-    // V5 built each ring by taking, for every ray out of the section's centre,
-    // the FURTHEST intersection with any of three digit ellipses. That is the
-    // exact union, and the exact union is the wrong object, for a reason that
-    // is worth writing down because it survives every amount of parameter
-    // tuning:
-    //
-    //   a ray's far intersection with an ellipse is (-B + sqrt(B^2-4AC))/2A,
-    //   and at the angle where the ray becomes TANGENT to that ellipse the
-    //   discriminant is zero. dr/da there is INFINITE. So at every angle where
-    //   one digit's contribution starts or stops mattering, the outline has a
-    //   vertical tangent, and a vertical tangent in the angular direction is a
-    //   crease running the length of the hand.
-    //
-    // Measured on the shipped V5 surface, the dihedral angle across the edges
-    // that run ALONG the hand was 90 degrees at the 95th percentile and 125 at
-    // the worst -- on a surface sampled 40 ways round, where a smooth section
-    // should be near 9. Those folds are the reported ribbing, and the pinched
-    // faceted valleys are the same folds seen where two digits cross. The
-    // p-norm smoothing V5 put on top could not fix it: a p-norm blends the two
-    // radii once they are comparable, and the singularity is at the moment one
-    // of them APPEARS, where they are not comparable at all.
-    //
-    // So V6 stops solving for the outline and starts solving for a surface.
-    // Each part of the hand is an implicit quadratic -- a polynomial, finite
-    // and smooth for every (x, z), including everywhere the old formula had no
-    // intersection to return:
-    //
-    //   f(x,z) = (1 - cap) - ((x-cx)/ax)^2 - ((z-cz)/az)^2
-    //
-    // positive inside, zero on the surface, negative outside and still perfectly
-    // well behaved there. The hand is the outermost r where the smooth maximum
-    // of those fields is zero. Because the field is smooth and dF/dr is strictly
-    // negative at the outer surface, the implicit function theorem makes the
-    // radius a smooth function of angle: the crease is gone by construction
-    // rather than by tuning.
-    //
-    // FOUR PARTS, not three. The palm is a field too, with its own rounding-off,
-    // so the place where the digits leave the palm is a smooth union -- a
-    // fillet -- instead of the old linear cross-fade between two different
-    // formulas. That fade was the harsh seam at the knuckles.
-    //
-    // The cap term is what closes a part. It rises from 0 to 1 over the part's
-    // last stretch, so (1 - cap) shrinks the whole field to nothing: a rounded
-    // end, reached without any axis shrinking to zero. V5 closed its digits by
-    // scaling their half-axes to zero while their CENTRES stayed 1.9 units off
-    // the hand's axis, which is precisely what produced the fingertip slivers --
-    // a vanishing ellipse still sitting out to one side is hit by a handful of
-    // rays at nearly full radius while its neighbours are at a third of it. No
-    // axis goes to zero here and no centre has to be dragged home to compensate.
-    const smax = (a, b)=>{
-      // Cubic smooth maximum: exactly max() once the two are further apart than
-      // DIG_FILLET, and C2 across the join. C2 matters -- a C1 join leaves a
-      // curvature step, and a curvature step is a visible band under smooth
-      // shading even though the surface is technically continuous.
-      const d = Math.abs(a - b), m = a > b ? a : b;
-      if(d >= DIG_FILLET) return m;
-      const h = DIG_FILLET - d;
-      return m + h*h*h/(6*DIG_FILLET*DIG_FILLET);
-    };
-    // A part, reduced along one ray to f(r) = -(A r^2 + B r + C).
-    //
-    // THE FIELD IS SCALED TO A LENGTH, and that is not cosmetic. The raw
-    // quadratic 1 - Q is dimensionless: 1 at the centre and 0 at the surface
-    // however big the part is, so its gradient is steep on a small part and
-    // shallow on a big one. Blending two of those against a fixed threshold
-    // makes the fillet's real size depend on which parts happen to be meeting,
-    // and the threshold that finally rounded the valleys inflated the palm by
-    // 0.6 of a unit: the hand swelled from 3.14 to 3.34 exactly as the digits
-    // arrived, a step of 0.11 between two stations where every other step was
-    // 0.01. That step was the last band across the hand.
-    //
-    // Near the surface 1 - Q is about twice the distance over the radius, so
-    // multiplying by half the radius turns it into a distance. DIG_FILLET is
-    // then a LENGTH -- round this join over so many units -- it means the same
-    // thing wherever it is applied, and the swelling it can cause is bounded by
-    // a sixth of it per join rather than by the size of the parts joining.
-    //
-    // The cap shrinks a part's AXES rather than lowering its field. Same
-    // surface -- Q = 1 - cap and Q/(1 - cap) = 1 have the same zero set -- but
-    // a closing digit now gets a shrinking fillet with it, so it lets go of its
-    // neighbours as gently as it arrived.
-    // THE DIGITS ARE SIZED AT THE KNUCKLE, ONCE -- not from the section they
-    // happen to be passing through. This is the difference between a hand with
-    // fingers on it and a paddle with grooves pressed into it, and getting it
-    // wrong is what made every earlier attempt photograph as a mitten however
-    // the digit constants were set.
-    //
-    // Scaling a digit by the profile table's half-width AT ITS OWN STATION ties
-    // it to the palm: the palm is that width by definition, so a digit built as
-    // a fraction of it is always INSIDE it, and the union's outer boundary is
-    // the palm's everywhere. The digits could then only ever appear as dimples
-    // in the palm's surface, and only over the short stretch after the palm's
-    // cap had shrunk it and before their own caps closed them. No amount of
-    // spreading them or fattening them changes that, because the thing they are
-    // measured against moves with them.
-    //
-    // Measured from one fixed station instead, a digit keeps its size while the
-    // palm tapers away from behind it, so the digits carry the end of the hand
-    // and stand out of the palm the way the reference's do. It is also what a
-    // finger does: it does not get thinner because the palm behind it did.
-    const sK = HAND_S0 + DIG_KNUCKLE*HAND_SS;
-    const hwK = ARM_SEC_W(sK), hdK = ARM_SEC_D(sK);
-    const PA = new Float64Array(4), PB = new Float64Array(4), PC = new Float64Array(4);
-    const part = (n, dx, dz, cx, cz, ax, az, cap)=>{
-      const c = Math.max(0.06, Math.sqrt(Math.max(0, 1 - cap)));
-      const AX = ax*c, AZ = az*c, sc = 0.5*(AX < AZ ? AX : AZ);
-      const ix = sc/(AX*AX), iz = sc/(AZ*AZ);
-      PA[n] = dx*dx*ix + dz*dz*iz;
-      PB[n] = -2*(cx*dx*ix + cz*dz*iz);
-      PC[n] = cx*cx*ix + cz*cz*iz - sc;
-      return n + 1;
-    };
-    const fieldAt = (r, n)=>{
-      let F = -(PA[0]*r*r + PB[0]*r + PC[0]);
-      for(let i=1;i<n;i++) F = smax(F, -(PA[i]*r*r + PB[i]*r + PC[i]));
-      return F;
-    };
-    // ramp: 0 below a, 1 above b, smooth in between. Used for every emergence
-    // and every closing, so nothing in the hand turns on or off abruptly.
-    const ramp = (a, b, t)=>{
-      const u = Math.min(1, Math.max(0, (t - a)/(b - a)));
-      return u*u*(3 - 2*u);
-    };
-    const ring = (s, a, hw, hd)=>{
-      const dx = Math.cos(a), dz = Math.sin(a);
-      // the plain elliptical section, as a radius along this same ray
-      const re = (hw > 1e-9 && hd > 1e-9)
-        ? 1/Math.sqrt((dx*dx)/(hw*hw) + (dz*dz)/(hd*hd)) : 0;
-      const t = (s - HAND_S0)/HAND_SS;
-      let r = re;
-      if(t > DIG_S0 && re > 1e-9){
-        // The palm: the approved elliptical section, carrying its own closure.
-        // Squaring the ramp gives the palm a round end rather than a flat one,
-        // the same way the digit caps do.
-        const pq = ramp(PALM_C0, PALM_TIP, t);
-        let n = part(0, dx, dz, 0, 0, hw, hd, pq*pq);
-        // The digits, growing out of the palm and each closing on its own.
-        //
-        // A CLOSING DIGIT COMES HOME TO THE AXIS. This is the one thing that
-        // cannot be left out, and it is what both V5 failures were really made
-        // of. A digit closed by its cap alone shrinks to a POINT that is still
-        // sitting out at its full offset -- 1.7 units off the hand's axis while
-        // the rest of that ring is at 0.64. That point is a genuine part of the
-        // level set, so the ring has to reach out and touch it, and one ring
-        // reaching sideways past its neighbours is exactly the sliver in V5 and
-        // exactly the spike that replaced it here. It is not a numerical
-        // accident and no epsilon removes it.
-        //
-        // The honest cause is that our topology is ONE closed ring per station.
-        // A real hand ends its three digits at three different places, which
-        // needs three separate loops at the stations in between, and a single
-        // ring cannot be three loops. So a digit that ends early has to have
-        // rejoined the others BEFORE it ends. Scaling the offset by (1 - u^3)
-        // does that: u^3 is flat while the digit has any size, so the fingers
-        // stay apart over their whole visible length, and it goes to one only
-        // as the digit rounds off, so what finally vanishes is a point on the
-        // axis, deep inside the digit that is still open. Nothing sticks out.
-        const g = DIG_MIN + (1 - DIG_MIN)*ramp(DIG_S0, DIG_KNUCKLE, t);
-        for(let i=0;i<3;i++){
-          const u = ramp(DIG_C0[i], DIG_TIP[i], t);
-          const o = g*(1 - u*u*u);
-          n = part(n, dx, dz,
-                   side*DIG_KX[i]*hwK*DIG_SPREAD*o, DIG_KZ[i]*hdK*o,
-                   DIG_AX[i]*hwK*g, DIG_AZ[i]*hdK*g, u*u);
-        }
-        // The outermost zero of the field. The exact union's outer radius is a
-        // lower bound for it -- a smooth maximum is never less than a maximum --
-        // so the bracket starts there and only has to grow far enough to clear
-        // the fillet, which is a few per cent. Bisection, not Newton: it cannot
-        // be thrown by the fillet's flat spots and it costs the same here.
-        let lo = 0;
-        for(let i=0;i<n;i++){
-          const disc = PB[i]*PB[i] - 4*PA[i]*PC[i];
-          if(disc > 0) lo = Math.max(lo, (-PB[i] + Math.sqrt(disc))/(2*PA[i]));
-        }
-        if(lo > 0){
-          // Bisection needs the field POSITIVE at lo and negative at hi. The
-          // first is free -- lo sits on some part's own surface, where that
-          // part's field is zero and a smooth maximum cannot be less. The
-          // second has to be found, and if it is not found the bracket is a
-          // lie: bisecting it converges on hi, and hi after twelve doublings
-          // is thousands of units out. That is a spike through the arm, from
-          // a loop that looks like it merely gave up. So a failed search
-          // falls back to lo, which is a real point on the surface and at
-          // worst loses the fillet on that one ray.
-          let hi = lo*1.02 + 1e-4, guard = 0;
-          while(fieldAt(hi, n) > 0 && guard++ < 12) hi = lo + (hi - lo)*2;
-          if(fieldAt(hi, n) > 0) r = lo;
-          else {
-            // Sixteen halvings, not the twenty-two this started with. The
-            // bracket that reaches here is about 2% of the radius -- six
-            // hundredths of a unit -- so sixteen leaves it under a millionth,
-            // which is already far finer than a surface whose vertices are
-            // written into a Float32 attribute can express. The extra six were
-            // costing a fifth of the hand's build time to move nothing.
-            for(let i=0;i<16;i++){
-              const mid = (lo + hi)*0.5;
-              if(fieldAt(mid, n) > 0) lo = mid; else hi = mid;
-            }
-            r = (lo + hi)*0.5;
-          }
-        } else r = 0;
-        // NO CROSS-FADE, DELIBERATELY. There was one, easing the plain ellipse
-        // into the field over the first tenth of the digit run, and it was the
-        // worst defect left on the surface: a ridge straight across the hand at
-        // the knuckles, 47 degrees of dihedral where the rest of the hand was
-        // under 10. A cross-fade between two formulas that DISAGREE always
-        // shows, however smooth the weight ramp is, because the ramp is smooth
-        // and the gap it is hiding is not.
-        //
-        // It is unnecessary once the two agree at the join, and two constants
-        // make them agree exactly rather than approximately. DIG_MIN starts the
-        // digits at nothing instead of at half size, so at DIG_S0 they put no
-        // surface anywhere and the smooth maximum of a single part is that part
-        // unchanged. PALM_C0 sits at or after DIG_S0, so the palm has not begun
-        // to round off and its field IS the approved elliptical section. Both
-        // sides of the join are then the same number to the last decimal, and
-        // there is nothing left to fade.
-      }
-      const x = dx*r, z = dz*r;
-      pos.push(x + tipX(s) + lean(s) + bias(s),
+    // pt() is the limb's placement -- every offset the sweep applies -- pulled
+    // out so the cap and the digits land in the same space the rings do rather
+    // than in a parallel one that has to be kept in step by hand.
+    // pt() takes ANATOMICAL section coordinates now: u across the hand,
+    // outboard positive on either arm, and v through it, forward positive. It
+    // applies the roll and then the mirror, so every part of the hand -- the
+    // rings, the end face, each digit opening, the thumb's arc -- turns
+    // together and nothing downstream has to know the roll exists.
+    const pt = (s, u, v)=>{
+      const r = HAND_ROLL * ss(HAND_ROLL0, HAND_ROLL1, s), cr = Math.cos(r), sr = Math.sin(r);
+      const x = side*(u*cr - v*sr), z = u*sr + v*cr;
+      return [ x + tipX(s) + lean(s) + bias(s),
                -s*L + x*roll(s),
-               z + bow(s) + tipZ(s));
+               z + bow(s) + tipZ(s) ];
     };
-    ring(ARM_S0, 0, 0, 0); weights(ARM_S0);                 // root apex, in the bean
-    for(const s of RING_S){
-      const hw = ARM_SEC_W(s), hd = ARM_SEC_D(s);
-      for(let k=0;k<SEG;k++){ ring(s, k/SEG*Math.PI*2, hw, hd); weights(s); }
-    }
-    ring(ARM_S1, 0, 0, 0); weights(ARM_S1);                 // the fingertip
-    const first = 1, last = 1 + RING_S.length*SEG;
-    // BOTH FANS ARE WOUND WITH THE BODY, the same correction the lower limb
-    // got in v32b. The quads below walk a ring k -> k+1 on their leading edge,
-    // so a cap that also walks k -> k+1 is wound the other way round from the
-    // surface it closes. That put a back-facing lid on the mitt's tip -- sixty
-    // triangles the camera saw straight through, which is the white speck at
-    // the fingertip in every action sheet since v30. Reversed, both ends.
-    // Nothing else moves: not one vertex, radius, weight or station, only the
-    // order three indices are written in, and computeVertexNormals now averages
-    // them with the surface instead of against it.
-    for(let k=0;k<SEG;k++){                                  // fan into the root apex
-      const k2 = (k+1)%SEG;
-      idx.push(0, first+k2, first+k);
-    }
-    for(let j=0;j<RING_S.length-1;j++){
-      const a0 = first + j*SEG, b0 = first + (j+1)*SEG;
+    const push = (s, u, v)=>{ const q = pt(s,u,v); pos.push(q[0],q[1],q[2]); };
+
+    // MIRRORING REVERSES THE SURFACE'S HANDEDNESS, so every face on it has to
+    // be wound the other way round on the other arm. The sweep needs this now
+    // too: its rings run backwards on the left hand, because the section is
+    // authored with side in it. Without this the left arm is inside-out -- its
+    // faces still close a volume, so open and nonManifold both stay zero and
+    // only duplicateDirected and the signed volume notice.
+    const tri = (a2,b2,c2)=>{ if(side < 0) idx.push(a2,c2,b2); else idx.push(a2,b2,c2); };
+    const RN = RING_S.length;
+    // where the thumb's opening sits in the sweep's grid, as quad ranges
+    const tA = HAND_S0 + THUMB_AT[0]*HAND_SS, tB = HAND_S0 + THUMB_AT[1]*HAND_SS;
+    let ra = -1, rb = -1;
+    for(let j=0;j<RN;j++){ if(RING_S[j] >= tA && ra < 0) ra = j; if(RING_S[j] <= tB) rb = j; }
+    // the rim ring has to stay whole: the cap welds onto every one of its edges
+    const tj0 = ra, tj1 = Math.min(rb, RN-2) - 1;
+    const K = k => ((k % SEG) + SEG) % SEG;
+    const tk0 = THUMB_K[0] - (THUMB_K[1] >> 1), tkN = THUMB_K[1];
+    const tArc = k => K(k - tk0) < tkN;
+    const tHole = (j,k)=> j>=tj0 && j<=tj1 && tArc(k);
+    // STRICTLY inside: a ring vertex here loses all four of its quads and would
+    // be left UNUSED, which the topology check rejects, so it is never emitted.
+    const tBuried = (j,k)=>{ const d = K(k - tk0); return j>tj0 && j<=tj1 && d>=1 && d<=tkN-1; };
+
+    // the arm itself, one addressable grid from the root apex to the palm's rim
+    push(ARM_S0, 0, 0); weights(ARM_S0);                    // root apex, in the bean
+    const rid = [];
+    for(let j=0;j<RN;j++){
+      const s2 = RING_S[j], hw = ARM_SEC_W(s2), hd = ARM_SEC_D(s2), row = [];
       for(let k=0;k<SEG;k++){
-        const k2 = (k+1)%SEG;
-        idx.push(a0+k, b0+k2, b0+k);
-        idx.push(a0+k, a0+k2, b0+k2);
+        if(tBuried(j,k)){ row.push(-1); continue; }
+        row.push(pos.length/3);
+        const a = k/SEG*Math.PI*2;
+        // k = 0 is the palm's outboard flank on both hands; pt() carries the
+        // mirror now, so the section itself is authored once, unsigned.
+        push(s2, Math.cos(a)*hw, Math.sin(a)*hd); weights(s2);
       }
+      rid.push(row);
     }
-    const t0 = first + (RING_S.length-1)*SEG;
-    for(let k=0;k<SEG;k++){                                  // fan into the tip apex
+    const sEnd = RING_S[RN-1], hwP = ARM_SEC_W(sEnd), hdP = ARM_SEC_D(sEnd);
+
+    for(let k=0;k<SEG;k++){                                  // fan into the root apex
+      tri(0, rid[0][(k+1)%SEG], rid[0][k]);
+    }
+    for(let j=0;j<RN-1;j++) for(let k=0;k<SEG;k++){
+      if(tHole(j,k)) continue;
       const k2 = (k+1)%SEG;
-      idx.push(last, t0+k, t0+k2);
+      tri(rid[j][k], rid[j+1][k2], rid[j+1][k]);
+      tri(rid[j][k], rid[j][k2], rid[j+1][k2]);
     }
+
+    // ---- the palm's end face ------------------------------------------
+    //
+    // A square grid rather than a fan, because a fan has no interior structure
+    // to open a hole in and this face has to have three. The grid's boundary is
+    // 4*(CAP_N-1) = 40 vertices, which is SEG exactly, so it welds straight
+    // onto the last ring and the palm stays one closed surface.
+    //
+    // The square is mapped to the rim's ellipse with the usual elliptical grid
+    // map, which sends the square's EDGE to the ellipse exactly -- so boundary
+    // grid points and ring points lie on the same curve and only their spacing
+    // differs. They are matched by angle, which costs a little shear in the
+    // first row of quads and nothing in the silhouette.
+    // THE CAP IS PARAMETERISED BY THE RING, NOT BESIDE IT.
+    //
+    // The first version mapped the grid's square to the rim's ellipse with the
+    // usual elliptical-grid formula and then matched boundary points to ring
+    // points by sorting both by angle. Both sets land on the same ellipse, so
+    // the silhouette was right -- but they land at DIFFERENT angles on it, and
+    // the first row of quads had to take up the difference. That shear was the
+    // facet down the side of the palm, and it is a real geometric
+    // discontinuity, not a shading one, so no amount of normal averaging would
+    // have removed it.
+    //
+    // So the cap now takes its angles FROM the ring. Walking the grid boundary
+    // visits 4*(CAP_N-1) = 40 = SEG positions in order, and the ring's vertices
+    // are 40 positions in order, so walk index n simply IS ring index k0 + n
+    // (running backwards on the mirrored arm, which is what side does here).
+    // An interior grid point takes the FRACTIONAL walk index where its own ray
+    // leaves the square, and reads its angle off the same line. At the boundary
+    // that reproduces the ring vertex exactly -- the same number, not a near
+    // one -- so there is nothing left for the first row to absorb.
+    const buried = (i,j)=>DIG_HOLE.some(h=>i>h[0]&&i<=h[1]&&j>h[2]&&j<=h[3]);
+    const NG = CAP_N - 1;
+    // the distal palm: a dome, with the groove between the fingers cut down
+    // its middle. a2 is the grid's across coordinate and is zero on the web.
+    const capRise = (a2, rho)=> CAP_LEN * Math.sqrt(Math.max(0, 1 - rho*rho))
+                             * (1 - WEB_DEEP*Math.exp(-(a2/WEB_W)*(a2/WEB_W)))
+                             * (1 - THUMB_SET*Math.exp(-((a2-THUMB_A)/THUMB_W)
+                                                      *((a2-THUMB_A)/THUMB_W)));
+    const walkOf = (A,B)=>{
+      const E = 1e-9;
+      if(B <= -1+E) return (A+1)/2*NG;                 // bottom, i ascending
+      if(A >=  1-E) return NG + (B+1)/2*NG;            // right,  j ascending
+      if(B >=  1-E) return 2*NG + (1-(A+1)/2)*NG;      // top,    i descending
+      return 3*NG + (1-(B+1)/2)*NG;                    // left,   j descending
+    };
+    // where the walk starts on the ring: the corner (-1,-1) of the square, sent
+    // through the same square-to-disc map the rim uses, and mirrored with the limb
+    // The walk starts at the square's (-1,-1) corner, which is the ring's own
+    // 5*pi/4. side has left this arithmetic entirely: the ring is already in
+    // anatomical order, so the cap walks it the same way on both hands.
+    const k0 = Math.round(1.25*SEG/2);
+    const capAng = tau => (k0 + tau)/SEG*Math.PI*2;
+    const gid = [];
+    for(let i=0;i<CAP_N;i++){ gid.push([]); for(let j=0;j<CAP_N;j++) gid[i].push(-1); }
+    for(let n=0;n<SEG;n++){
+      const A = n<=NG ? n/NG*2-1 : n<=2*NG ? 1 : n<=3*NG ? (1-(n-2*NG)/NG)*2-1 : -1;
+      const B = n<=NG ? -1 : n<=2*NG ? (n-NG)/NG*2-1 : n<=3*NG ? 1 : (1-(n-3*NG)/NG)*2-1;
+      const i = Math.round((A+1)/2*NG), j = Math.round((B+1)/2*NG);
+      gid[i][j] = rid[RN-1][(k0 + n)%SEG];
+    }
+    const capStart = pos.length/3;     // where the sweep ends and the face begins
+    for(let i=1;i<CAP_N-1;i++) for(let j=1;j<CAP_N-1;j++){
+      if(buried(i,j)) continue;          // inside an opening: nothing would use it
+      const a2 = i/NG*2-1, b2 = j/NG*2-1;
+      const rho = Math.max(Math.abs(a2), Math.abs(b2));
+      // the grid's own centre has no ray to trace out to the rim, so it takes
+      // the pole directly; every other point reads its angle off the boundary
+      const phi = rho > 1e-9 ? capAng(walkOf(a2/rho, b2/rho)) : 0;
+      // rho across the face and sqrt(1-rho^2) along it: a hemisphere, which
+      // leaves the rim travelling parallel to the limb and so continues the
+      // tube it caps instead of meeting it at a corner. Times the web groove,
+      // which is zero at the rim because the same sqrt is zero there.
+      gid[i][j] = pos.length/3;
+      push(sEnd + capRise(a2, rho)/L,
+           Math.cos(phi)*hwP*rho, Math.sin(phi)*hdP*rho);
+      weights(sEnd);
+    }
+    const inHole = (i,j)=>DIG_HOLE.some(h=>i>=h[0]&&i<=h[1]&&j>=h[2]&&j<=h[3]);
+    for(let i=0;i<CAP_N-1;i++) for(let j=0;j<CAP_N-1;j++){
+      if(inHole(i,j)) continue;
+      const A=gid[i][j], B=gid[i+1][j], C=gid[i+1][j+1], D=gid[i][j+1];
+      tri(A, B, C); tri(A, C, D);
+    }
+
+    // ---- the digits ----------------------------------------------------
+    //
+    // Each one is the rim of its opening, swept along a centre-line and closed
+    // with a rounded end. The rim vertices are the CAP'S OWN, not copies, so
+    // every rim edge still has exactly two faces on it -- one cap, one digit --
+    // and the hand is one closed manifold shell with no surface passing through
+    // any other. That is the whole reason to build it this way rather than
+    // merging three tubes into the buffer and hoping.
+    const V3 = i=>[pos[i*3], pos[i*3+1], pos[i*3+2]];
+    const O = pt(sEnd,0,0),
+          AX = ['fwd','across','thru'].map((_,n)=>{
+            const q = n===0 ? pt(sEnd+0.02,0,0) : n===1 ? pt(sEnd,1,0) : pt(sEnd,0,1);
+            const d = [q[0]-O[0], q[1]-O[1], q[2]-O[2]];
+            const m = Math.hypot(d[0],d[1],d[2]) || 1;
+            return [d[0]/m, d[1]/m, d[2]/m];
+          });
+    // One digit: a closed loop of EXISTING vertices, a direction, how far it
+    // runs, the section it ends at and where that section's centre sits. The
+    // loop's vertices are never copied, so every edge of the opening still has
+    // exactly two faces on it -- one palm, one digit -- and the hand stays one
+    // closed manifold shell with nothing passing through anything.
+    const digits = [];
+    const growDigit = (loop, d, len, sec, off)=>{
+      const M = loop.length, P = loop.map(V3);
+      digits.push({ start: pos.length/3, M, rings: DIG_RINGS });
+      const C = [0,1,2].map(c=>P.reduce((a,q)=>a+q[c],0)/M);
+      // AX[1] is already the OUTBOARD direction on either arm -- pt() put the
+      // mirror in -- so d[1] does not carry side a second time.
+      const side2 = [0,1,2].map(c=>
+        AX[0][c]*d[0] + AX[1][c]*d[1] + AX[2][c]*d[2]);
+      const dm = Math.hypot(side2[0],side2[1],side2[2]) || 1;
+      const dir = side2.map(v=>v/dm);
+      // THE DIGIT'S OWN FRAME. across is the axis the digits are spread along
+      // with the component down the digit taken out, so it is perpendicular to
+      // the digit however the digit is angled; through completes the pair.
+      // AX[1] already mirrors -- pt() applies side before anything reads it --
+      // so across needs nothing further and DIG_OFF's first number means the
+      // same anatomical direction on either hand.
+      const proj = (v)=>{ const k=v[0]*dir[0]+v[1]*dir[1]+v[2]*dir[2];
+        const q=[v[0]-dir[0]*k, v[1]-dir[1]*k, v[2]-dir[2]*k];
+        const m=Math.hypot(q[0],q[1],q[2])||1; return q.map(x=>x/m); };
+      const across = proj(AX[1]);
+      // ...and side AGAIN on the cross product. Mirroring two vectors in x and
+      // crossing them gives the mirror of the cross NEGATED -- a cross product
+      // is a pseudovector -- so without this `through` points forward on one
+      // hand and backward on the other. The ellipse term happens to survive it
+      // (its sin flips twice and cancels), which is why this hid until a digit
+      // was first given a non-zero through-offset, and then put that offset on
+      // the wrong side of one thumb. Now `through` is FORWARD on both hands.
+      const through = [side*(dir[1]*across[2]-dir[2]*across[1]),
+                       side*(dir[2]*across[0]-dir[0]*across[2]),
+                       side*(dir[0]*across[1]-dir[1]*across[0])];
+      const HW = sec[0], HD = sec[1];
+      const ctr = [0,1,2].map(c=> across[c]*off[0] + through[c]*off[1]);
+      // ---- THE SECTION IS SAMPLED IN THE LOOP'S OWN ANGULAR ORDER -------
+      //
+      // Every opening vertex needs an angle round the digit at which to read
+      // the stated ellipse. Using the vertex's OWN angle about the digit's
+      // axis looks right and is not: an opening cut out of a CURVED wall --
+      // the thumb's is four ring-rows by fifty-four degrees of the palm's
+      // flank -- has vertices whose angles are not MONOTONIC round the loop,
+      // so the ellipse gets sampled out of order and the ring crosses itself.
+      //
+      // That was 48 of this hand's 85 crossings, and the pair report named
+      // them thumb-against-THUMB. A coordinate would have said only "something
+      // near the thumb"; the fix for a digit folding through itself and the
+      // fix for a digit hitting the palm are opposite ones, and two passes
+      // were spent moving the thumb around before the check could tell them
+      // apart.
+      //
+      // So the angles are unwrapped, forced to advance, and rescaled to close
+      // at exactly one turn. The opening keeps its own angular distribution --
+      // a broad side of the patch still gets its share of the section -- and
+      // the order is monotonic by construction, whatever shape the hole is.
+      const RAW = P.map(p=>{
+        const o = [p[0]-C[0], p[1]-C[1], p[2]-C[2]];
+        const al = o[0]*dir[0] + o[1]*dir[1] + o[2]*dir[2];
+        const q = [o[0]-dir[0]*al, o[1]-dir[1]*al, o[2]-dir[2]*al];
+        return Math.atan2(q[0]*through[0]+q[1]*through[1]+q[2]*through[2],
+                          q[0]*across[0] +q[1]*across[1] +q[2]*across[2]);
+      });
+      const STEP = []; let turn = 0;
+      for(let m=0;m<M;m++){
+        let dd = RAW[(m+1)%M] - RAW[m];
+        while(dd <= -Math.PI) dd += Math.PI*2;
+        while(dd >   Math.PI) dd -= Math.PI*2;
+        STEP.push(dd); turn += dd;
+      }
+      const sgn = turn >= 0 ? 1 : -1;
+      const ADV = STEP.map(dd=>Math.max(1e-3, sgn*dd));
+      const sumA = ADV.reduce((a2,b2)=>a2+b2, 0);
+      const ANG = [RAW[0]];
+      for(let m=1,c2=0;m<M;m++){ c2 += ADV[m-1]; ANG.push(RAW[0] + sgn*Math.PI*2*c2/sumA); }
+      // the dome is sized against the section the digit ENDS at, not against
+      // the opening it starts from: a tip is as round as the finger is wide.
+      const PROF = digProfile(Math.max(HW, HD) / len);
+      let prev = loop;
+      for(let t=0;t<DIG_RINGS;t++){
+        const u = PROF[t][0];
+        const rad = PROF[t][1];
+        const ring2 = [];
+        // THE SECTION TURNS TO FACE ALONG THE DIGIT, AND ROUNDS AS IT GOES.
+        //
+        // Two corrections, both of them about the fact that a digit's outline
+        // is inherited from a rectangular block of the cap's grid and is not
+        // the shape the digit itself should have.
+        //
+        // The first is the shear. The rim lies in the cap's plane, and a digit
+        // that leaves at an angle -- the thumb leaves at about forty-five
+        // degrees -- would otherwise carry that flat section all the way out,
+        // so its tube is sheared and tapers to a wedge instead of closing as a
+        // dome. Taking the component along the axis out of each rim offset
+        // makes the section perpendicular to the digit.
+        //
+        // The second is the outline. An opening cut out of the palm's end or
+        // its flank is whatever shape that block of grid happens to be, and a
+        // tube swept from it keeps those flats and corners all the way to the
+        // tip. So each offset is also eased toward the digit's OWN stated
+        // section, at the angle ANG puts it at, which turns the outline into
+        // the ellipse the digit is meant to have without moving the vertex
+        // count or the weld.
+        //
+        // Both are blended in over the first stretch, because the first ring
+        // IS the opening and has to stay exactly where the palm put it.
+        const bl = Math.min(1, u/0.62);          // how far the shear is removed
+        const rn = Math.min(1, Math.max(0, (u-0.02)/DIG_FLARE));  // and the section
+        for(let m=0;m<M;m++){
+          const o = [P[m][0]-C[0], P[m][1]-C[1], P[m][2]-C[2]];
+          const al = o[0]*dir[0] + o[1]*dir[1] + o[2]*dir[2];
+          const q = [o[0]-dir[0]*al*bl, o[1]-dir[1]*al*bl, o[2]-dir[2]*al*bl];
+          const ca = Math.cos(ANG[m])*HW, sa = Math.sin(ANG[m])*HD;
+          ring2.push(pos.length/3);
+          for(let c=0;c<3;c++){
+            const tg = across[c]*ca + through[c]*sa;
+            pos.push(C[c] + dir[c]*len*u + ctr[c]*rn
+                          + (q[c]*(1-rn) + tg*rn)*rad);
+          }
+        }
+        for(let m=0;m<M;m++) weights(sEnd);
+        for(let m=0;m<M;m++){
+          const m2 = (m+1)%M;
+          tri(prev[m], ring2[m2], ring2[m]);
+          tri(prev[m], prev[m2], ring2[m2]);
+        }
+        prev = ring2;
+      }
+      const apex = pos.length/3;
+      for(let c=0;c<3;c++) pos.push(C[c] + dir[c]*len*DIG_POLE + ctr[c]);
+      weights(sEnd);
+      // The fan closing the tip walks the last ring the SAME way the quad row
+      // below it does, so it has to be wound the other way round -- the same
+      // correction both of this limb's apex fans already carry. Found by
+      // building all four combinations and counting duplicated directed edges:
+      // only this one reaches zero.
+      for(let m=0;m<M;m++) tri(apex, prev[m], prev[(m+1)%M]);
+    };
+
+    // the two fingers, out of the palm's end face
+    DIG_HOLE.forEach((h, n)=>{
+      const [i0,i1,j0,j1] = h, loop = [];
+      for(let i=i0;i<=i1+1;i++)   loop.push(gid[i][j0]);
+      for(let j=j0+1;j<=j1+1;j++) loop.push(gid[i1+1][j]);
+      for(let i=i1;i>=i0;i--)     loop.push(gid[i][j1+1]);
+      for(let j=j1;j>=j0+1;j--)   loop.push(gid[i0][j]);
+      growDigit(loop, DIG_DIR[n], DIG_LEN[n], DIG_SEC[n], DIG_OFF[n]);
+    });
+    // and the thumb, out of the palm's SIDE WALL. The walk goes round the
+    // opening the same way the sweep's own quads are wound -- segment first,
+    // then ring -- so the tube's faces come out facing the same way as the
+    // palm's, on both hands.
+    {
+      const loop = [];
+      for(let d2=0;d2<=tkN;d2++)    loop.push(rid[tj0][K(tk0+d2)]);
+      for(let j=tj0+1;j<=tj1+1;j++) loop.push(rid[j][K(tk0+tkN)]);
+      for(let d2=tkN-1;d2>=0;d2--)  loop.push(rid[tj1+1][K(tk0+d2)]);
+      for(let j=tj1;j>=tj0+1;j--)   loop.push(rid[j][K(tk0)]);
+      growDigit(loop, THUMB_DIR, THUMB_LEN, THUMB_SEC, THUMB_OFF);
+    }
+
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setIndex(idx);
@@ -1263,17 +1507,21 @@
     // at and below the wrist, moved into the HAND bone's own space. It cannot
     // drift from the hand, because it IS the hand.
     const hp = [];
-    for(let j=0;j<RING_S.length;j++){
-      if(RING_S[j] < HAND_S0) continue;
-      for(let k=0;k<SEG;k++){
-        const v = (1 + j*SEG + k)*3;
-        hp.push(pos[v], pos[v+1] + L, pos[v+2]);
-      }
-    }
-    hp.push(pos[last*3], pos[last*3+1] + L, pos[last*3+2]);
+    let probe0 = 1;
+    for(let j=0;j<RN;j++) if(RING_S[j] >= HAND_S0){ probe0 = rid[j].find(v=>v>=0); break; }
+    for(let v=probe0*3; v<pos.length; v+=3) hp.push(pos[v], pos[v+1] + L, pos[v+2]);
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
-    return { geo:g, handProbe:hg,
+    // rings is how many of the leading vertices are the swept ring grid. The
+    // symmetry check needs it to know where the ring-index mirror stops
+    // applying and the cap and digits begin.
+    // digits is where each digit's own vertices start and how many there are
+    // per ring, so a tool can address them without re-deriving the openings --
+    // two statements of the same arithmetic is how tools/hand-topo.mjs came to
+    // be checking a mirror map the gate had stopped using.
+    // mirror: 'identity'. pt() carries side, so both arms emit the same
+    // vertices in the same order with x already negated. See mirrorIndex.
+    return { geo:g, handProbe:hg, rings:RING_S.length, digits, capStart, mirror:'identity',
              weights:{ si:new Uint16Array(si), sw:new Float32Array(sw) } };
   }
 
@@ -1584,7 +1832,13 @@
     }
     const fg = new THREE.BufferGeometry();
     fg.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
-    return { geo:g, footProbe:fg,
+    // mirror: 'ring'. The LEG is still authored in raw section coordinates --
+    // its section is symmetric in x and carries no side, so ring index k is the
+    // same angle on both legs and vertex i's opposite number is the REFLECTED
+    // index. The arm is not authored that way any more (see armGeometry), and
+    // a single mirror rule for both is what made the symmetry check fail on a
+    // leg that had not changed. The limb says which rule it obeys.
+    return { geo:g, footProbe:fg, rings:U.length, mirror:'ring',
              weights:{ si:new Uint16Array(si), sw:new Float32Array(sw) } };
   }
 

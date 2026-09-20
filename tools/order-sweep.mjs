@@ -52,12 +52,21 @@ async function main() {
   page.on('pageerror', (e) => errs.push(String(e && e.message || e)));
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction('window.__dbg && window.__checks', { timeout: 180000 });
+  // QUALITY, for the same reason tools/ci/run-checks.mjs sets it: this runs all
+  // 73 checks in ONE long-lived page, and at default quality the shadow map and
+  // the composer targets are large enough that the browser's footprint climbs
+  // until the machine starts killing things. It is not a weakening of the run --
+  // rendering is already off below, and what these tools measure reads the scene
+  // directly -- it is the difference between the suite finishing and the OOM
+  // killer picking a process.
+  const QUALITY = process.env.SR_QUALITY || 'low';
+  await page.evaluate((q) => window.__dbg.quality(q), QUALITY);
   const order = ORDER === 'reverse' ? 'reverse' : Number(ORDER);
   const r = await page.evaluate((o) => {
     window.__noRender = true;
     return window.__checks.run({ order: o });
   }, order);
-  console.log(`order=${ORDER}  ${r.passed} passed, ${r.failed} failed`);
+  console.log(`order=${ORDER}  quality=${QUALITY}  ${r.passed} passed, ${r.failed} failed`);
   for (const line of r.results) if (line.startsWith('FAIL')) console.log(`  ${line}`);
   if (errs.length) { console.log('PAGE ERRORS:'); errs.forEach((e) => console.log(`  ${e}`)); }
   await shutdown();
