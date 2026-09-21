@@ -6698,8 +6698,22 @@
     if($('mlNote').textContent.indexOf('1 / 2') < 0)
       bad.push('the loader does not say who it is waiting for: "'+$('mlNote').textContent+'"');
 
-    // The server's instant is used VERBATIM. The client does not get to choose,
-    // round, extend or shorten it.
+    // NO CLOCK ESTIMATE YET, which is the state a client is in when the server
+    // pushes state on its own tick before any sample has come back. The
+    // remaining time has to come out of the message rather than out of an
+    // offset that is still zero -- subtracting nothing from an epoch
+    // millisecond asks the player to wait about fifty-five years.
+    pmClock.synced = false; pmClock.offset = 0;
+    pmOnState({ phase:'countdown', roster:[{id:'a',ready:true}], readyCount:1, requiredCount:1,
+                raceStartAt: 1.7e12 + 10000, serverNow: 1.7e12 });
+    const unsynced = pm.startAt - pmNow();
+    if(!(unsynced > 9000 && unsynced < 11000))
+      bad.push('with no clock estimate the countdown is '+Math.round(unsynced)+'ms, wanted about 10000');
+
+    // The server's instant is used VERBATIM once there IS an estimate. The
+    // client does not get to choose, round, extend or shorten it.
+    pm.phase = 'waiting'; pm.startAt = null;
+    pmClock.synced = true; pmClock.offset = 0;
     const at = window.__T * 1000 + 10000;
     pmOnState({ phase:'countdown', roster:[{id:'a',ready:true},{id:'b',ready:true}],
                 readyCount:2, requiredCount:2, raceStartAt: at, serverNow:0 });
@@ -6762,6 +6776,49 @@
              detail: bad.length ? bad.join('; ') : spots.length+' points land on the loader, nothing live beneath' };
   }
 
+  // ---------- | : the race starts in a tab nobody is looking at ----------
+  // requestAnimationFrame does not fire AT ALL in a hidden tab, and the main
+  // loop -- which is where pmTick is driven from -- is rAF. So this stubs rAF
+  // to never call back, which is what a backgrounded tab actually does, and
+  // asserts the race still starts.
+  //
+  // It has to wait in REAL time: the whole point is the path that does not go
+  // through the harness's own tick. Without the interval in pmStartCountdown
+  // this hangs until its own deadline and reports the stall, which is the
+  // signal -- a headless page counts as visible, so nothing else here can tell
+  // the difference.
+  async function checkPrematchHiddenTab(){
+    const bad = [];
+    wipeRoundState();
+    window.__forceMap = 'sunny';
+    prepareRoundNow(1, null);
+
+    const realRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = function(){ return 0; };   // a frame that never comes
+    let waited = 0;
+    try{
+      // Due in a moment, measured on the clock the interval will read.
+      pmStartCountdown(pmNow() + 300, 'local');
+      if(pm.shown === null) bad.push('the countdown opened without saying a number');
+      if($('mlCountNum').textContent === '10' && pm.shown !== 10)
+        bad.push('the box still reads its placeholder rather than the countdown');
+
+      const t0 = Date.now();
+      while(state !== 'racing' && Date.now() - t0 < 4000){
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(r => setTimeout(r, 50));
+      }
+      waited = Date.now() - t0;
+      if(state !== 'racing') bad.push('no frame ever came and the race never started (waited '+waited+'ms)');
+    } finally {
+      window.requestAnimationFrame = realRaf;
+      if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
+    }
+    return { name:'| pre-match: the race starts in a hidden tab, where no frame ever comes',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'started '+waited+'ms after the instant, on no frames at all' };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -6796,7 +6853,8 @@
       // nothing moves before the instant, the server owns it, and exactly
       // one thing is in the foreground while it is up.
       ['(',checkPrematchReadiness],[')',checkPrematchCountdown],
-      ['[',checkPrematchLock],[']',checkPrematchAuthority],['_',checkPrematchExclusive]
+      ['[',checkPrematchLock],[']',checkPrematchAuthority],['_',checkPrematchExclusive],
+      ['|',checkPrematchHiddenTab]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

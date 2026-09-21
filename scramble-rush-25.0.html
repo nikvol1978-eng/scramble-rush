@@ -16309,7 +16309,7 @@ const QUALITY = {
   // where the timestamp comes from differs.
   const PM_COUNTDOWN_MS = 10000;
   const PM_SOLO_MS      = 3000;
-  const PM_SYNC_TRIES   = 4;      // clock samples; the lowest round trip wins
+  const PM_SYNC_TRIES   = 3;      // clock samples; the lowest round trip wins
   const PM_JOIN_MS      = 4000;   // how long to wait on the server before going it alone
   const PM_MAX_LATE_S   = 1.5;    // the most of a race a late first frame may inherit
 
@@ -16328,7 +16328,7 @@ const QUALITY = {
   const pm = {
     open:false, phase:'idle', authority:'local',
     round:1, map:null, matchId:null, startAt:null,
-    ready:false, shown:null, survivors:null, retryable:false,
+    ready:false, shown:null, survivors:null, retryable:false, timer:null,
     flags:{ profileReady:false, mapReady:false, sceneReady:false, racerReady:false, sessionReady:false },
   };
 
@@ -16458,6 +16458,7 @@ const QUALITY = {
 
   function pmClose(){
     pm.open = false;
+    if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
     // RACE is handed back the moment there is no match being prepared -- on the
     // start instant, on BACK, and on a failure. One place, so it cannot be left
     // dead on a path somebody forgot.
@@ -16484,7 +16485,24 @@ const QUALITY = {
     if(s.phase === 'countdown' && typeof s.raceStartAt === 'number' && pm.phase !== 'countdown'){
       // The server's instant, brought into this page's clock ONCE. From here on
       // the countdown reads a local timestamp every frame; nothing decrements.
-      pmStartCountdown(s.raceStartAt - pmClock.offset, 'server');
+      //
+      // TWO WAYS TO CROSS THE CLOCKS, and the second is not a nicety. The
+      // offset is the better one -- it is an estimate built from several round
+      // trips and it stays right as the countdown runs. But it is only
+      // meaningful once a sample has come back, and `sr:state` can arrive
+      // before that: the server pushes state on its own tick, not in reply to
+      // anything this client did. Converting with an unset offset subtracts
+      // nothing from an epoch millisecond and asks the player to wait about
+      // fifty-five years.
+      //
+      // So when there is no estimate yet, the REMAINING time is taken straight
+      // out of the message -- every state carries serverNow beside raceStartAt
+      // precisely so the difference can be read without a shared clock. The
+      // only error left is the one-way trip, which is milliseconds.
+      const local = pmClock.synced
+        ? (s.raceStartAt - pmClock.offset)
+        : pmNow() + Math.max(0, s.raceStartAt - (typeof s.serverNow === 'number' ? s.serverNow : s.raceStartAt));
+      pmStartCountdown(local, 'server');
     }
   }
 
@@ -16493,6 +16511,35 @@ const QUALITY = {
     pm.authority = authority;
     pm.startAt = localStartAt;
     pm.shown = null;
+
+    // THE RACE MUST START IN A TAB NOBODY IS LOOKING AT.
+    //
+    // pmTick is driven from the main loop, and the main loop is
+    // requestAnimationFrame. rAF does not fire AT ALL in a hidden tab -- not
+    // slowly, not at all -- so a player who glances at another tab during the
+    // countdown never reaches the start instant. In multiplayer everyone else
+    // starts on the server's timestamp and that client sits on the loader
+    // forever: the dead-client case this feature exists to prevent, except it
+    // is the client itself that is stuck.
+    //
+    // Found in production, not here: a headless page counts as visible, so
+    // every local run had frames. On nikcade with the window behind another
+    // one, document.hidden was true, no frame ever came, and the countdown
+    // stayed on its opening number indefinitely.
+    //
+    // setInterval IS throttled in a background tab -- to about once a second --
+    // but it still fires, and that is the whole difference. The number is
+    // derived from the timestamp rather than counted, so a coarse tick costs
+    // nothing: the moment the tab comes forward rAF resumes and the display is
+    // instantly right again. The same lesson bootFrame learned, one layer up.
+    if(pm.timer) clearInterval(pm.timer);
+    pm.timer = setInterval(()=>{ try{ pmTick(); }catch(e){} }, 250);
+
+    // ...and say the right number NOW rather than on the first frame. The box
+    // ships with a placeholder in it, and until something wrote over it the
+    // screen showed that placeholder -- a flash of "10" in front of a solo
+    // three-count, and in a hidden tab the only number ever displayed.
+    pmTick(pmNow());
     // THE DEGRADED PATH. No coordinator, but there are peers: the host's clock
     // is the next best authority, and it is the one the game already
     // synchronises obstacles against through mp.tOffset. What goes on the wire
@@ -16545,7 +16592,7 @@ const QUALITY = {
     const t = (typeof now === 'number') ? now : pmNow();
     const late = Math.min(PM_MAX_LATE_S, Math.max(0, t - pm.startAt) / 1000);
     pm.phase = 'racing';
-    pmClose();
+    pmClose();                                  // also stops the countdown timer
     if(typeof $ === 'function'){
       $('hud').classList.remove('hidden');
       if(settings && settings.touch !== undefined) $('touchControls').classList.toggle('hidden', !settings.touch);
@@ -16602,7 +16649,6 @@ const QUALITY = {
     const sock = pmSocket();
     if(!sock){ pm.flags.sessionReady = true; return 'peer'; }
 
-    await pmSyncClock(sock);
     // One match per ROUND, so round two re-gathers and nobody carries a ready
     // flag across from a course that no longer exists.
     const code = `${String(mp.code || 'SOLO')}-R${pm.round}`;
@@ -16611,7 +16657,14 @@ const QUALITY = {
     // decides everything else. The declaration can only ever make the match
     // wait LONGER, never start sooner.
     const expect = (mp.role === 'host') ? (mp.conns.filter(c=>c.open).length + 1) : undefined;
-    const r = await pmAsk(sock, 'sr:join', { code, expect }, PM_JOIN_MS);
+    // BOTH AT ONCE. These do not depend on each other, and run one after the
+    // other they put the sum of two round trips in front of every race --
+    // measured at about seven seconds of "SYNCING PLAYERS" on production's
+    // polling transport, on top of the ten the countdown already asks for.
+    const [r] = await Promise.all([
+      pmAsk(sock, 'sr:join', { code, expect }, PM_JOIN_MS),
+      pmSyncClock(sock),
+    ]);
     if(!r || r.error || !r.matchId){
       // The server is unreachable or refused. Rather than hanging the race on
       // it, fall back to the PeerJS host's clock -- the authority the game had
