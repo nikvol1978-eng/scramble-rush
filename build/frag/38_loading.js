@@ -1,22 +1,17 @@
   // ============================================================
   // LOADING  (v25 §7)
   // ============================================================
-  // Two loading contexts, two treatments, because they answer two different
-  // questions.
+  // THE ROUND BRIEFING answers "what am I about to play?". Course name, a
+  // picture of it, the mode, and the one line of advice the map carries. It
+  // adds no delay -- it rides the 2600ms the round already waited.
   //
-  //   1. THE BOOT SCREEN answers "is it coming?". It is up before the game
-  //      exists, so it is plain HTML and CSS in the document head's markup --
-  //      no three.js, no fonts required -- and it is taken down by the game as
-  //      soon as the lobby can be drawn. It shows a real indeterminate spinner
-  //      rather than a progress bar, because nothing here can honestly say what
-  //      fraction of the work is done, and a bar that fakes it is worse than no
-  //      bar at all.
-  //
-  //   2. THE ROUND BRIEFING answers "what am I about to play?". Course name,
-  //      a picture of it, the mode, and the one line of advice the map carries.
-  //
-  // Neither adds a delay. The boot screen is removed on the frame the lobby is
-  // ready; the briefing rides the 2600ms the round already waited.
+  // The startup loader used to live here too, as a boot screen taken down on
+  // the load event plus a hundred milliseconds. It has moved to 39_startup.js
+  // and grown into something that waits on the work rather than on an event
+  // that only means "the subresources arrived". The two are deliberately kept
+  // apart: this one is about the ROUND, that one is about the SESSION, and
+  // when they shared a file they also shared a name and got confused for one
+  // another. v26 §1 has the details.
 
   function fillMapIntro(map){
     if(!map) return;
@@ -40,15 +35,11 @@
     if(art && typeof cardArt === 'function') art.setAttribute('style', cardArt(map));
   }
 
-  // ---- the boot screen ---------------------------------------------------
-  // Taken down once, from whichever comes first: the lobby being ready, or the
-  // load event as a backstop. Removing it rather than hiding it means it cannot
-  // later come back or trap a click.
-  function clearBootScreen(){
-    const b = document.getElementById('bootScreen');
-    if(!b) return;
-    b.classList.add('gone');
-    // after the fade, out of the document entirely
-    setTimeout(()=>{ if(b.parentNode) b.parentNode.removeChild(b); }, 420);
-  }
-  window.addEventListener('load', ()=>{ setTimeout(clearBootScreen, 100); });
+  // The loader used to be taken down from here, on the load event plus a
+  // hundred milliseconds. Deleted, and not merely bypassed: it was still
+  // firing alongside the new sequence and won, because the load event arrives
+  // long before the work is done. Measured, with both in place: the loader
+  // vanished at 7.2s and MODE SELECT did not arrive until 8.9s, so for a second
+  // and a half the player had a bare 3D canvas and no UI at all -- the exact
+  // hole this release exists to close. 39_startup.js owns the loader. There is
+  // one remover and it runs when the work is finished.

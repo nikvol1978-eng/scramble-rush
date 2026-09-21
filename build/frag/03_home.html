@@ -79,7 +79,14 @@
 </div>
 
 <!-- ================= HOME (lobby) ================= -->
-<div id="home" class="screen lobby">
+<!-- v26 §1: SHIPPED HIDDEN. Every other screen in this file starts hidden and
+     the lobby did not, so from the moment the body parsed until the startup
+     sequence got a turn -- three and a half seconds, measured -- the lobby was
+     a live screen with focusable controls sitting under the loader. Never
+     visible, because the loader covers it; but "not visible" and "not there"
+     are different answers to a tab key and to a screen reader. goHome() still
+     reveals it exactly as before. -->
+<div id="home" class="screen lobby hidden">
   <div class="lobbyTop">
     <div class="lobbyBrand">
       <h1 class="title wordmark"><span class="w1">SCRAMBLE</span><span class="w2">RUSH</span></h1>

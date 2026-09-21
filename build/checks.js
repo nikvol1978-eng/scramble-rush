@@ -6086,6 +6086,146 @@
   }
 
 
+  // ---- [-] the startup loader --------------------------------------------
+  // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
+  // A loader that transitions on a timer is the failure worth guarding
+  // against: it shows a half-built screen to whoever is slow, which is
+  // whoever most needed the loader.
+  //
+  // This drives the REAL startupSequence. What it injects is its gates and its
+  // clock, because waiting five real seconds four times over is thirty seconds
+  // of suite for a rule that is the same rule at any scale -- the code path
+  // through the sequence is identical, and nothing in it branches on being
+  // tested. One scenario runs a gate that resolves at once, one runs a gate
+  // that outlasts the minimum, one throws, and the last is about what the
+  // handoff leaves behind.
+  async function checkStartup(){
+    const bad = [], notes = [];
+    const live = ()=> [...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null)
+      .map(e => e.id);
+    const wait = (ms)=> new Promise(r => setTimeout(r, ms));
+    const loaderUp = ()=> !!$('bootScreen');
+    const gate = (ms, extra)=> Object.assign({ msg:'Working…', required:true,
+                                               run: ()=> wait(ms) }, extra || {});
+    try{
+      // START FROM THE MENU, not from wherever the previous check finished.
+      // The sequence closes MENU_SCREENS, and #results, #gameover, #pause and
+      // #lobby are deliberately not in that list -- a round owns those. Run
+      // this after a check that finishes a race and #results is still up: CI
+      // shard 5 did exactly that and reported "a failed start left results
+      // live behind the error", which was true and had nothing to do with
+      // startup. goHome() is the game's own way back to a clean menu.
+      goHome();
+      state = 'menu';
+
+      // NOT SAMPLED ON A TIMER. The first version of this raced a 350ms probe
+      // against a 900ms handoff and went flaky the moment the page was busy --
+      // timers skew under load and this page blocks for three seconds at a
+      // time, so the probe landed AFTER the handoff and reported the selection
+      // screen as having appeared during the load. Both halves of the rule are
+      // measured instead: what the DURATION was, and what was on screen at a
+      // point in the sequence rather than at a point on the clock. A spy gate
+      // is a real gate -- the sequence cannot tell it apart from the ones that
+      // wait on fonts -- and it runs exactly where it is placed.
+      const spy = (into)=> ({ msg:'Working…', required:true, run: ()=>{
+        into.loader = loaderUp(); into.live = live();
+        return Promise.resolve();
+      } });
+
+      // 1. FAST: the work is done almost at once, so the MINIMUM is the only
+      //    thing holding the screen -- and it must actually hold it.
+      //    The minimum is set WELL ABOVE the cost of the handoff itself. The
+      //    handoff rebuilds the character preview and fades, which is about
+      //    1.2s on a software renderer, and a 900ms minimum disappeared inside
+      //    it: the duration stayed over 900ms with the minimum deleted, so the
+      //    check went green on the very bug it is here for. 2600 against 1200
+      //    leaves a gap nothing can close by accident.
+      bootRemount();
+      const seenFast = {};
+      let t = performance.now();
+      await startupSequence({ t0:t, minMs:2600, holdMs:80, gates:[gate(0), spy(seenFast)] });
+      let took = performance.now() - t;
+      if(took < 2500) bad.push('a fast start handed over after ' + Math.round(took) + 'ms, inside its 2600ms minimum');
+      if(!seenFast.loader) bad.push('the loader was already gone while the gates were still running');
+      if(seenFast.live && seenFast.live.length) bad.push('during the load these were live: ' + seenFast.live.join(', '));
+      if(loaderUp()) bad.push('the loader is still in the document after a fast start');
+      let up = live();
+      if(up.length !== 1 || up[0] !== 'modeSelect')
+        bad.push('a fast start ended on [' + (up.join(', ') || 'nothing') + '], wanted [modeSelect]');
+      notes.push('fast: held ' + Math.round(took) + 'ms for a 2600ms floor');
+
+      // 2. SLOW: the work outlasts the minimum, so the WORK is what holds it.
+      //    A timer running out is not permission to hand over.
+      bootRemount();
+      const seenSlow = {};
+      t = performance.now();
+      await startupSequence({ t0:t, minMs:120, holdMs:40, gates:[gate(700), spy(seenSlow)] });
+      took = performance.now() - t;
+      if(took < 690) bad.push('a 700ms gate was cut short at ' + Math.round(took) + 'ms by a 120ms minimum');
+      if(!seenSlow.loader) bad.push('a slow gate lost the loader while it was still working');
+      if(seenSlow.live && seenSlow.live.length) bad.push('a slow start showed ' + seenSlow.live.join(', ') + ' before it was ready');
+      up = live();
+      if(up.length !== 1 || up[0] !== 'modeSelect')
+        bad.push('a slow start ended on [' + (up.join(', ') || 'nothing') + ']');
+      notes.push('slow: waited ' + Math.round(took) + 'ms for a 700ms gate');
+
+      // 3. FAILURE: a required gate throws. The player gets told, and gets a
+      //    way out. What they do not get is the game behind a broken screen.
+      bootRemount();
+      const failed = await startupSequence({ t0:performance.now(), minMs:60, holdMs:40,
+        gates:[ { msg:'Loading profile…', required:true, fail:'Unable to load your profile.',
+                  run: ()=> Promise.reject(new Error('nope')) } ] });
+      if(failed !== false) bad.push('a failed required gate still reported success');
+      const box = $('bootFail');
+      if(!box || box.classList.contains('hidden')) bad.push('a required gate failed with no error shown');
+      else if(!/unable to load your profile/i.test(($('bootFailMsg')||{}).textContent||''))
+        bad.push('the error does not say what failed');
+      if(!$('bootRetry')) bad.push('the error state offers no retry');
+      if(!$('bootFailHome')) bad.push('the error state offers no way back to Nikcade');
+      if(!loaderUp()) bad.push('the loader came down on a failure, exposing the game behind it');
+      if(live().length) bad.push('a failed start left ' + live().join(', ') + ' live behind the error');
+      notes.push('failure: error shown, nothing behind it');
+
+      // 4. AND WHAT THE HANDOFF LEAVES. The loader sits at z-index 200 over
+      //    everything; hiding it rather than removing it would leave a
+      //    full-screen sheet eating every click on the screen it just
+      //    revealed. So: gone from the document, and the mode picker's own
+      //    controls answer to a click at their own centre.
+      bootRemount();
+      await startupSequence({ t0:performance.now(), minMs:60, holdMs:40, gates:[gate(0)] });
+      if($('bootScreen')) bad.push('the loader is hidden rather than removed');
+      for(const id of ['modeGo','modeBack']){
+        const b = $(id);
+        if(!b){ bad.push('no #' + id + ' after the handoff'); continue; }
+        const r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(Math.round(r.left + r.width/2), Math.round(r.top + r.height/2));
+        if(!hit || !b.contains(hit))
+          bad.push('#' + id + ' is covered by ' + (hit ? (hit.id ? '#'+hit.id : hit.tagName) : 'nothing'));
+      }
+      if(!document.querySelectorAll('#modeGrid .modeCard').length)
+        bad.push('the mode picker handed over with no modes in it');
+      notes.push('handoff: loader removed, controls clickable');
+      // 5. AND THIS CHECK CLEANS UP AFTER ITSELF, provably.
+      //    The loader is a fixed sheet at z-index 200. One left in the
+      //    document does not fail here -- it fails whatever check runs next,
+      //    somewhere else entirely, with a message about a locker tab being
+      //    covered by div.bootStage. That is a bad day for whoever reads it,
+      //    so the leak is caught where it is caused.
+      const leaked = document.querySelectorAll('#bootScreen').length;
+      if(leaked) bad.push(leaked + ' loader(s) left in the document for the next check to trip over');
+    } finally {
+      for(const b of [...document.querySelectorAll('#bootScreen')]){
+        if(b.parentNode) b.parentNode.removeChild(b);
+      }
+      try{ closeModeSelect(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'- startup: it waits for the work AND for the minimum, then hands over clean',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,6).join('; ') : notes.join('; ') };
+  }
+
+
   // ---- ['] the catalogue -------------------------------------------------
   // Cosmetics and badges are data, and data is where a typo becomes an item
   // nobody can ever own. This walks the whole catalogue and asserts the things
@@ -6312,7 +6452,7 @@
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
-      [',',checkSpinRowStill]
+      [',',checkSpinRowStill],['-',checkStartup]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
@@ -6352,6 +6492,16 @@
         all = all.slice();
         for(let i=all.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); const t=all[i]; all[i]=all[j]; all[j]=t; }
       }
+      // NOTHING RUNS WHILE THE GAME IS STILL BOOTING.
+      // Startup takes about five seconds now and moves the page while it does
+      // it. The suite used to begin the instant window.__checks existed, which
+      // is well inside that -- so ["] measured the locker's tabs through the
+      // real loader and reported them covered by div.bootStage, and [-] had
+      // the real handoff open MODE SELECT in the middle of its own scenario.
+      // Neither was a wrong measurement; both were measurements of a page that
+      // had not finished appearing. One await, in the one place every check
+      // goes through, rather than a wait bolted onto each runner.
+      await bootDone;
       // Before anything is measured, and once per page. See warmCaches.
       warmCaches();
       const results = [];
