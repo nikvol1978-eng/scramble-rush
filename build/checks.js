@@ -3442,6 +3442,15 @@
     winRound();
     const title = (document.querySelector('#results .title')||{}).textContent || '';
     const ok = seq[0]===24 && seq[1]===16 && seq[2]===8 && /VICTORY/.test(title);
+    // PUT THE PAGE BACK. This is the one check that deliberately ends on the
+    // victory screen, and it left it up. Every begin() hides #results on its
+    // way in, so in registration order the next check cleaned up after this one
+    // and the dependency was invisible -- until a shuffled run put ["], which
+    // asserts that exactly one primary screen is live and does not call
+    // begin(), immediately after it. It then found [locker, results] and was
+    // right to. The assertions above are already made; the screen is not
+    // evidence any more.
+    try{ goHome(); }catch(e){}
     return { name:'H match cuts 24 -> 16 -> 8 -> victory', pass: ok,
              detail: seq.join(' -> ')+' -> '+title };
   }
@@ -6442,6 +6451,25 @@
     const live = ()=> [...document.querySelectorAll('.screen')]
       .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null)
       .map(e => e.id);
+
+    // WHAT THIS INHERITED, and then a clean start.
+    //
+    // This check walks from the lobby to each primary screen and asserts that
+    // exactly the screen it asked for is live. That question presupposes it
+    // begins in the lobby -- it does not call begin(), so unlike every other
+    // check nothing clears the page for it, and in a shuffled run it can land
+    // straight after a check that ended on the results screen. It then reports
+    // [locker, results] and blames the navigation, which is not where the
+    // screen came from.
+    //
+    // The inherited state is recorded rather than silently discarded, because
+    // "who left this here" is the question a failure raises and the answer used
+    // to be unobtainable without re-running the whole sweep.
+    const inherited = live();
+    if(inherited.length && !(inherited.length === 1 && inherited[0] === 'home')){
+      notes.push('entered with [' + inherited.join(', ') + '] live');
+    }
+    try{ goHome(); }catch(e){}
     const strip = ()=> [...document.querySelectorAll('.tabPill.sel')].map(p=>p.dataset.lobby);
     // COUNTING SCREENS IS NOT ENOUGH, because a screen that is up but cannot
     // be clicked is not up. When #settings stayed live under #daily, the
