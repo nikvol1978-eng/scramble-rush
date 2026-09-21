@@ -6050,34 +6050,81 @@
 
 
   // ---- ["] one screen at a time, from anywhere -------------------------
-  // EVERY tab opened FROM EVERY OTHER TAB, by CLICKING THE REAL PILL.
+  // EVERY PRIMARY SCREEN opened FROM EVERY OTHER ONE, by CLICKING THE REAL
+  // CONTROL.
   //
   // Both halves of that matter, and the second one was learned the hard way.
   //
-  // FROM EVERY OTHER TAB, because opening Settings from the lobby was always
+  // FROM EVERY OTHER ONE, because opening Settings from the lobby was always
   // fine -- it was opening it from Badges that left both screens live. Every
   // existing test and every screenshot returned to the lobby between screens,
   // so none of them could see it.
   //
-  // BY CLICKING THE PILL, because the first version of this check called
+  // BY CLICKING THE CONTROL, because the first version of this check called
   // openLobbyTab() directly and PASSED with the defect still in place.
   // openLobbyTab was never the broken part: #settingsBtn carried its own
   // handler that hid #home and nothing else, and calling the router by hand
   // walked straight past it. A check that cannot fail is not a check.
-  const SCREEN_PILLS = [
-    ['play', 'tabPlay'], ['locker', 'profileBtn'], ['badges', 'badgesBtn'],
-    ['shop', 'shopBtn'], ['pass', 'passBtn'], ['settings', 'settingsBtn'],
+  //
+  // EVERY TRIGGER, NOT EVERY PILL. That distinction is the third lesson and it
+  // cost a release. This walked SCREEN_PILLS -- the six things with a
+  // .tabPill class -- and DAILY SPIN is opened by #dailyBtn, which sits in the
+  // same strip wearing .dailyBadge instead. It was therefore the one primary
+  // screen whose trigger nothing here ever pressed, and openDaily() still did
+  // what #settingsBtn used to do: hide #home, show itself, and leave whatever
+  // was actually up still up. #dailyBtn lives in #menuChrome, the shell EVERY
+  // menu screen sits in, so "whatever was up" is any of the six. The list is
+  // of TRIGGERS now. A trigger is anything that puts a primary screen up, and
+  // the fourth column is what the strip should say once it has.
+  const SCREEN_TRIGGERS = [
+    ['play',     'tabPlay',     'home',     'play'],
+    ['locker',   'profileBtn',  'locker',   'locker'],
+    ['badges',   'badgesBtn',   'badges',   'badges'],
+    ['shop',     'shopBtn',     'shop',     'shop'],
+    ['pass',     'passBtn',     'pass',     'pass'],
+    ['settings', 'settingsBtn', 'settings', 'settings'],
+    // The wheel is not a tab -- there is no DAILY pill to light up -- and BACK
+    // out of it lands on the lobby, so PLAY is what the strip should read
+    // while it is up. Anything else means the strip is still pointing at the
+    // screen you left, which is the same disagreement in a quieter form.
+    ['daily',    'dailyBtn',    'daily',    'play'],
   ];
   function checkOneScreen(){
     const bad = [], notes = [];
     const live = ()=> [...document.querySelectorAll('.screen')]
       .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null)
       .map(e => e.id);
+    const strip = ()=> [...document.querySelectorAll('.tabPill.sel')].map(p=>p.dataset.lobby);
+    // COUNTING SCREENS IS NOT ENOUGH, because a screen that is up but cannot
+    // be clicked is not up. When #settings stayed live under #daily, the
+    // settings grid sat over the SPIN button and elementFromPoint at the
+    // button's own centre returned #settingsGrid: the wheel was not merely
+    // stacked, it was unusable. So every control the open screen offers has
+    // to answer to a click at its own centre, or something is lying in front
+    // of it -- a stale screen, a modal that was never torn down, a backdrop.
+    const covered = (scr)=>{
+      const out = [];
+      if(!scr) return out;
+      const btns = [...scr.querySelectorAll('button')]
+        .filter(b => b.offsetParent !== null && b.getBoundingClientRect().width > 2);
+      for(const b of btns.slice(0, 4)){
+        const r = b.getBoundingClientRect();
+        const cx = Math.round(r.left + r.width/2), cy = Math.round(r.top + r.height/2);
+        // off the viewport is a layout question, not a blocking one
+        if(cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) continue;
+        const hit = document.elementFromPoint(cx, cy);
+        if(hit && b.contains(hit)) continue;
+        const who = !hit ? 'nothing at all'
+                  : (hit.id ? '#' + hit.id : hit.tagName.toLowerCase() + '.' + (hit.className || '?'));
+        out.push((b.id ? '#' + b.id : '.' + (b.className || '?')) + ' is covered by ' + who);
+      }
+      return out;
+    };
     try{
       state = 'menu';
       let pairs = 0;
-      for(const [fromName, fromId] of SCREEN_PILLS){
-        for(const [toName, toId] of SCREEN_PILLS){
+      for(const [fromName, fromId] of SCREEN_TRIGGERS){
+        for(const [toName, toId, toScreen, toStrip] of SCREEN_TRIGGERS){
           if(fromName === toName) continue;
           const a = $(fromId), b = $(toId);
           if(!a){ bad.push('no #' + fromId + ' to click'); continue; }
@@ -6085,22 +6132,48 @@
           a.click();
           b.click();
           pairs++;
+          const where = toName + ' from ' + fromName;
           const up = live();
-          if(up.length !== 1){
-            bad.push(toName + ' from ' + fromName + ' left ' + (up.length || 'no')
-                     + ' screens up: ' + (up.join(', ') || 'none'));
+          // exactly one, and the RIGHT one: a count alone would have called
+          // [daily, settings] a pass had the loser been the one to close.
+          if(up.length !== 1 || up[0] !== toScreen){
+            bad.push(where + ' left [' + (up.join(', ') || 'nothing')
+                     + '], wanted [' + toScreen + ']');
           }
           // and the strip has to agree about where you are
-          const sel = [...document.querySelectorAll('.tabPill.sel')].map(p=>p.dataset.lobby);
-          if(sel.length !== 1) bad.push(toName + ' from ' + fromName + ': strip shows ' + sel.length + ' selected');
-          else if(sel[0] !== toName) bad.push(toName + ' from ' + fromName + ': strip says ' + sel[0]);
+          const sel = strip();
+          if(sel.length !== 1) bad.push(where + ': strip shows ' + sel.length + ' selected');
+          else if(sel[0] !== toStrip) bad.push(where + ': strip says ' + sel[0] + ', wanted ' + toStrip);
+          for(const m of covered($(toScreen))) bad.push(where + ': ' + m);
         }
       }
-      notes.push(pairs + ' tab pairs walked by clicking');
+      notes.push(pairs + ' screen pairs walked by clicking');
+
+      // AND BACK OUT AGAIN, from wherever you opened it. The wheel's BACK
+      // button is the one way out of it, and leaving by it has to land you in
+      // the lobby with nothing resurrected behind -- not on the screen you
+      // came from, and not on the lobby with the strip still pointing at it.
+      let backs = 0;
+      for(const [fromName, fromId] of SCREEN_TRIGGERS){
+        if(fromName === 'daily') continue;
+        $(fromId).click();
+        $('dailyBtn').click();
+        $('dailyBackBtn').click();
+        backs++;
+        const up = live(), sel = strip();
+        const where = 'BACK out of daily opened from ' + fromName;
+        if(up.length !== 1 || up[0] !== 'home'){
+          bad.push(where + ' left [' + (up.join(', ') || 'nothing') + '], wanted [home]');
+        }
+        if(sel.length !== 1) bad.push(where + ': strip shows ' + sel.length + ' selected');
+        else if(sel[0] !== 'play') bad.push(where + ': strip says ' + sel[0] + ', wanted play');
+        for(const m of covered($('home'))) bad.push(where + ': ' + m);
+      }
+      notes.push(backs + ' returns from the wheel');
     } finally {
       try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
     }
-    return { name:'" one primary screen, whichever tab you came from',
+    return { name:'" one primary screen, whichever control you came from',
              pass: bad.length===0, detail: bad.length ? bad.slice(0,6).join('; ') : notes.join('; ') };
   }
 
