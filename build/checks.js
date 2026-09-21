@@ -6109,6 +6109,14 @@
     const gate = (ms, extra)=> Object.assign({ msg:'Working…', required:true,
                                                run: ()=> wait(ms) }, extra || {});
     try{
+      // START FROM THE MENU, not from wherever the previous check finished.
+      // The sequence closes MENU_SCREENS, and #results, #gameover, #pause and
+      // #lobby are deliberately not in that list -- a round owns those. Run
+      // this after a check that finishes a race and #results is still up: CI
+      // shard 5 did exactly that and reported "a failed start left results
+      // live behind the error", which was true and had nothing to do with
+      // startup. goHome() is the game's own way back to a clean menu.
+      goHome();
       state = 'menu';
 
       // NOT SAMPLED ON A TIMER. The first version of this raced a 350ms probe
