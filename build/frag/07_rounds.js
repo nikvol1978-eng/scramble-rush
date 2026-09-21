@@ -131,15 +131,33 @@
   }
   function hideMapLoader(){ const h=$('mapLoader'); if(h) h.classList.add('hidden'); }
 
+  // Synchronous for every caller -- the round flow, the lobby and the client's
+  // roundStart handler all just call this -- while the preparation it waits on
+  // happens in prepareRound. Nothing that starts a round had to change.
+  // ONE MATCH AT A TIME. A second request while one is still being prepared is
+  // ignored rather than queued: it would generate a second course over the top
+  // of the first and leave two things able to start a race. prepareRoundNow is
+  // deliberately NOT guarded -- it is the explicit runner, and a caller that
+  // names it is saying it wants this round now.
   function startRound(n, survivors){
-    // The round reward toast ("+25 ROUND 1 survived") is a chip that belongs to
-    // the round that paid it, and it was still on screen over the next round's
-    // intro. v20 fixed this by patching index.html's startRound -- but the
-    // round-flow cut replaces that whole function with this one, so the patch
-    // was deleted at build time and had never actually run. It lives here now,
-    // in the startRound that ships.
-    coinPops.length = 0; renderCoinPops(0);
-    round=n;
+    if(pm.open) return;
+    prepareRound(n, survivors);
+  }
+
+  // v27 SS1: THE LOADER OPENS BEFORE THE WORK, NOT AFTER IT.
+  //
+  // Everything here used to run to completion and THEN set `state='loading'`
+  // and start a reel, which is the whole reason that screen could only ever be
+  // decoration: by the time it appeared there was nothing left to wait for.
+  //
+  // ONE LIST OF STEPS, TWO WAYS TO RUN IT. The game yields a frame between them
+  // so the loader can paint what it is doing. The check harness drives a whole
+  // round synchronously and has done since long before this -- eighty call
+  // sites read `begin(map); __dbg.tick(700)` and use the result on the next
+  // line, and a synchronous tick loop drains no microtasks -- so it runs the
+  // SAME list straight through. The steps are the same steps either way; only
+  // the yielding differs, which is the one thing a headless run has no use for.
+  function roundDraw(n){
     if(mp.role!=='client'){
       const chance = MINIGAME_CHANCE[n] !== undefined ? MINIGAME_CHANCE[n] : 0.3;
       if(currentMap && currentMap.__forced){ /* a test picked it */ }
@@ -149,48 +167,146 @@
         currentMap = (Math.random()<chance) ? pick(SURVIVE_POOL) : pick(RACE_POOL);
       }
     }
-    obstacles=genCourse(n);
-    // genCourse fixes trackLength, and the path table has to span it
-    // An authored course carries its own bends, section by section; the old
-    // whole-course path shapes stay for the arenas, which have no script.
-    setCoursePath(courseScript ? scriptPathSpec(courseScript)
-                               : (currentMap.path ? COURSE_PATHS[currentMap.path] : null), trackLength);
-    boulders=[]; lasers=[]; shots=[];
-    lavaZ = currentMap.mode==='lava' ? -320 : 0;
-    timeLimit = n===1?60 : n===2?55 : 50;
-    // Chase the pack, do not outrun it: a clean run finishes about eight
-    // seconds ahead of the lava. Tying this to the time limit meant a 60s
-    // limit against an 11,780-long course caught thirteen of sixteen.
-    const margin = (typeof window!=='undefined' && window.__lavaMargin !== undefined) ? window.__lavaMargin : LAVA_MARGIN;
-    lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + margin) : 0;
+    if(!currentMap) throw new Error('no map');
+    // The map is drawn, so the loader stops being generic and becomes about
+    // THIS course -- its name, its mode, its tip and its own thumbnail. Maps are
+    // still drawn per round; nothing here lets anybody pick one.
+    pm.map = currentMap;
+    pmShowMap(currentMap, n);
+    pm.flags.profileReady = true;
+  }
+
+  function roundSteps(n, survivors){
+    return [
+      { msg: ()=> 'LOADING ' + String(currentMap.name).toUpperCase() + '…', run: ()=>{
+          obstacles=genCourse(n);
+          // genCourse fixes trackLength, and the path table has to span it.
+          // An authored course carries its own bends, section by section; the
+          // old whole-course path shapes stay for the arenas, which have none.
+          setCoursePath(courseScript ? scriptPathSpec(courseScript)
+                                     : (currentMap.path ? COURSE_PATHS[currentMap.path] : null), trackLength);
+          boulders=[]; lasers=[]; shots=[];
+          lavaZ = currentMap.mode==='lava' ? -320 : 0;
+          timeLimit = n===1?60 : n===2?55 : 50;
+          // Chase the pack, do not outrun it: a clean run finishes about eight
+          // seconds ahead of the lava. Tying this to the time limit meant a 60s
+          // limit against an 11,780-long course caught thirteen of sixteen.
+          const margin = (typeof window!=='undefined' && window.__lavaMargin !== undefined) ? window.__lavaMargin : LAVA_MARGIN;
+          lavaSpeed = currentMap.mode==='lava' ? trackLength/(trackLength/CLEAN_PACE + margin) : 0;
+          pm.flags.mapReady = true;
+          // Tell the peers with the course in hand, so they prepare ALONGSIDE
+          // this client rather than after it. Sending this late is how a friend
+          // ended up still building meshes while everyone was on the start line.
+          if(mp.role==='host' && mp.conns.length){
+            broadcast({type:'roundStart', obstacles:JSON.parse(JSON.stringify(obstacles)), trackLength, round:n, hostT:performance.now()/1000, mapDef:currentMap});
+          }
+        } },
+      { msg: ()=> 'BUILDING COURSE…', run: ()=>{
+          buildCourseMeshes(); applyMapSky();
+          courseGroup.visible=true; racerGroup.visible=true; previewGroup.visible=false;
+          pm.flags.sceneReady = true;
+        } },
+      { msg: ()=> 'PREPARING RACERS…', run: ()=>{
+          racers=makeRacers(survivors); buildRacerMeshes();
+          if(n===1) matchField = racers.length;
+          for(const r of racers){ r.floorH=0; r.onRamp=null; }
+          clearParticles(); resetLook();
+          syncCamera(true);
+          captureCourseThumb();                    // the reveal card shows this course, live
+          // ...and now the loader can show THIS course rather than the map's
+          // fallback gradient. cardArt reads courseThumbs, which the line above
+          // has just filled, so the preview becomes a picture of the track the
+          // player is about to run instead of a colour scheme suggesting it.
+          pmShowMap(currentMap, n);
+          pm.flags.racerReady = true;
+        } },
+    ];
+  }
+
+  // Everything that is true once the course exists and before anybody races.
+  function roundSettle(n){
     if(n===1 && mp.role!=='client'){ stats.races++; saveProfile(); }
     if(n===ROUNDS && mp.role!=='client'){ stats.finals++; checkAchievements(); saveProfile(); }
-    if(mp.role==='host' && mp.conns.length){
-      broadcast({type:'roundStart', obstacles:JSON.parse(JSON.stringify(obstacles)), trackLength, round:n, hostT:performance.now()/1000, mapDef:currentMap});
-    }
-    buildCourseMeshes(); applyMapSky();
-    racers=makeRacers(survivors); buildRacerMeshes();
-    if(n===1) matchField = racers.length;
-    for(const r of racers){ r.floorH=0; r.onRamp=null; }
-    clearParticles(); resetLook();
-    courseGroup.visible=true; racerGroup.visible=true; previewGroup.visible=false;
-    syncCamera(true);
-    captureCourseThumb();                         // the reveal card shows this course, live
     raceTime=0;
-    $('mapIntroName').textContent=currentMap.name.toUpperCase();
-    $('mapIntroTip').textContent=currentMap.tip;
-    $('mapIntroGoal').textContent=objectiveOf(currentMap);
     $('roundBadge').textContent=roundLabel(n);
-    $('hud').classList.add('hidden'); $('pauseBtn').classList.add('hidden');   // the flyover owns the screen first
-    // §5.1's tab strip and rings are menu chrome, and a round starting is the
-    // one way out of the menu that did not tell them so -- they sat over the
-    // top of the course.
+    $('hud').classList.add('hidden'); $('pauseBtn').classList.add('hidden');
+    // SS5.1's tab strip and rings are menu chrome, and a round starting is the
+    // one way out of the menu that did not tell them so -- they sat over the top
+    // of the course.
     if(typeof syncMenuChrome === 'function') syncMenuChrome();
     if(settings.hints) $('hint').classList.remove('hidden');
-    $('touchControls').classList.toggle('hidden', !settings.touch);
-    // reel first, then the map card, then go
-    state='loading'; loadTimer=LOADER_MS; bannerTimer=0; mapIntroTimer=0;
-    showMapLoader(currentMap);
+    // No touch pad before GO. It comes back with the HUD at the start instant.
+    $('touchControls').classList.add('hidden');
+    // MOVEMENT IS LOCKED FOR AS LONG AS THIS LASTS. update() returns before
+    // anything moves for every state but 'racing', so this is not a second rule
+    // that could disagree with the first -- it is the same one.
+    state='prematch'; bannerTimer=0;
+  }
+
+  function roundPrepFailed(){
+    pmFail('Could not prepare ' + ((currentMap && currentMap.name) || 'the course') + '.');
+  }
+
+  function roundBefore(n, survivors){
+    // The round reward toast ("+25 ROUND 1 survived") is a chip that belongs to
+    // the round that paid it, and it was still on screen over the next round's
+    // intro. v20 fixed this by patching index.html's startRound -- but the
+    // round-flow cut replaces that whole function with this one, so the patch
+    // was deleted at build time and had never actually run. It lives here now.
+    coinPops.length = 0; renderCoinPops(0);
+    round=n;
+    pm.survivors = survivors || null;
+    pmOpen(n);
+    // FROM THE MOMENT START IS PRESSED. Not at the end of preparation: until
+    // this line the state was whatever the last round left behind -- often
+    // 'racing' -- so the frames spent preparing were frames the old race was
+    // still notionally running in. update() returns before anything moves for
+    // every state but 'racing', so this is the movement lock, and it is on
+    // before the first course is generated rather than after the last mesh.
+    state = 'prematch'; bannerTimer = 0;
+  }
+
+  async function prepareRound(n, survivors){
+    roundBefore(n, survivors);
+    await pmFrame();
+    try{
+      roundDraw(n);
+      const steps = roundSteps(n, survivors);
+      for(let i=0;i<steps.length;i++){
+        pmSay(steps[i].msg(), '');
+        pmMeter(i, steps.length + 1);
+        await pmFrame();                       // let the screen show what it said
+        steps[i].run();
+        pmMeter(i + 1, steps.length + 1);
+      }
+      roundSettle(n);
+      pmSay('SYNCING PLAYERS…', '');
+      await pmAwaitStart(await pmJoin());
+    }catch(e){ roundPrepFailed(); }
+  }
+
+  // The same round with no frame given up anywhere in it. Used by the check
+  // harness, which steps the simulation by hand and would never see a promise
+  // resolve, and by any caller that needs the course to exist on the next line.
+  function prepareRoundNow(n, survivors){
+    roundBefore(n, survivors);
+    try{
+      roundDraw(n);
+      for(const s of roundSteps(n, survivors)){ pmSay(s.msg(), ''); s.run(); }
+      pmMeter(1, 1);
+      roundSettle(n);
+      // READY, AND WAITING -- but the start is NOT stamped here.
+      //
+      // The caller decides when to cross it, because only the caller knows what
+      // it wants to happen first. The harness settles the camera on the grid
+      // over a few hundred non-racing ticks the way the old three-state
+      // preamble did, and only then starts; letting this stamp a due-now start
+      // instead began the race on tick one and handed every check a race that
+      // was already running.
+      pm.flags.sessionReady = true;
+      pm.phase = 'waiting';
+      pmSay('READY', '');
+    }catch(e){ roundPrepFailed(); }
   }
 
   function endRound(){

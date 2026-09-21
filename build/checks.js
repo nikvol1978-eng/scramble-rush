@@ -14,7 +14,35 @@
   const CORRIDOR_MAPS = ['sunny','neon'];
   const PATH_MAPS     = ['cannonc','slide'];
   const MINIGAME_KEYS = ['lava','doors','tiles','shrink'];
-  const TO_RACING     = 700;                 // ticks to clear loader + flyover + countdown
+  // v27 §1: the loader and the flyover are no longer TIMERS to be waited out --
+  // prepareRoundNow prepares the round and makes the start due immediately, so
+  // this is the handful of ticks it takes to cross it, not the eleven seconds
+  // of preamble the old three-state machine needed.
+  // v27 §1 split what used to be one number in two, because it was always two
+  // things: frames spent BEFORE the race, and the moment it starts.
+  //
+  // TO_SETTLE are non-racing frames on the grid -- the camera arrives at its
+  // chase pose, the meshes take their first poses, exactly as the old
+  // loader/flyover/countdown preamble provided. TO_RACING is then the single
+  // tick that crosses the start instant. Rolling them back into one number
+  // spends the preamble ON the race instead, which starts every check most of a
+  // minute into a round it meant to measure from the gun.
+  // THESE TWO REPRODUCE THE OLD SEVEN HUNDRED EXACTLY, and that is the point.
+  //
+  // The old number was never "ticks of preamble": it was 2600ms of reel plus
+  // 3800ms of flyover plus a 3000ms count -- 564 frames in which update()
+  // returned early -- and then ONE HUNDRED AND THIRTY-SIX FRAMES OF RACE. Every
+  // check in the suite therefore opened on a race already 2.3 seconds old, with
+  // the field spread out, and several of them quietly depend on that: [R] asks
+  // whether the camera is nearer the survivor it is watching than the racer it
+  // left, which is only a meaningful question once the two are not still
+  // standing next to each other on the grid.
+  //
+  // Splitting the number without preserving the split rewrote the opening
+  // condition of all eighty call sites at once. So it is split the way it
+  // always behaved.
+  const TO_SETTLE     = 564;                 // frames before the gun: reel, flyover, count
+  const TO_RACING     = 136;                 // frames of race, as the old 700 always left
 
   function player(){ return racers.find(r=>r.isPlayer); }
 
@@ -56,6 +84,34 @@
          window.__dbg.hold(settings.keys.jump, false); }catch(e){}
   }
 
+  // THE ROUND AFTER THE FIRST is prepared behind the loader like any other, so
+  // unlike begin() it is not finished on the next line -- the game gives up a
+  // frame between steps so the screen can paint them. This waits on the REAL
+  // signal, the pre-match reaching its countdown, rather than on a sleep that
+  // would be a guess about how long a course takes to build.
+  function pmSettled(ms){
+    return new Promise((res)=>{
+      const t0 = Date.now();
+      (function poll(){
+        if(pm.phase==='countdown' || pm.phase==='racing' || !pm.open || Date.now()-t0 > (ms||6000)) return res(pm.phase);
+        setTimeout(poll, 16);
+      })();
+    });
+  }
+
+  // Click a button that starts the next round, then get to racing.
+  async function afterRound(btnId){
+    const b = $(btnId); if(b) b.click();
+    await pmSettled();
+    if(pm.phase === 'racing') return;
+    // The round prepared itself and stamped a start seconds out. Hold it back
+    // to waiting so the settle frames below are spent ON THE GRID rather than
+    // crossing the gun on the first of them -- the same two beats begin() gets,
+    // for a round that arrived by the async path instead.
+    pm.phase = 'waiting'; pm.startAt = null;
+    toTheGun();
+  }
+
   // The seed the runner pinned for the check currently executing, and how many
   // rounds that check has started. begin() reads both; nothing else should.
   let _checkSeed = 0, _beginNth = 0;
@@ -64,7 +120,12 @@
     wipeRoundState();
     window.__forceMap = mapKey || null;
     ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
-    startRound(round||1, null);
+    // prepareRoundNow, not startRound: a round is prepared behind a loader now,
+    // and the game gives up a frame between steps so the screen can paint them.
+    // This harness steps the simulation by hand and a synchronous tick loop
+    // drains no microtasks, so it runs the SAME steps with the yields left out.
+    // See 07_rounds.js -- one list, two runners.
+    prepareRoundNow(round||1, null);
     // RE-PIN AFTER THE BUILD, for the reason beginSeeded already does it.
     //
     // Warming every skin and every map makes the ROSTER deterministic -- same
@@ -91,6 +152,21 @@
     // is what this counter exists to avoid: nine different rounds, and the same
     // nine every time.
     if(_checkSeed) Math.random = seededRandom((_checkSeed ^ 0x9E3779B9 ^ Math.imul(_beginNth++, 0x85EBCA6B)) >>> 0);
+    toTheGun();
+  }
+
+  // Settle on the grid, then cross the start. prepareRoundNow leaves the round
+  // READY and waiting rather than stamping a start, so this is where a check
+  // says "and now begin" -- the same two beats the old preamble had, with the
+  // race starting on the last of them instead of the first.
+  function toTheGun(){
+    window.__dbg.tick(TO_SETTLE);
+    // Stamped in THE HARNESS'S OWN CLOCK, which is what it then ticks with.
+    // Stamping with pmNow() instead left the two disagreeing by however long
+    // the page had been alive, so every race began at the "how late is this
+    // frame" cap -- a second and a half into a round the check meant to start
+    // from the gun.
+    pmStartCountdown(window.__T * 1000, 'local');
     window.__dbg.tick(TO_RACING);
   }
 
@@ -619,7 +695,13 @@
     const own = toWorld(p.x, p.y, p.h + RADIUS);
     const fromMe = camera.position.distanceTo(new THREE.Vector3(own.x, own.y, own.z));
     if(near > 430)     bad.push('camera settled '+near.toFixed(0)+' from the racer it is watching');
-    if(fromMe < near)  bad.push('camera is still nearer the eliminated player than the survivor');
+    // The numbers, not just the verdict. This one is a comparison of two
+    // distances that are both large, so "nearer the wrong racer" on its own
+    // says nothing about whether the camera failed to travel or the two racers
+    // were simply standing next to each other.
+    if(fromMe < near)  bad.push('camera is still nearer the eliminated player than the survivor'
+                                + ' (to survivor '+near.toFixed(0)+', to eliminated '+fromMe.toFixed(0)
+                                + ', they are '+Math.hypot(w1.x-own.x, w1.y-own.y, w1.z-own.z).toFixed(0)+' apart)');
 
     // switching targets
     const aliveN = racers.filter(r=>!r.lavaOut && !r.falling).length;
@@ -2998,9 +3080,9 @@
     wipeRoundState();
     window.__forceMap = key || null;
     ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
-    startRound(1, null);
+    prepareRoundNow(1, null);              // the yield-free runner; see begin()
     Math.random = seededRandom((seed ^ 0x5bf03635) >>> 0);
-    window.__dbg.tick(TO_RACING);
+    toTheGun();
   }
 
   // Fixed, and not chosen for passing. 1048 stays in the list on purpose: it is
@@ -3347,19 +3429,28 @@
   // Was 16 -> 12 -> 6, from the ratio-based cut. v24 §1 replaces that with a
   // stated ladder, so this asserts the ladder rather than the ratio.
   // It is the one check that fails loudly if CUT_LADDER is edited by accident.
-  function checkH(){
+  async function checkH(){
     begin('sunny');
     const seq = [racers.length];
     const winRound = ()=>{ const p=player(); p.y=trackLength+10; window.__dbg.tick(8);
       for(const r of racers) if(!r.isPlayer){ r.finished=true; r.finishTime=raceTime; }
       window.__dbg.tick(60); };
-    winRound(); const b1=$('continueBtn'); if(b1) b1.click(); window.__dbg.tick(TO_RACING);
+    winRound(); await afterRound('continueBtn');
     seq.push(racers.length);
-    winRound(); const b2=$('continueBtn'); if(b2) b2.click(); window.__dbg.tick(TO_RACING);
+    winRound(); await afterRound('continueBtn');
     seq.push(racers.length);
     winRound();
     const title = (document.querySelector('#results .title')||{}).textContent || '';
     const ok = seq[0]===24 && seq[1]===16 && seq[2]===8 && /VICTORY/.test(title);
+    // PUT THE PAGE BACK. This is the one check that deliberately ends on the
+    // victory screen, and it left it up. Every begin() hides #results on its
+    // way in, so in registration order the next check cleaned up after this one
+    // and the dependency was invisible -- until a shuffled run put ["], which
+    // asserts that exactly one primary screen is live and does not call
+    // begin(), immediately after it. It then found [locker, results] and was
+    // right to. The assertions above are already made; the screen is not
+    // evidence any more.
+    try{ goHome(); }catch(e){}
     return { name:'H match cuts 24 -> 16 -> 8 -> victory', pass: ok,
              detail: seq.join(' -> ')+' -> '+title };
   }
@@ -6360,6 +6451,25 @@
     const live = ()=> [...document.querySelectorAll('.screen')]
       .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null)
       .map(e => e.id);
+
+    // WHAT THIS INHERITED, and then a clean start.
+    //
+    // This check walks from the lobby to each primary screen and asserts that
+    // exactly the screen it asked for is live. That question presupposes it
+    // begins in the lobby -- it does not call begin(), so unlike every other
+    // check nothing clears the page for it, and in a shuffled run it can land
+    // straight after a check that ended on the results screen. It then reports
+    // [locker, results] and blames the navigation, which is not where the
+    // screen came from.
+    //
+    // The inherited state is recorded rather than silently discarded, because
+    // "who left this here" is the question a failure raises and the answer used
+    // to be unobtainable without re-running the whole sweep.
+    const inherited = live();
+    if(inherited.length && !(inherited.length === 1 && inherited[0] === 'home')){
+      notes.push('entered with [' + inherited.join(', ') + '] live');
+    }
+    try{ goHome(); }catch(e){}
     const strip = ()=> [...document.querySelectorAll('.tabPill.sel')].map(p=>p.dataset.lobby);
     // COUNTING SCREENS IS NOT ENOUGH, because a screen that is up but cannot
     // be clicked is not up. When #settings stayed live under #daily, the
@@ -6443,6 +6553,215 @@
              pass: bad.length===0, detail: bad.length ? bad.slice(0,6).join('; ') : notes.join('; ') };
   }
 
+  // ================= PRE-MATCH (v27 §1) =================
+  // The loader stopped being decoration, so these are the assertions that keep
+  // it that way. They are deliberately about the RULES -- what may start a race
+  // and what may not -- rather than about how the screen looks.
+
+  // ---------- ( : readiness is earned, and reported once ----------
+  function checkPrematchReadiness(){
+    const bad = [];
+    wipeRoundState();
+    window.__forceMap = 'sunny';
+    ['home','profile','results','gameover','daily'].forEach(id=>$(id).classList.add('hidden'));
+
+    // Nothing is ready before anything has run, and READY may not be reported.
+    pmOpen(1);
+    if(pmAllReady())  bad.push('every readiness flag was true before any work ran');
+    if(pmReport())    bad.push('READY was reported before the course existed');
+    const early = Object.keys(pm.flags).filter(k=>pm.flags[k]);
+    if(early.length)  bad.push('flags true before preparation: '+early.join(', '));
+
+    // A real round: every flag true, and STILL no start instant. Being ready is
+    // not the same as being told to go, and the difference is the whole feature.
+    prepareRoundNow(1, null);
+    for(const k of Object.keys(pm.flags)) if(!pm.flags[k]) bad.push('flag '+k+' still false after preparation');
+    if(pm.phase !== 'waiting')  bad.push('a prepared round sits in phase '+pm.phase+', wanted waiting');
+    if(pm.startAt !== null)     bad.push('a start instant was stamped without anybody asking for one');
+    if(state !== 'prematch')    bad.push('state is '+state+', wanted prematch');
+
+    // Reported once. A duplicate is harmless and has to stay harmless.
+    pm.authority = 'local'; pm.ready = false;
+    if(!pmReport())   bad.push('READY was refused with every flag true');
+    if(pmReport())    bad.push('READY was reported a second time');
+
+    // A partly prepared round must not count as ready.
+    pmOpen(1);
+    pm.flags.mapReady = true; pm.flags.sceneReady = true;
+    if(pmAllReady())  bad.push('two flags out of five counted as ready');
+
+    // ONE MATCH AT A TIME. A second request while one is in flight is ignored,
+    // not queued and not started over the top of it -- two preparations would
+    // mean two courses built and two things each able to start a race.
+    pm.phase = 'countdown';
+    startRound(1, null);
+    if(pm.phase !== 'countdown') bad.push('a second start request restarted a match already in progress');
+
+    // ...and RACE comes back the moment there is no match being prepared.
+    pmClose();
+    if($('modeGo') && $('modeGo').disabled) bad.push('RACE was left disabled after the loader closed');
+
+    return { name:'( pre-match: readiness is earned before it is reported',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'five flags, one report, no start until asked' };
+  }
+
+  // ---------- ) : the countdown is read off a timestamp, never counted ----------
+  function checkPrematchCountdown(){
+    const bad = [];
+    wipeRoundState();
+    window.__forceMap = 'sunny';
+    prepareRoundNow(1, null);
+
+    const t0 = window.__T * 1000;
+    pmStartCountdown(t0 + 10000, 'local');
+    if(pm.phase !== 'countdown') bad.push('a stamped start did not open the countdown');
+
+    // ASKED AT INSTANTS, NOT STEPPED. The jump from 1.5s to 4.2s to 9.0s is the
+    // throttled frame that never came: an implementation that decremented would
+    // still be showing 9 at the end of it, and this is what catches that.
+    const want = [[0,10],[500,10],[1500,9],[4200,6],[9000,1],[9900,1]];
+    const saw = [];
+    for(const pair of want){
+      pmTick(t0 + pair[0]);
+      saw.push(pm.shown);
+      if(pm.shown !== pair[1]) bad.push('at +'+pair[0]+'ms it showed '+pm.shown+', wanted '+pair[1]);
+      if(state === 'racing')   bad.push('the race started at +'+pair[0]+'ms, before the instant');
+    }
+    // The box reads what the state believes it is showing.
+    if($('mlCountNum').textContent !== String(pm.shown))
+      bad.push('the box reads "'+$('mlCountNum').textContent+'" but the state says '+pm.shown);
+
+    // TEN SECONDS EXACTLY. One millisecond early is early.
+    pmTick(t0 + 9999);
+    if(state === 'racing') bad.push('the race started 1ms early');
+    pmTick(t0 + 10000);
+    if(state !== 'racing') bad.push('the race did not start ON the instant');
+
+    return { name:') pre-match: the countdown is derived, so it cannot drift',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'showed '+saw.join(',')+' across a 7.5s gap' };
+  }
+
+  // ---------- [ : nothing moves, and nothing is timed, before the instant ----------
+  function checkPrematchLock(){
+    const bad = [];
+    wipeRoundState();
+    window.__forceMap = 'sunny';
+    prepareRoundNow(1, null);
+    const p = player();
+    const y0 = p.y, x0 = p.x;
+
+    window.__dbg.hold('w', true);
+    window.__dbg.tick(60);                                   // waiting, no start stamped
+    if(p.y !== y0 || p.x !== x0) bad.push('the racer moved while the match was still waiting');
+    if(raceTime !== 0)           bad.push('the race timer ran while waiting: '+raceTime);
+
+    pmStartCountdown(window.__T * 1000 + 10000, 'local');
+    window.__dbg.tick(120);                                  // two seconds of countdown
+    if(p.y !== y0 || p.x !== x0) bad.push('the racer moved during the countdown');
+    if(raceTime !== 0)           bad.push('the race timer ran during the countdown: '+raceTime);
+    if(state !== 'prematch')     bad.push('state left prematch before the instant: '+state);
+
+    // Cross it, and everything opens at once off the same instant.
+    pmStartCountdown(window.__T * 1000, 'local');
+    window.__dbg.tick(1);
+    if(state !== 'racing')       bad.push('the race did not start on the instant');
+    if(raceTime > 0.1)           bad.push('the race timer did not start from the instant: '+raceTime);
+    if($('hud').classList.contains('hidden')) bad.push('the HUD stayed hidden after the start');
+    if(!$('matchLoader').classList.contains('hidden')) bad.push('the loader was still up after the start');
+
+    window.__dbg.tick(45);
+    if(p.y <= y0)                bad.push('the racer never moved after the start');
+    window.__dbg.hold('w', false);
+
+    return { name:'[ pre-match: movement and timing both begin at the instant',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'locked through wait and countdown, moved after' };
+  }
+
+  // ---------- ] : the server owns the roster, the readiness and the instant ----------
+  function checkPrematchAuthority(){
+    const bad = [];
+    wipeRoundState();
+    window.__forceMap = 'sunny';
+    prepareRoundNow(1, null);
+    pm.authority = 'server'; pm.phase = 'waiting'; pm.startAt = null;
+    pmClock.offset = 0;
+
+    // ONE UNREADY PLAYER STOPS EVERYTHING. This client is ready and has said so;
+    // that is not permission to start.
+    pmOnState({ phase:'gathering', roster:[{id:'a',name:'A',ready:true},{id:'b',name:'B',ready:false}],
+                readyCount:1, requiredCount:2, raceStartAt:null, serverNow:0 });
+    if(pm.phase === 'countdown') bad.push('the countdown opened with a player still preparing');
+    if(pm.startAt !== null)      bad.push('a start instant appeared with nobody ready');
+    if($('mlNote').textContent.indexOf('1 / 2') < 0)
+      bad.push('the loader does not say who it is waiting for: "'+$('mlNote').textContent+'"');
+
+    // The server's instant is used VERBATIM. The client does not get to choose,
+    // round, extend or shorten it.
+    const at = window.__T * 1000 + 10000;
+    pmOnState({ phase:'countdown', roster:[{id:'a',ready:true},{id:'b',ready:true}],
+                readyCount:2, requiredCount:2, raceStartAt: at, serverNow:0 });
+    if(pm.phase !== 'countdown') bad.push('the server said countdown and the client ignored it');
+    if(Math.abs(pm.startAt - at) > 1) bad.push('the client did not use the server instant: '+pm.startAt+' vs '+at);
+
+    // A LATER MESSAGE MAY NOT MOVE A START THAT IS ALREADY PROMISED.
+    pmOnState({ phase:'countdown', roster:[{id:'a',ready:true}], readyCount:1, requiredCount:1,
+                raceStartAt: at + 5000, serverNow:0 });
+    if(Math.abs(pm.startAt - at) > 1) bad.push('a later message moved the start to '+pm.startAt);
+
+    // A player leaving during the countdown does not restart anything.
+    pmOnState({ phase:'countdown', roster:[{id:'a',ready:true}], readyCount:1, requiredCount:1,
+                raceStartAt: at, serverNow:0 });
+    if(pm.phase !== 'countdown') bad.push('a disconnect during the countdown left phase '+pm.phase);
+    if(Math.abs(pm.startAt - at) > 1) bad.push('a disconnect moved the start');
+
+    return { name:'] pre-match: the server owns the roster and the instant',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : 'waited on 1/2, took the instant, ignored the rest' };
+  }
+
+  // ---------- _ : exactly one foreground state, nothing live underneath ----------
+  function checkPrematchExclusive(){
+    const bad = [];
+    wipeRoundState();
+    try{ goHome(); }catch(e){}
+    window.__forceMap = 'sunny';
+    prepareRoundNow(1, null);
+
+    const box = $('matchLoader');
+    if(box.classList.contains('hidden')) bad.push('the loader is not up during preparation');
+
+    // NO POINTER LEAKAGE. Whatever is underneath, the loader is what a click
+    // lands on -- the daily-spin fault was a full-screen layer that had been
+    // HIDDEN rather than removed and went on eating clicks, one layer below this.
+    const W = window.innerWidth, H = window.innerHeight;
+    const spots = [[W/2,H/2],[24,24],[W-24,24],[24,H-24],[W-24,H-24],[W/2,H-40]];
+    for(const s of spots){
+      const el = document.elementFromPoint(s[0], s[1]);
+      if(!el){ bad.push('nothing at all at '+Math.round(s[0])+','+Math.round(s[1])); continue; }
+      if(el !== box && !box.contains(el))
+        bad.push('at '+Math.round(s[0])+','+Math.round(s[1])+' a click reaches '+(el.id ? '#'+el.id : (el.className||el.tagName)));
+    }
+
+    // And every meta screen is CLOSED, not merely covered.
+    const up = ['home','locker','badges','shop','pass','settings','daily','results','gameover','lobby','mpHome']
+      .filter(function(id){ return $(id) && !$(id).classList.contains('hidden'); });
+    if(up.length) bad.push('screens still live under the loader: '+up.join(', '));
+
+    // Crossing the start takes it away completely rather than hiding it.
+    pmStartCountdown(window.__T * 1000, 'local');
+    window.__dbg.tick(1);
+    if(!box.classList.contains('hidden')) bad.push('the loader survived the start');
+    const after = document.elementFromPoint(W/2, H/2);
+    if(after && (after === box || box.contains(after))) bad.push('the loader still takes clicks after the start');
+
+    return { name:'_ pre-match: one foreground state, no pointer leakage',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : spots.length+' points land on the loader, nothing live beneath' };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -6471,7 +6790,13 @@
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
-      [',',checkSpinRowStill],['-',checkStartup]
+      [',',checkSpinRowStill],['-',checkStartup],
+      // v27 SS1 pre-match. The rules that keep the loader from going back
+      // to being decoration: readiness is earned, the countdown is derived,
+      // nothing moves before the instant, the server owns it, and exactly
+      // one thing is in the foreground while it is up.
+      ['(',checkPrematchReadiness],[')',checkPrematchCountdown],
+      ['[',checkPrematchLock],[']',checkPrematchAuthority],['_',checkPrematchExclusive]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
