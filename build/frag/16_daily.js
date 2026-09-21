@@ -49,15 +49,37 @@
   }
 
   let spinning = false;
+  // THROUGH THE ROUTER, like every other primary screen.
+  //
+  // #dailyBtn is not on the lobby -- it is in #menuChrome, the shell every
+  // menu screen sits in -- so the wheel is reachable from the locker, badges,
+  // the shop, the pass and settings as well as from home. This used to hide
+  // #home and nothing else, which is fine from home and stacking from
+  // anywhere else: SETTINGS -> DAILY left #settings live underneath, and
+  // #settingsGrid then sat over the SPIN button and took the click. The wheel
+  // was not merely double-exposed, it was unusable.
+  //
+  // openLobbyTab('play') is the same call the six pills make. It runs each
+  // open screen's own teardown, then hideMenuScreens() closes whatever is
+  // left by the ONE list in 10_wiring.js, and the strip stops pointing at the
+  // screen you came from. Hiding #home afterwards and showing ourselves is
+  // exactly what `case 'locker'` and the rest do. No second list of screen
+  // ids lives here, so a screen added later is closed by this without anybody
+  // remembering to come back.
   function openDaily(){
+    openLobbyTab('play');
     $('home').classList.add('hidden');
     $('daily').classList.remove('hidden');
     buildWheel();
+    syncMenuChrome();
   }
+  // BACK is the one way out, and it goes where the strip has been saying you
+  // would go since the wheel opened: the lobby, with PLAY lit. hideMenuScreens
+  // closes the wheel on the way past and backToLobby refreshes the chip, so
+  // neither is repeated here -- a second copy of either is a second place to
+  // forget.
   function closeDaily(){
-    $('daily').classList.add('hidden');
-    $('home').classList.remove('hidden');
-    refreshDailyChip();
+    openLobbyTab('play');
   }
 
   function buildWheel(){
