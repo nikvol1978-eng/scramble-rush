@@ -190,13 +190,6 @@ sub("  function racerCollisions(){",
     frag("28_post.js") + chr(10) + "  function racerCollisions(){",
     "the composer")
 
-# The quality switch sits with the other display settings.
-sub("    toggle('shadows','Shadows');",
-    "    const qseg=document.createElement('div'); qseg.className='seg';"
-    + chr(10) + "    [['low','Low'],['medium','Medium'],['high','High']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='chip'+(settings.quality===k?' sel':''); b.textContent=l; b.onclick=()=>{ settings.quality=k; SFX.click(); applyQuality(k); buildSettings(); }; qseg.appendChild(b); });"
-    + chr(10) + "    row('Graphics', qseg);"
-    + chr(10) + "    toggle('shadows','Shadows');",
-    "quality switch")
 sub("  function applySettings(){ renderer.shadowMap.enabled=settings.shadows;",
     "  function applySettings(){ renderer.shadowMap.enabled=settings.shadows; applyQuality(settings.quality||'high');",
     "quality applied with the rest")
@@ -277,8 +270,52 @@ sub("    if(a.finished&&b.finished) return a.finishTime-b.finishTime;",
 sub("<title>Scramble Rush 3D</title>",
     "<title>Scramble Rush 3D \u2014 v%d.0</title>" % VERSION, "title")
 
+# ---------------------------------------------------------------- PAUSE: leave to Nikcade
+# During a race the way out belongs in the pause menu, not on a control parked
+# over the track. #quitBtn already returns to the lobby; this sits under it and
+# leaves the game entirely.
+sub('<button class="btn pink" id="quitBtn">QUIT TO MENU</button>',
+    '<button class="btn pink" id="quitBtn">QUIT TO MENU</button>' + chr(10)
+    + '    <button class="btn purple" id="pauseHomeBtn">BACK TO NIKCADE</button>',
+    "pause: nikcade button")
+
 # ---------------------------------------------------------------- CSS
-sub("</style>\n</head>", frag("04_menu.css") + "</style>\n</head>", "css append")
+# 04b is the v25 meta-UI system and must land AFTER 04: it overrides the
+# per-screen layout rules that file grew, and it does it on source order
+# rather than by out-specifying each one.
+sub("</style>\n</head>", frag("04_menu.css") + frag("04b_ui25.css") + "</style>\n</head>", "css append")
+
+# ---------------------------------------------------------------- LOADING 1 markup
+# First thing in the body, so it paints before anything else parses. It depends
+# on no font, no module and no game code -- which is the whole point of a boot
+# screen -- and 38_loading.js removes it once the lobby can be drawn.
+sub("<body>",
+    "<body>" + chr(10)
+    + '<div id="bootScreen">' + chr(10)
+    + '  <div class="bootMark">Scramble Rush</div>' + chr(10)
+    + '  <div class="bootRing"></div>' + chr(10)
+    + '  <div class="bootWord">Loading…</div>' + chr(10)
+    + '</div>',
+    "boot screen")
+
+# ---------------------------------------------------------------- LOADING 2 markup
+sub('<div id="mapIntro" class="hidden" style="position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;background:rgba(0,0,0,0.28);">\n  <div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>\n  <div id="mapIntroTip" style="font-family:\'Fredoka\',sans-serif;font-weight:600;font-size:1rem;color:#fff8ec;margin-top:12px;max-width:80vw;text-shadow:0 2px 0 rgba(0,0,0,0.4);"></div>\n</div>',
+    '<!-- LOADING 2: the round briefing. Name on an angled banner, a preview of the\n     course, what the round wants from you, and a status bar. Everything in it\n     comes from the map\'s own record -- its name, its tip, its palette and the\n     thumbnail the reveal carousel already renders -- so it costs no new art. -->\n<div id="mapIntro" class="hidden">\n  <div class="miBanner"><span id="mapIntroName"></span></div>\n  <div class="miBody">\n    <div class="miShot" id="mapIntroArt"></div>\n    <div class="miSide">\n      <span class="miMode" id="mapIntroMode">RACE</span>\n      <div class="miGoal" id="mapIntroGoal"></div>\n      <h3 class="miHow">How to play</h3>\n      <p class="miTip" id="mapIntroTip"></p>\n    </div>\n  </div>\n  <div class="miBar"><span id="mapIntroStatus">GET READY&hellip;</span></div>\n</div>',
+    "map intro markup")
+
+# The two lines that filled it now fill the rest of it too.
+sub("""      $('mapIntroName').textContent=currentMap.name.toUpperCase();
+      $('mapIntroTip').textContent=currentMap.tip;""",
+    """      fillMapIntro(currentMap);""",
+    "map intro fill")
+
+# ---------------------------------------------------------------- SETTINGS markup
+# The settings screen moves onto the shared .view shell -- header, one scrolling
+# body, footer -- so it stops being a fixed 520px panel with its own 56vh scroll
+# box inside it. The support dialog rides along with it.
+sub('<div id="settings" class="screen shade hidden">\n  <h2 class="sub">SETTINGS</h2>\n  <div class="panel" style="padding:16px 20px;max-width:520px;width:min(520px,94vw);">\n    <div class="settingsGrid" id="settingsGrid"></div>\n  </div>\n  <div class="row">\n    <button class="btn small purple" id="resetSettingsBtn">RESET DEFAULTS</button>\n    <button class="btn small gold" id="settingsBackBtn">DONE</button>\n  </div>\n</div>',
+    '<div id="settings" class="screen shade hidden">\n  <div class="view">\n    <div class="viewHead">\n      <span class="viewTitle">Settings</span>\n      <span class="viewSub">Controls, camera, graphics and sound.</span>\n      <span class="viewMeta">\n        <button class="btn small purple" id="resetSettingsBtn" type="button">RESET DEFAULTS</button>\n        <button class="btn small gold" id="settingsBackBtn" type="button">DONE</button>\n      </span>\n    </div>\n    <div class="viewBody">\n      <div class="settingsGrid" id="settingsGrid"></div>\n    </div>\n  </div>\n</div>\n\n<!-- SUPPORT: a modal over the settings, not a seventh screen. -->\n<div id="support" class="supWrap hidden" role="dialog" aria-modal="true" aria-labelledby="supHeading">\n  <div class="supCard panel">\n    <h3 class="supHeading" id="supHeading">Report a problem</h3>\n    <p class="supLead">Your account is attached automatically &mdash; no need to type your name.</p>\n\n    <label class="supLbl" for="supSubject">Subject</label>\n    <input class="supInput" id="supSubject" type="text" maxlength="120" autocomplete="off"\n           placeholder="Short summary of the problem">\n\n    <label class="supLbl" for="supCategory">Category</label>\n    <select class="supInput" id="supCategory"></select>\n\n    <label class="supLbl" for="supBody">What happened?</label>\n    <textarea class="supInput supArea" id="supBody" maxlength="2000" rows="5"\n              placeholder="What were you doing, and what went wrong?"></textarea>\n    <div class="supCount" id="supBodyCount">0 / 2000</div>\n\n    <label class="supLbl" for="supFile">Screenshot (optional)</label>\n    <div class="supFileRow">\n      <input class="supFile" id="supFile" type="file">\n      <span class="supFileName" id="supFileName">No image attached</span>\n    </div>\n    <p class="supFine">PNG, JPEG or WebP. Up to 1 MB.</p>\n\n    <div class="supNote" id="supNote" role="status" aria-live="polite"></div>\n    <div class="supActions">\n      <button class="btn small blue" id="supCancel" type="button">CANCEL</button>\n      <button class="btn small pink" id="supSend" type="button">SEND REPORT</button>\n    </div>\n  </div>\n</div>',
+    "settings markup")
 
 # ---------------------------------------------------------------- HOME + PROFILE markup
 cut('<div id="home" class="screen">',
@@ -683,23 +720,30 @@ sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('set
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",
     "  function buildSettings(){",
-    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("10_wiring.js") + "\n",
+    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("30_uikit.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("34_badges.js") + "\n" + frag("37_modeselect.js") + "\n" + frag("38_loading.js") + "\n" + frag("10_wiring.js") + "\n",
     "preview + profile UI")
 
+# ---------------------------------------------------------------- PLAY -> mode select
+# PLAY used to call startRound(1,null) directly, which is the game choosing solo
+# on the player's behalf. It opens the mode picker now; the picker still calls
+# exactly that for SOLO.
+sub("  $('playBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); startRound(1,null); };",
+    "  $('playBtn').onclick=()=>{ SFX.click(); openModeSelect(); };",
+    "play opens mode select")
+
+# ---------------------------------------------------------------- settings rebuild
+# v25: the whole of buildSettings is replaced. It used to be one flat
+# two-column grid twenty rows deep with three bare headings in it; 35_settings.js
+# groups the same controls into cards and makes the toggles real switches. The
+# three subs that used to splice rows into the old body are gone with it --
+# their content is in the fragment now, so there is one definition of this
+# screen rather than a base version plus three patches.
+cut("  function buildSettings(){",
+    "  function applySettings(){",
+    frag("35_settings.js") + frag("36_support.js") + chr(10),
+    "settings rebuild")
+
 # ---------------------------------------------------------------- settings additions
-sub("""    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=3; br.max=15;""",
-    """    const bots=document.createElement('div'); bots.className='row'; const br=document.createElement('input'); br.type='range'; br.min=5; br.max=23;""",
-    "bot slider range")
-sub("""    toggle('shake','Camera shake');""",
-    """    toggle('freeLook','Free look (trackpad / drag)');
-    const ls=document.createElement('div'); ls.className='row'; const lr=document.createElement('input'); lr.type='range'; lr.min=0.4; lr.max=2.2; lr.step=0.1; lr.value=settings.lookSens; const lv=document.createElement('span'); lv.className='lbl'; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; lr.oninput=()=>{ settings.lookSens=+lr.value; lv.textContent=settings.lookSens.toFixed(1)+'\\u00d7'; }; ls.appendChild(lr); ls.appendChild(lv); row('Look sensitivity', ls);
-    toggle('mouseLook','Mouse look (click to capture)');
-    const gs=document.createElement('div'); gs.className='row'; const gr=document.createElement('input'); gr.type='range'; gr.min=0.4; gr.max=2.2; gr.step=0.1; gr.value=settings.padSens; const gv=document.createElement('span'); gv.className='lbl'; gv.textContent=settings.padSens.toFixed(1)+'×'; gr.oninput=()=>{ settings.padSens=+gr.value; gv.textContent=settings.padSens.toFixed(1)+'×'; }; gs.appendChild(gr); gs.appendChild(gv); row('Right stick sensitivity', gs);
-    toggle('invertLook','Invert look up/down');
-    toggle('camRelative','Move relative to camera');
-    toggle('autoCentre','Camera drifts back behind you (off by default)');
-    toggle('shake','Camera shake');""",
-    "look settings")
 
 # goHome must also clear the map reel if you bail mid-load
 sub("    ['results','gameover','pause','settings','profile','mpHome','lobby'].forEach(id=>$(id).classList.add('hidden'));",
@@ -752,20 +796,6 @@ sub("  button.btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--line
     "  button.btn:active{transform:translateY(6px);box-shadow:0 2px 0 var(--line);}",
     "buttons press further")
 
-# ---- the round title is stamped, and says what the round wants
-# A name on its own tells you where you are. It does not tell you what you are
-# meant to do, which for a survival round is the whole of the information.
-sub('<div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>',
-    '<div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(2.2rem,9vw,4rem);'
-    + 'line-height:1.05;color:#fff;-webkit-text-stroke:3px var(--line);text-shadow:0 8px 0 var(--line);'
-    + 'transform:rotate(-2.5deg);animation:stampIn .34s cubic-bezier(.2,1.7,.5,1) both;"></div>' + chr(10)
-    + '  <div id="mapIntroGoal" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(0.95rem,3vw,1.4rem);'
-    # Gold on a pale course is unreadable, and this line is the one thing on the
-    # card a new player has to take in, so it goes on a dark pill.
-    + 'letter-spacing:1.5px;margin-top:16px;color:var(--gold);background:rgba(26,16,51,0.78);'
-    + 'padding:7px 20px;border-radius:999px;border:3px solid var(--line);'
-    + 'animation:stampIn .34s .09s cubic-bezier(.2,1.7,.5,1) both;"></div>',
-    "stamped round title plus its objective")
 sub("  @keyframes popIn{",
     "  /* A stamp lands: oversized, rotated a touch, and slammed down. */" + chr(10)
     + "  @keyframes stampIn{ 0%{transform:rotate(-2.5deg) scale(2.1);opacity:0;} 70%{transform:rotate(-2.5deg) scale(0.94);opacity:1;} 100%{transform:rotate(-2.5deg) scale(1);opacity:1;} }" + chr(10)

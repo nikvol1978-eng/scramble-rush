@@ -5688,6 +5688,366 @@
                  + ', same seed digests ' + a + ' twice, no clock leak' };
   }
 
+
+  // ============================================================
+  // v25 META-UI INTERACTION CHECKS
+  // ============================================================
+  // ONE RULE: the pointer's POSITION decides nothing.
+  //   hover      may highlight. It may not change anything that persists.
+  //   click/tap  selects.
+  //   a button   equips, buys or claims. Nothing else does.
+  //
+  // Every assertion below reproduces a defect that actually shipped, so each
+  // one fails loudly if the handler it is about comes back. They restore the
+  // profile they touch, because the suite runs in one page and a check that
+  // leaves the player wearing something else is a check that breaks its
+  // neighbours.
+
+  // The pointer-position events a card might be tempted to listen to.
+  const UI_HOVERS = ['mouseover','mouseenter','mousemove','pointerover','pointerenter','pointermove'];
+  function uiHover(el){
+    const r = el.getBoundingClientRect();
+    const at = { bubbles:true, cancelable:true,
+                 clientX:r.left + r.width/2, clientY:r.top + r.height/2 };
+    for(const type of UI_HOVERS){
+      try{ el.dispatchEvent(new MouseEvent(type, at)); }catch(_){ /* jsdom-ish */ }
+    }
+  }
+  // Snapshot/restore of everything these checks can move.
+  function uiSnap(){
+    return { skin:custom.skin, pattern:custom.pattern, hat:custom.hat, eyes:custom.eyes,
+             coins:stats.coins, claimed:(stats.passClaimed||[]).slice() };
+  }
+  function uiRestore(o){
+    custom.skin = o.skin; custom.pattern = o.pattern; custom.hat = o.hat; custom.eyes = o.eyes;
+    stats.coins = o.coins; stats.passClaimed = o.claimed.slice();
+  }
+
+  // ---- [<] the locker ----------------------------------------------------
+  function checkUiLocker(){
+    const bad = [], notes = [], snap = uiSnap();
+    try{
+      state = 'menu';
+      openLobbyTab('locker');
+      const cards = [...document.querySelectorAll('#locker .lkTile')];
+      if(cards.length < 2){
+        return { name:'< locker: inventory only, hover never equips, EQUIP does',
+                 pass:false, detail:'needs 2+ owned items to test; found '+cards.length };
+      }
+      notes.push(cards.length + ' owned');
+
+      // 1. THE LOCKER IS INVENTORY. Nothing in it may be unowned, and nothing
+      //    in it may carry a price -- that is the shop's job.
+      const items = lkInventory();
+      const unowned = items.filter(it => !lkOwned(it));
+      if(unowned.length) bad.push(unowned.length + ' unowned items are listed as inventory');
+      if(document.querySelector('#lkGrid .lkLock'))
+        bad.push('an unlock price is being shown in the locker');
+
+      // 2. HOVER CHANGES NOTHING. This is the handler that used to set lkIndex
+      //    and equip whatever the pointer had last crossed.
+      const other = cards.find(c => !c.classList.contains('equipped'));
+      if(!other){ notes.push('everything owned is already equipped'); }
+      else{
+        const wornBefore = custom.skin, selBefore = document.querySelector('#lkGrid .uiCard.sel');
+        uiHover(other);
+        if(custom.skin !== wornBefore)
+          bad.push('hovering a tile changed the equipped skin (' + wornBefore + ' -> ' + custom.skin + ')');
+        if(document.querySelector('#lkGrid .uiCard.sel') !== selBefore)
+          bad.push('hovering a tile moved the selection');
+
+        // 3. CLICK SELECTS AND DOES NOT EQUIP.
+        const wornBeforeClick = custom.skin;
+        other.click();
+        if(!other.classList.contains('sel')) bad.push('clicking a tile did not select it');
+        if(custom.skin !== wornBeforeClick)
+          bad.push('clicking a tile equipped it; only the EQUIP button may do that');
+
+        // 4. THE BUTTON EQUIPS.
+        const act = $('lkAction');
+        if(act.disabled) bad.push('EQUIP was disabled on a selected, unequipped item');
+        else{
+          act.click();
+          if(custom.skin === wornBeforeClick) bad.push('pressing EQUIP did not equip the selection');
+          const sel = document.querySelector('#lkGrid .uiCard.sel');
+          if(sel && !sel.classList.contains('equipped'))
+            bad.push('after EQUIP the selected tile is not marked equipped');
+        }
+      }
+
+      // 5. ONE CATEGORY AT A TIME. Choosing PATTERN must leave no colourway
+      //    tile behind it.
+      openLocker('pattern');
+      const stray = [...document.querySelectorAll('#lkGrid .uiCard')]
+        .filter(c => c.__lkKind && c.__lkKind !== 'pattern');
+      if(stray.length) bad.push(stray.length + ' tiles from another category are still in the grid');
+      const tabs = [...document.querySelectorAll('.lkTab.sel')].map(b=>b.dataset.lk);
+      if(tabs.length !== 1) bad.push('the category tabs show ' + tabs.length + ' selected, not 1');
+      else if(tabs[0] !== 'pattern') bad.push('PATTERN was opened but ' + tabs[0] + ' is the selected tab');
+    } finally {
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* leaving tidy is best-effort */ }
+    }
+    return { name:'< locker: inventory only, hover never equips, EQUIP does',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // ---- [>] the shop ------------------------------------------------------
+  function checkUiShop(){
+    const bad = [], notes = [], snap = uiSnap();
+    try{
+      state = 'menu';
+      openLobbyTab('shop');
+      const cards = [...document.querySelectorAll('#shop .shCard')];
+      if(!cards.length) return { name:'> shop: hover never buys, previews are not stretched',
+                                 pass:false, detail:'no shop cards on screen' };
+      notes.push(cards.length + ' cards');
+
+      // 1. HOVER SELECTS NOTHING.
+      const before = document.querySelector('#shop .shCard.hi');
+      const other = cards.find(c => c !== before) || cards[0];
+      uiHover(other);
+      if(document.querySelector('#shop .shCard.hi') !== before)
+        bad.push('hovering a shop card moved the selection');
+      const coinsBefore = stats.coins;
+      if(stats.coins !== coinsBefore) bad.push('hovering a shop card spent coins');
+
+      // 2. NO RENDER IS STRETCHED. object-fit:contain is what guarantees it,
+      //    and a media box with a real ratio is what keeps the card from
+      //    growing a cream void around a small render.
+      for(const c of cards){
+        const media = c.querySelector('.uiCardMedia');
+        if(!media){ bad.push('a shop card has no media box'); break; }
+        const mr = media.getBoundingClientRect();
+        if(mr.width < 2 || mr.height < 2){ bad.push('a shop card media box collapsed'); break; }
+        const cv = media.querySelector('canvas');
+        if(!cv) continue;
+        const fit = getComputedStyle(cv).objectFit;
+        if(fit !== 'contain'){ bad.push('a shop render uses object-fit:' + fit + ', which can distort it'); break; }
+      }
+
+      // 3. A CARD MUST NOT OVERLAP ANOTHER CARD. The featured row used to cut
+      //    through the daily row's price footers.
+      for(let i=0;i<cards.length;i++) for(let j=i+1;j<cards.length;j++){
+        const a = cards[i].getBoundingClientRect(), b = cards[j].getBoundingClientRect();
+        const ox = Math.min(a.right,b.right) - Math.max(a.left,b.left);
+        const oy = Math.min(a.bottom,b.bottom) - Math.max(a.top,b.top);
+        if(ox > 1 && oy > 1){ bad.push('two shop cards overlap by ' + Math.round(ox) + 'x' + Math.round(oy) + 'px'); i = cards.length; break; }
+      }
+    } finally {
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'> shop: hover never buys, previews are not stretched',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // ---- [/] the pass ------------------------------------------------------
+  function checkUiPass(){
+    const bad = [], notes = [], snap = uiSnap();
+    try{
+      state = 'menu';
+      openLobbyTab('pass');
+      const tiles = [...document.querySelectorAll('#pass .psTile')];
+      if(tiles.length < 2) return { name:'/ pass: hover never pans, drag never claims',
+                                    pass:false, detail:'needs 2+ tiles; found '+tiles.length };
+      const rail = $('psTrack');
+      notes.push(tiles.length + ' tiers');
+
+      // 1. HOVER DOES NOT PAN. The old handler selected on hover and then
+      //    scrollIntoView'd the selection, so the rail moved under the pointer.
+      const scrollBefore = rail.scrollLeft;
+      const selBefore = document.querySelector('#pass .psTile.hi');
+      uiHover(tiles[tiles.length-1]);
+      if(rail.scrollLeft !== scrollBefore)
+        bad.push('hovering a tier scrolled the rail (' + scrollBefore + ' -> ' + rail.scrollLeft + ')');
+      if(document.querySelector('#pass .psTile.hi') !== selBefore)
+        bad.push('hovering a tier moved the selection');
+
+      // 2. SELECTING DOES NOT RESIZE. A tile that grows reflows the whole rail
+      //    and shoves the next tier out from under the pointer.
+      const w0 = tiles[0].getBoundingClientRect().width;
+      tiles[0].click();
+      const w1 = tiles[0].getBoundingClientRect().width;
+      if(Math.abs(w1 - w0) > 1)
+        bad.push('selecting a tier resized it from ' + Math.round(w0) + ' to ' + Math.round(w1) + 'px');
+
+      // 3. CLICK DOES NOT CLAIM. Claiming is the CLAIM button's job, and the
+      //    release at the end of a drag used to do it.
+      const claimedBefore = psClaimed().size, coinsBefore = stats.coins;
+      tiles[1].click();
+      if(psClaimed().size !== claimedBefore) bad.push('clicking a tier claimed it');
+      if(stats.coins !== coinsBefore) bad.push('clicking a tier paid out coins');
+
+      // 4. A DRAG IS NOT A CLICK. Press, move past the threshold, release --
+      //    and nothing may be claimed by it.
+      const r = tiles[1].getBoundingClientRect();
+      const mk = (type, x) => { try{
+        rail.dispatchEvent(new PointerEvent(type, { bubbles:true, cancelable:true, pointerId:1,
+                                                    isPrimary:true, button:0, buttons: type==='pointerup'?0:1,
+                                                    clientX:x, clientY:r.top + r.height/2 }));
+      }catch(_){ /* PointerEvent unavailable */ } };
+      const cx = r.left + r.width/2;
+      mk('pointerdown', cx); mk('pointermove', cx - 60); mk('pointerup', cx - 60);
+      tiles[1].click();                                   // the click a release produces
+      if(psClaimed().size !== claimedBefore) bad.push('a drag ending on a tier claimed it');
+    } finally {
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'/ pass: hover never pans, drag never claims',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+
+  // ---- [;] the daily spin ------------------------------------------------
+  // ONLY THE WHEEL MOVES. Measured before the fix: filling the result slot grew
+  // it from 96px to 183px, and because #daily is a centred flex column that
+  // moved the title, the subtitle and the wheel up 43px and the buttons down
+  // 44px. Separately, the SPIN button carried the state in its own label, so it
+  // measured 124px, 186px and 235px across the three states and re-centred the
+  // button row each time.
+  function checkUiDaily(){
+    const bad = [], notes = [];
+    const snap = uiSnap();
+    const was = $('daily').classList.contains('hidden');
+    try{
+      state = 'menu';
+      $('daily').classList.remove('hidden');
+      buildWheel();
+
+      const want = [['title','#daily .title'], ['subtitle','#daily .subtitle'],
+                    ['wheel','#daily .wheelWrap'], ['row','#daily .row'],
+                    ['spin','#spinBtn'], ['back','#dailyBackBtn'], ['status','#spinStatus']];
+      const read = ()=>{
+        const o = {};
+        for(const [k,q] of want){
+          const e = document.querySelector(q);
+          if(!e){ o[k] = null; continue; }
+          const r = e.getBoundingClientRect();
+          o[k] = [Math.round(r.left), Math.round(r.top), Math.round(r.width)];
+        }
+        return o;
+      };
+
+      const idle = read();
+      if(!idle.status) bad.push('there is no #spinStatus, so the state is back in a control label');
+
+      // the prize card the spin injects
+      $('spinResult').innerHTML =
+        '<div class="prize"><div class="orb"></div><span class="rlab">LEGENDARY</span>'
+        + '<div class="pname">Prism Glow</div><button class="btn small gold">EQUIP</button></div>';
+      const prize = read();
+
+      // and the three states the status line passes through
+      const st = $('spinStatus');
+      const seen = [];
+      for(const t of ['Your spin is ready.', 'Spinning\u2026', 'Next spin in 21h 40m']){
+        st.textContent = t; seen.push(read());
+      }
+
+      for(const [k] of want){
+        if(k === 'status') continue;              // its own glyphs may recentre
+        if(!idle[k]) continue;
+        for(const other of [prize].concat(seen)){
+          if(!other[k]) continue;
+          const dx = Math.abs(other[k][0] - idle[k][0]);
+          const dy = Math.abs(other[k][1] - idle[k][1]);
+          const dw = Math.abs(other[k][2] - idle[k][2]);
+          if(dx > 1 || dy > 1 || dw > 1){
+            bad.push(k + ' moved during the spin (dx ' + dx + ', dy ' + dy + ', dw ' + dw + ')');
+            break;
+          }
+        }
+      }
+
+      // the reward can only be banked once: buildWheel must leave a spent spin
+      // disabled, whatever the animation did.
+      const spent = !spinReady();
+      if(spent && !$('spinBtn').disabled)
+        bad.push('SPIN is still enabled with the cooldown running');
+
+      notes.push('7 boxes held through 4 state changes');
+    } finally {
+      $('spinResult').innerHTML = '';
+      if(was) $('daily').classList.add('hidden');
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'; daily spin: only the wheel moves', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+
+  // ---- ['] the catalogue -------------------------------------------------
+  // Cosmetics and badges are data, and data is where a typo becomes an item
+  // nobody can ever own. This walks the whole catalogue and asserts the things
+  // that must be true of every row: unique ids, the parameters each material
+  // type actually needs, a price in its rarity's band, and -- the one that
+  // matters most -- that every badge-gated unlock names a badge that exists.
+  // A skin gated behind a badge id with a typo in it is unobtainable forever
+  // and nothing else in the game would ever say so.
+  function checkCatalogue(){
+    const bad = [], notes = [];
+
+    const badgeIds = new Set(ACHIEVEMENTS.map(a=>a.id));
+    if(badgeIds.size !== ACHIEVEMENTS.length) bad.push('duplicate badge ids in ACHIEVEMENTS');
+
+    // every badge must be reachable: a check() that can be satisfied
+    for(const a of ACHIEVEMENTS){
+      if(typeof a.check !== 'function') bad.push('badge ' + a.id + ' has no check');
+      if(!(a.coins > 0)) bad.push('badge ' + a.id + ' pays no coins');
+      if(!a.name || !a.desc) bad.push('badge ' + a.id + ' is missing its name or description');
+    }
+
+    const BAND = { common:[40,120], rare:[180,300], superrare:[400,520],
+                   epic:[760,960], legendary:[1300,1700], special:[1800,2200] };
+    const NEEDS_COLOR  = ['solid','neon','metal'];
+    const NEEDS_COLORS = ['gradient','galaxy'];
+
+    for(const [label, list] of [['skin', SKINS], ['pattern', PATTERNS]]){
+      const ids = new Set();
+      for(const it of list){
+        if(ids.has(it.id)) bad.push(label + ' id "' + it.id + '" appears twice');
+        ids.add(it.id);
+        if(!it.name) bad.push(label + ' ' + it.id + ' has no name');
+        if(!RARITY[it.rarity]) bad.push(label + ' ' + it.id + ' has rarity "' + it.rarity + '"');
+
+        if(label === 'skin'){
+          if(NEEDS_COLOR.indexOf(it.type) >= 0 && !it.color)
+            bad.push('skin ' + it.id + ' is ' + it.type + ' with no color');
+          if(NEEDS_COLORS.indexOf(it.type) >= 0 && !(it.colors && it.colors.length >= 2))
+            bad.push('skin ' + it.id + ' is ' + it.type + ' with no colors');
+          if(it.type === 'galaxy' && !(it.colors && it.colors.length >= 3))
+            bad.push('skin ' + it.id + ' is galaxy and needs three colours');
+        }
+
+        const u = it.unlock;
+        if(!u || !u.kind){ bad.push(label + ' ' + it.id + ' has no unlock'); continue; }
+        if(u.kind === 'badge' && !badgeIds.has(u.badge))
+          bad.push(label + ' ' + it.id + ' unlocks from badge "' + u.badge + '", which does not exist');
+        if(u.kind === 'coins'){
+          if(!(u.cost > 0)) bad.push(label + ' ' + it.id + ' costs nothing');
+          const b = BAND[it.rarity];
+          if(b && (u.cost < b[0] || u.cost > b[1]))
+            bad.push(label + ' ' + it.id + ' costs ' + u.cost + ', outside the ' + it.rarity + ' band ' + b[0] + '-' + b[1]);
+        }
+      }
+      notes.push(list.length + ' ' + label + 's');
+    }
+
+    // Everything the shop can deal must be renderable, or a rotation day comes
+    // up with a card that cannot draw itself.
+    for(const it of shopPool()){
+      if(!it.kind) bad.push('shop pool entry ' + it.id + ' has no kind');
+    }
+    notes.push(shopPool().length + ' in the shop pool');
+    notes.push(badgeIds.size + ' badges');
+
+    return { name:"' catalogue: unique ids, real unlocks, prices in band",
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join(', ') };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -5713,7 +6073,9 @@
       // anything depends on it -- and [&] is the check that keeps it that way.
       ['~',checkLobbyPose],['^',checkLobbyFace],['&',checkDeterministicStart],
       ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
-      ['?',checkCharacterFace],[':',checkCharacterSole]
+      ['?',checkCharacterFace],[':',checkCharacterSole],
+      // v25 meta-UI interaction rules. See the block above them.
+      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

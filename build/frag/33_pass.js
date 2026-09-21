@@ -105,8 +105,14 @@
         tick.className = 'psTick'; tick.textContent = '✓';
         tile.appendChild(tick);
       }
-      tile.addEventListener('mouseenter', ()=>{ psIndex = i; psSync(); });
-      tile.addEventListener('click', ()=>{ psIndex = i; psSync(); psAct(); });
+      // v25 SS7: no mouseenter, and click no longer claims.
+      // The hover handler set the selection, and psSync() then called
+      // scrollIntoView on it with smooth behaviour -- so moving the pointer
+      // across the track made the track scroll away under it. Worse, click ran
+      // psAct(), so the release at the end of a drag claimed whichever tier it
+      // happened to land on. Claiming is the CLAIM button's job.
+      tile.setAttribute('aria-label', 'Tier ' + r.tier + ': ' + r.name);
+      tile.addEventListener('click', ()=>{ SFX.click(); psIndex = i; psSync(); });
       cell.appendChild(tile);
 
       const num = document.createElement('span');
@@ -116,14 +122,21 @@
       rail.appendChild(cell);
     });
     if(lkQueue.length) setTimeout(lkPump, 0);
+    dragShelf(rail);
   }
 
   function psSync(){
     psIndex = clamp(psIndex, 0, psRewards.length-1);
     const r = psRewards[psIndex], prog = passProgress(), claimed = psClaimed();
-    document.querySelectorAll('.psTile').forEach((t,i)=>t.classList.toggle('hi', i===psIndex));
-    const hi = document.querySelectorAll('.psTile')[psIndex];
-    if(hi) hi.scrollIntoView({block:'nearest', inline:'center', behavior:'smooth'});
+    const tiles = document.querySelectorAll('.psTile');
+    tiles.forEach((t,i)=>{
+      t.classList.toggle('hi', i===psIndex);
+      t.setAttribute('aria-pressed', String(i===psIndex));
+    });
+    const hi = tiles[psIndex];
+    // Never while a drag is in flight: a smooth scrollIntoView fights the
+    // finger that is doing the dragging.
+    if(hi && !shelfIsDragging($('psTrack'))) hi.scrollIntoView({block:'nearest', inline:'nearest'});
 
     $('psName').textContent = r.name;
     $('psType').textContent = r.label;

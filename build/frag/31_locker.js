@@ -31,13 +31,25 @@
     if(tileRT) return;
     tileRT = new THREE.WebGLRenderTarget(TILE_PX, TILE_PX, { depthBuffer:true });
     tileScene = new THREE.Scene();
-    // The rig runs from -9 to +19 about its own origin, plus a hat on top of
-    // that, so the whole figure is about 34 tall. At 96 back on a 30-degree
-    // lens the frame is 51 units and the character was cropped at the sides
-    // and the crown lost off the top. 150 back gives 80 units of frame, which
-    // leaves the figure a comfortable two thirds of the tile.
+    // v25: REFRAMED, from a measurement rather than from the estimate that used
+    // to be written here. "A comfortable two thirds of the tile" was not what
+    // 150 back produced: reading the alpha bounding box out of a painted tile
+    // put the figure at 43% of the width and 46% of the height, sitting about
+    // six pixels low in the frame. That is the cream void that made every shop
+    // card look like a small render lost in a big box.
+    //
+    // Measured at the old framing: half-frame 40.19u over 48px = 0.837 u/px, so
+    // the figure spans y -19.4..+16.6 (36 tall) and 34.3 wide, centred on
+    // y = -1.4 rather than on the +4 the lens was aimed at. For the figure to
+    // take ~80% of the tile the half-frame wants to be 36/2/0.8 = 22.5u, and
+    // 22.5 / tan(15deg) = 84. Width then sits at 34.3/45 = 76%, so nothing is
+    // cropped at the sides -- which is what going to 96 got wrong last time.
+    //
+    // This is the TILE lens and nothing else. It draws the locker and shop
+    // thumbnails; the character, the lobby camera and the race camera are
+    // untouched by it.
     tileCam = new THREE.PerspectiveCamera(30, 1, 1, 500);
-    tileCam.position.set(0, 14, 150); tileCam.lookAt(0, 4, 0);
+    tileCam.position.set(0, 8, 84); tileCam.lookAt(0, -1.4, 0);
     // Flat and even: a tile is an icon, not a portrait, and a key light with a
     // falloff would make the same hat read differently in two rows.
     tileScene.add(new THREE.HemisphereLight(0xffffff, 0x8899bb, 2.1));
@@ -152,9 +164,31 @@
     return (custom.eyes||'round') === item.id;
   }
 
+  // v25 SS6: THE LOCKER IS INVENTORY, NOT A STOREFRONT.
+  // It used to list the whole catalogue -- everything you owned, greyed out
+  // beside everything you did not, each locked one carrying its price. That is
+  // a shop with the buying taken out, and it made the one screen whose job is
+  // "what do I want to wear" mostly a list of things you cannot wear. What you
+  // do not own yet lives in the shop, which is the screen for wanting things.
+  function lkInventory(){ return lkItems().filter(lkOwned); }
+
+  // What an empty category should say. Named per tab because "no patterns yet"
+  // and "no colourways yet" are different sentences.
+  const LK_NOUN = { skin:'colourways', pattern:'patterns', hat:'hats', eyes:'eyes' };
+
+  // The grid is auto-fill, so the column count is whatever fits rather than a
+  // constant. The arrow keys have to ask, or Down jumps the wrong distance at
+  // every width but the one it was written for.
+  function lkCols(){
+    const g = $('lkGrid');
+    if(!g) return 4;
+    const n = getComputedStyle(g).gridTemplateColumns.split(' ').filter(Boolean).length;
+    return Math.max(1, n);
+  }
+
   // ---- the left pane follows the highlight -------------------------------
   function lkPreview(){
-    const item = lkItems()[lkIndex]; if(!item) return;
+    const item = lkInventory()[lkIndex]; if(!item) return;
     if(lkTab === 'skin')         setPreview(item.id, null);
     else if(lkTab === 'pattern') setPreview(null, item.id);
     else {
@@ -208,92 +242,124 @@
   function buildLockerGrid(){
     const grid = $('lkGrid'); grid.innerHTML = '';
     lkQueue = [];
-    const items = lkItems(), owned = lkTab==='skin' ? ownedSkins()
-                          : lkTab==='pattern' ? ownedPatterns() : null;
+    const items = lkInventory();
+
+    // An owned-only shelf can legitimately be empty, so that is a state with a
+    // design rather than a grid with nothing in it.
+    if(!items.length){
+      const empty = document.createElement('div');
+      empty.className = 'uiEmpty';
+      const t = document.createElement('div');
+      t.className = 'uiEmptyTitle'; t.textContent = 'Nothing here yet';
+      const b = document.createElement('div');
+      b.className = 'uiEmptyBody';
+      b.textContent = 'You do not own any ' + (LK_NOUN[lkTab]||'items') + ' yet.';
+      const go = document.createElement('button');
+      go.type = 'button'; go.className = 'btn small gold'; go.textContent = 'OPEN SHOP';
+      go.addEventListener('click', ()=>{ SFX.click(); openLobbyTab('shop'); });
+      empty.appendChild(t); empty.appendChild(b); empty.appendChild(go);
+      grid.appendChild(empty);
+      return;
+    }
+
     items.forEach((item, i)=>{
-      const tile = document.createElement('button');
-      tile.className = 'lkTile' + (i===lkIndex ? ' hi' : '');
-      tile.dataset.i = i;
-      const have = owned ? owned.has(item.id) : true;
-      if(!have) tile.classList.add('locked');
-      if(lkEquipped(item)) tile.classList.add('on');
+      const on = lkEquipped(item);
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'uiCard lkTile' + (i===lkIndex ? ' sel' : '') + (on ? ' equipped' : '');
+      card.dataset.i = i;
+      card.setAttribute('aria-label', item.name + (on ? ', equipped' : ''));
+      card.setAttribute('aria-pressed', String(i===lkIndex));
 
-      // the placeholder underneath: the item's own colour, so an unrendered
-      // tile still says which item it is
-      if(lkTab === 'skin') tile.style.setProperty('--sw', skinSwatch(skinOf(item.id)));
-
+      // The media box carries the ratio; the canvas fills it with object-fit.
+      // This is what keeps a render from being stretched and what keeps the
+      // card from growing an empty margin around a small one.
+      const media = document.createElement('span');
+      media.className = 'uiCardMedia';
+      if(lkTab === 'skin') media.style.setProperty('--sw', skinSwatch(skinOf(item.id)));
+      const canvas = document.createElement('canvas');
+      canvas.className = 'lkShot'; canvas.width = canvas.height = TILE_PX;
+      media.appendChild(canvas);
       const pill = document.createElement('span');
       pill.className = 'rarityPill r-' + item.rarity;
       pill.textContent = RARITY[item.rarity].name.toUpperCase();
-      tile.appendChild(pill);
+      media.appendChild(pill);
 
-      const canvas = document.createElement('canvas');
-      canvas.className = 'lkShot'; canvas.width = canvas.height = TILE_PX;
-      tile.appendChild(canvas);
+      // The name gets a row to itself. Sharing the head with the rarity pill
+      // left it about forty pixels and every label in the locker truncated.
+      const foot = document.createElement('span');
+      foot.className = 'uiCardFoot';
+      const nm = document.createElement('span');
+      nm.className = 'uiCardName'; nm.textContent = item.name;
+      foot.appendChild(nm);
 
-      const cap = document.createElement('span');
-      cap.className = 'lkCap'; cap.textContent = item.name;
-      tile.appendChild(cap);
-
-      if(!have){
-        const lock = document.createElement('span');
-        lock.className = 'lkLock';
-        lock.textContent = item.unlock.kind==='coins' ? (item.unlock.cost + ' coins') : unlockText(item);
-        tile.appendChild(lock);
-      }
-      if(lkEquipped(item)){
+      card.appendChild(media); card.appendChild(foot);
+      if(on){
         const tick = document.createElement('span');
-        tick.className = 'lkTick'; tick.textContent = '\u2713';
-        tile.appendChild(tick);
+        tick.className = 'uiTick'; tick.textContent = '\u2713';
+        card.appendChild(tick);
       }
 
-      // A tile already in the cache is painted now -- it costs a putImageData
-      // and nothing else, and it would be silly to queue it.
       if(tileCache.has(lkTab + ':' + item.id)) lkPaint(canvas, lkTab, item.id);
       else lkQueue.push({ canvas, kind:lkTab, id:item.id, soon: i < LK_SOON });
 
-      tile.addEventListener('mouseenter', ()=>{ lkIndex = i; lkSync(); });
-      tile.addEventListener('click', ()=>{ lkIndex = i; lkSync(); lkAct(); });
-      grid.appendChild(tile);
+      // v25 SS7: CLICK SELECTS. IT DOES NOT EQUIP.
+      // There is deliberately no mouseenter handler here. The old one set
+      // lkIndex on hover, so dragging the pointer across the shelf rewrote the
+      // selection and the character preview with it, and the click that
+      // followed equipped whatever the pointer had last passed over. Equipping
+      // is the EQUIP button's job and nothing else's.
+      card.addEventListener('click', ()=>{ SFX.click(); lkIndex = i; lkSync(); });
+      grid.appendChild(card);
     });
     if(lkQueue.length && !lkQueueRun) setTimeout(lkPump, 0);
   }
 
   // ---- header, highlight, footer ----------------------------------------
   function lkSync(){
-    const items = lkItems();
+    const items = lkInventory();
+    const act = $('lkAction');
+    if(!items.length){
+      $('lkName').textContent = '\u2014';
+      const rp0 = $('lkRarity'); rp0.textContent = ''; rp0.className = 'rarityPill';
+      act.textContent = 'EQUIP'; act.disabled = true; act.className = 'btn small gold';
+      $('lkHint').textContent = '';
+      return;
+    }
     lkIndex = clamp(lkIndex, 0, items.length-1);
     const item = items[lkIndex];
-    document.querySelectorAll('.lkTile').forEach((t,i)=>t.classList.toggle('hi', i===lkIndex));
-    const hi = document.querySelector('.lkTile.hi');
+    document.querySelectorAll('#lkGrid .uiCard').forEach((t,i)=>{
+      t.classList.toggle('sel', i===lkIndex);
+      t.setAttribute('aria-pressed', String(i===lkIndex));
+    });
+    const hi = document.querySelector('#lkGrid .uiCard.sel');
     if(hi) hi.scrollIntoView({block:'nearest'});
     $('lkName').textContent = item.name;
     const rp = $('lkRarity');
     rp.textContent = RARITY[item.rarity].name.toUpperCase();
     rp.className = 'rarityPill r-' + item.rarity;
-    const have = lkOwned(item), on = lkEquipped(item);
-    const act = $('lkAction');
-    act.textContent = on ? 'EQUIPPED' : have ? 'EQUIP' : (item.unlock.kind==='coins' ? 'BUY' : 'LOCKED');
-    act.disabled = on || (!have && item.unlock.kind!=='coins');
-    act.className = 'btn small ' + (on ? 'blue' : have ? 'gold' : 'pink');
-    $('lkHint').textContent = have ? '' : unlockText(item);
+    const on = lkEquipped(item);
+    // Selected and equipped are different things and say so. The button is the
+    // only thing that changes what you are wearing.
+    act.textContent = on ? 'EQUIPPED' : 'EQUIP';
+    act.disabled = on;
+    act.className = 'btn small ' + (on ? 'blue' : 'gold');
+    $('lkHint').textContent = on ? 'Wearing this now' : 'Selected \u2014 press EQUIP to wear it';
     lkPreview();
   }
 
-  // ---- equipping and buying ---------------------------------------------
+  // ---- equipping ---------------------------------------------------------
+  // Everything in here is owned, so this only ever equips. Buying moved to the
+  // shop with the locked catalogue it belonged to.
   function lkAct(){
-    const item = lkItems()[lkIndex]; if(!item) return;
-    if(lkOwned(item)){
-      if(lkTab === 'skin'){ custom.skin = item.id; syncCustomColor(); }
-      if(lkTab === 'pattern') custom.pattern = item.id;
-      if(lkTab === 'hat')     custom.hat = item.id;
-      if(lkTab === 'eyes')    custom.eyes = item.id;
-      lkTryOn = null; setPreview(null, null);
-      saveProfile(); SFX.click(); buildLockerGrid(); lkSync();
-      return;
-    }
-    if(item.unlock.kind !== 'coins') return;
-    lkConfirm(item);
+    const item = lkInventory()[lkIndex]; if(!item) return;
+    if(lkEquipped(item)) return;
+    if(lkTab === 'skin'){ custom.skin = item.id; syncCustomColor(); }
+    if(lkTab === 'pattern') custom.pattern = item.id;
+    if(lkTab === 'hat')     custom.hat = item.id;
+    if(lkTab === 'eyes')    custom.eyes = item.id;
+    lkTryOn = null; setPreview(null, null);
+    saveProfile(); SFX.click(); buildLockerGrid(); lkSync();
   }
 
   // ---- the buy confirm ---------------------------------------------------
@@ -321,27 +387,12 @@
   $('buyYes').addEventListener('click', doBuy);
   $('buyNo').addEventListener('click', closeBuy);
 
-  function lkConfirm(item){
-    openBuy({
-      kind: lkTab, id: item.id, name: item.name, cost: item.unlock.cost,
-      onBuy: ()=>{
-        stats.coins -= item.unlock.cost;
-        // The locker puts on what you just bought, because that is what you
-        // came to the locker to do.
-        if(lkTab === 'skin'){ (stats.owned = stats.owned||[]).push(item.id); custom.skin = item.id; syncCustomColor(); }
-        else { (stats.patterns = stats.patterns||[]).push(item.id); custom.pattern = item.id; }
-        saveProfile(); refreshCoinChips();
-        buildLockerGrid(); lkSync();
-      }
-    });
-  }
-
   // ---- opening it --------------------------------------------------------
   function openLocker(tab){
     lkTab = tab || 'skin'; lkIndex = 0;
     document.querySelectorAll('.lkTab').forEach(b=>b.classList.toggle('sel', b.dataset.lk===lkTab));
     // start on what you are wearing, so the screen opens on you
-    const items = lkItems();
+    const items = lkInventory();
     const i = items.findIndex(it=>lkEquipped(it));
     if(i >= 0) lkIndex = i;
     buildLockerGrid(); lkSync();
@@ -364,7 +415,7 @@
   window.addEventListener('keydown', e=>{
     if($('locker').classList.contains('hidden')) return;
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
-    const n = lkItems().length;
+    const n = lkInventory().length;
     if(!$('buyBox').classList.contains('hidden')){
       if(e.key==='Enter'){ doBuy(); e.preventDefault(); }
       if(e.key==='Escape'){ closeBuy(); e.preventDefault(); }
@@ -373,8 +424,9 @@
     let d = 0;
     if(e.key==='ArrowRight') d = 1;
     if(e.key==='ArrowLeft')  d = -1;
-    if(e.key==='ArrowDown')  d = 4;
-    if(e.key==='ArrowUp')    d = -4;
+    const cols = lkCols();
+    if(e.key==='ArrowDown')  d = cols;
+    if(e.key==='ArrowUp')    d = -cols;
     if(d){ lkIndex = clamp(lkIndex + d, 0, n-1); lkSync(); e.preventDefault(); return; }
     if(e.key==='Enter'){ lkAct(); e.preventDefault(); }
     if(e.key==='Escape'){ SFX.click(); openLobbyTab('play'); e.preventDefault(); }

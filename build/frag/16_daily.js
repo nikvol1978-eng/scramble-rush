@@ -76,14 +76,22 @@
     const ready = spinReady();
     const btn = $('spinBtn');
     btn.disabled = !ready;
-    btn.textContent = ready ? 'SPIN' : 'BACK IN '+fmtWait(spinReadyIn());
+    // v25 SS-DAILY: THE BUTTON'S LABEL NEVER CHANGES.
+    // It used to carry the state -- 'SPIN' / 'SPINNING...' / 'BACK IN 21h 40m'
+    // -- which measured 124px, 186px and 235px wide. The row is centred, so
+    // every state change shifted the button and the BACK button beside it. The
+    // state lives in its own fixed slot now and the button just says SPIN.
+    btn.textContent = 'SPIN';
+    $('spinStatus').textContent = ready ? 'Your spin is ready.'
+                                        : 'Next spin in ' + fmtWait(spinReadyIn());
     spinning = false;
   }
 
   async function doSpin(){
     if(spinning || !spinReady()) return;
     spinning = true;
-    const btn = $('spinBtn'); btn.disabled = true; btn.textContent = 'SPINNING…';
+    const btn = $('spinBtn'); btn.disabled = true;
+    $('spinStatus').textContent = 'Spinning\u2026';
 
     const prize = pickSpinPrize();
     // land on a wedge of the tier actually won
@@ -94,7 +102,10 @@
     const target = 360*5 - (idx*seg + seg/2 + jitter);
 
     const wheel = $('wheel');
-    wheel.style.transition = 'transform 4.1s cubic-bezier(0.12,0.72,0.10,1)';
+    // ONLY THE WHEEL ANIMATES. Everything around it -- title, subtitle, status,
+    // buttons, the result slot -- holds its box for the whole spin.
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    wheel.style.transition = still ? 'none' : 'transform 4.1s cubic-bezier(0.12,0.72,0.10,1)';
     wheel.style.transform = `rotate(${target}deg)`;
     SFX.click();
 
@@ -103,7 +114,7 @@
     if(prize.skin){ stats.owned = stats.owned||[]; stats.owned.push(prize.skin.id); }
     await saveProfile();
 
-    await new Promise(r => setTimeout(r, 4250));
+    await new Promise(r => setTimeout(r, still ? 200 : 4250));
 
     if(prize.skin){
       const r = RARITY[prize.skin.rarity];

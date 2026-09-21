@@ -235,7 +235,43 @@
     {id:'supernova',name:'Supernova',    rarity:'legendary', type:'galaxy',  colors:['#1a0330','#f43f5e','#fde047'], unlock:{kind:'coins',cost:1500}},
     {id:'spectrum', name:'Spectrum',     rarity:'legendary', type:'rainbow', unlock:{kind:'badge',badge:'twenty_wins'}},
 
-    {id:'prismvoid',name:'Prismatic Void', rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}}
+    {id:'prismvoid',name:'Prismatic Void', rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}},
+
+    // ---- v25: fourteen more colourways --------------------------------
+    // All of them are the EXISTING procedural material system -- solid,
+    // gradient, neon, metal, galaxy -- with new parameters. Nothing here needs
+    // a new shader, a texture or an asset, which is why they cost nothing to
+    // ship and why their shop previews render through the same tile pass as
+    // everything else.
+    //
+    // Prices sit in the bands the catalogue already uses: common 60-100,
+    // rare 220-260, superrare 450-480, epic 800-900, legendary 1400-1600.
+    // Two are badge-gated rather than sold, which exercises the badge ->
+    // cosmetic path with the badges added in this same release.
+
+    // common
+    {id:'pearl',        name:'Pearl',          rarity:'common', type:'gradient', colors:['#ffffff','#f3e8ff'], unlock:{kind:'coins',cost:100}},
+    {id:'candyfloss',   name:'Candy Floss',    rarity:'common', type:'gradient', colors:['#fda4af','#f0abfc'], unlock:{kind:'coins',cost:100}},
+
+    // rare
+    {id:'molten',       name:'Molten Core',    rarity:'rare', type:'gradient', colors:['#ffcb3d','#b91c1c'], unlock:{kind:'coins',cost:240}},
+    {id:'deepocean',    name:'Deep Ocean',     rarity:'rare', type:'gradient', colors:['#67e8f9','#0c2a4d'], unlock:{kind:'coins',cost:250}},
+    {id:'icymint',      name:'Icy Mint',       rarity:'rare', type:'gradient', colors:['#ecfeff','#5eead4'], unlock:{kind:'coins',cost:230}},
+    {id:'stormfront',   name:'Storm Front',    rarity:'rare', type:'gradient', colors:['#1e3a8a','#93c5fd'], unlock:{kind:'coins',cost:260}},
+
+    // superrare
+    {id:'neon_tide',    name:'Neon Tide',      rarity:'superrare', type:'neon', color:'#22d3ee', unlock:{kind:'coins',cost:460}},
+    {id:'neon_bloom',   name:'Neon Bloom',     rarity:'superrare', type:'neon', color:'#ff2fd0', unlock:{kind:'coins',cost:470}},
+    {id:'electriclime', name:'Electric Lime',  rarity:'superrare', type:'neon', color:'#a3ff12', unlock:{kind:'coins',cost:450}},
+    {id:'brushedgold',  name:'Brushed Gold',   rarity:'superrare', type:'metal', color:'#e8c86a', shine:160, unlock:{kind:'coins',cost:480}},
+
+    // epic
+    {id:'polarveil',    name:'Polar Veil',     rarity:'epic', type:'galaxy', colors:['#04121f','#22d3ee','#a78bfa'], unlock:{kind:'coins',cost:850}},
+    {id:'violetdrift',  name:'Violet Drift',   rarity:'epic', type:'galaxy', colors:['#1e1b4b','#6d28d9','#c026d3'], unlock:{kind:'badge',badge:'races25'}},
+    {id:'emberglow',    name:'Ember Glow',     rarity:'epic', type:'neon', color:'#ff6a00', unlock:{kind:'coins',cost:820}},
+
+    // legendary
+    {id:'blackgold',    name:'Black Gold',     rarity:'legendary', type:'gradient', colors:['#0b0b0f','#f0c419'], unlock:{kind:'badge',badge:'wins10'}}
   ];
   const SKIN_BY_ID = Object.fromEntries(SKINS.map(s=>[s.id,s]));
   function skinOf(id){ return SKIN_BY_ID[id] || SKIN_BY_ID['pink']; }
@@ -426,7 +462,49 @@
     {id:'podium50',     name:'Ever Present',    desc:'Finish top 3 in 50 matches',       icon:'\u{1F396}', coins:900,  check:s=>s.podiums>=50},
     {id:'dives500',     name:'Faceplant',       desc:'Dive 500 times',                   icon:'\u{1F92F}', coins:600,  check:s=>s.dives>=500},
     {id:'collector30',  name:'Collector',       desc:'Own 30 colourways',                icon:'\u{1F5C3}', coins:700,  check:()=>ownedSkins().size>=30},
-    {id:'wardrobe',     name:'Wardrobe',        desc:'Own 8 patterns',                   icon:'\u{1F9F5}', coins:500,  check:()=>ownedPatterns().size>=8}
+    {id:'wardrobe',     name:'Wardrobe',        desc:'Own 8 patterns',                   icon:'\u{1F9F5}', coins:500,  check:()=>ownedPatterns().size>=8},
+
+    // ---- v25: eighteen more, and an XP payout alongside the coins ---------
+    // EVERY ONE OF THESE READS A COUNTER THE GAME ALREADY KEEPS. The brief
+    // asked for badges on jumps and on recoveries too; there is no jumps
+    // counter and no recoveries counter anywhere in the fragments, and adding
+    // one means editing 15_actions.js, which this release freezes. A badge
+    // whose condition cannot be measured is a badge that never unlocks, so
+    // those two are deliberately absent rather than quietly broken.
+    //
+    // The tracked set, confirmed by reading every `stats.<x>++` in the
+    // fragments: races, wins, finals, podiums, minigamesWon, lavaSurvived,
+    // noFallFinishes, cleanWins, mpRaces, dives, level, xp, coins, bestStreak,
+    // and the two owned-collection sizes.
+
+    // beginner: the first time you do each thing
+    {id:'first_race',    name:'Off the Blocks',  desc:'Play your first match',            icon:'\u{1F6A9}', coins:50,   xp:20,  check:s=>s.races>=1},
+    {id:'first_final',   name:'Made the Cut',    desc:'Reach a final round',              icon:'\u{1F3C1}', coins:120,  xp:40,  check:s=>s.finals>=1},
+    {id:'first_podium',  name:'On the Box',      desc:'Finish top 3 in a match',          icon:'\u{1F947}', coins:100,  xp:40,  check:s=>s.podiums>=1},
+    {id:'first_dive',    name:'First Flop',      desc:'Dive for the first time',          icon:'\u{1F938}', coins:40,   xp:15,  check:s=>s.dives>=1},
+    {id:'first_mini',    name:'Still Standing',  desc:'Survive a minigame round',         icon:'\u{1F3AA}', coins:80,   xp:30,  check:s=>s.minigamesWon>=1},
+
+    // intermediate: the middle of each ladder, which had gaps in it
+    {id:'races25',       name:'Regular',         desc:'Play 25 matches',                  icon:'\u{1F4C6}', coins:220,  xp:80,  check:s=>s.races>=25},
+    {id:'wins10',        name:'Contender',       desc:'Win 10 matches',                   icon:'\u{1F94B}', coins:420,  xp:150, check:s=>s.wins>=10},
+    {id:'finals25',      name:'Ever Closer',     desc:'Reach the final 25 times',         icon:'\u{1F3AF}', coins:550,  xp:200, check:s=>s.finals>=25},
+    {id:'podium30',      name:'Rostered',        desc:'Finish top 3 in 30 matches',       icon:'\u{1F948}', coins:600,  xp:220, check:s=>s.podiums>=30},
+    {id:'dives250',      name:'Skid Marks',      desc:'Dive 250 times',                   icon:'\u{1F4A8}', coins:450,  xp:160, check:s=>s.dives>=250},
+    {id:'minis12',       name:'Party Animal',    desc:'Survive 12 minigame rounds',       icon:'\u{1F389}', coins:480,  xp:170, check:s=>s.minigamesWon>=12},
+    {id:'nofall10',      name:'Steady Feet',     desc:'Finish 10 rounds without falling', icon:'\u{1F45F}', coins:520,  xp:190, check:s=>s.noFallFinishes>=10},
+    {id:'lava5',         name:'Fireproof',       desc:'Survive 5 Magma Chase rounds',     icon:'\u{1F525}', coins:500,  xp:180, check:s=>s.lavaSurvived>=5},
+    {id:'mp25',          name:'Well Connected',  desc:'Race online 25 times',             icon:'\u{1F310}', coins:800,  xp:260, check:s=>s.mpRaces>=25},
+
+    // long haul: these are meant to take a season
+    {id:'level15',       name:'Seasoned',        desc:'Reach level 15',                   icon:'\u{1F320}', coins:750,          check:s=>s.level>=15},
+    {id:'level40',       name:'Veteran Class',   desc:'Reach level 40',                   icon:'\u{1F308}', coins:2000,         check:s=>s.level>=40},
+    {id:'races500',      name:'Lifer',           desc:'Play 500 matches',                 icon:'\u{231B}',  coins:2500, xp:600, check:s=>s.races>=500},
+    {id:'streak10',      name:'Juggernaut',      desc:'Win 10 matches in a row',          icon:'\u{1F680}', coins:2000, xp:500, check:s=>s.bestStreak>=10},
+
+    // a combination, which is the one shape the set did not have
+    {id:'allround',      name:'All-Rounder',     desc:'Win a match, survive a minigame and reach a final',
+                                                                                          icon:'\u{1F9E9}', coins:300,  xp:120,
+     check:s=>s.wins>=1 && s.minigamesWon>=1 && s.finals>=1}
   ];
   function checkAchievements(){
     for(const a of ACHIEVEMENTS){

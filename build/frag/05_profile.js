@@ -610,8 +610,8 @@
   function refreshCoinChips(){
     if(typeof refreshLobby==='function') refreshLobby();
     document.querySelectorAll('.coinChip .coinNum').forEach(el=>{ el.textContent = fmtNum(stats.coins); });
-    const n = unclaimedBadges().length;
-    ['badgePip','badgePip2'].forEach(id=>{ const e=$(id); if(e) e.classList.toggle('hidden', n===0); });
+    // One rule for "is there anything to claim", in 34_badges.js.
+    refreshBadgePips();
     const owned=ownedSkins(), ownedP=ownedPatterns();
     const affordable = SKINS.some(s=>s.unlock.kind==='coins' && !owned.has(s.id) && stats.coins>=s.unlock.cost)
                     || PATTERNS.some(p=>p.unlock.kind==='coins' && !ownedP.has(p.id) && stats.coins>=p.unlock.cost);
@@ -672,7 +672,6 @@
     document.querySelectorAll('#profile .tabPane').forEach(p=>p.classList.toggle('hidden', p.dataset.pane!==profTab));
     if(profTab==='character') buildCharacterPane();
     if(profTab==='stats')     buildStatsPane();
-    if(profTab==='badges')    buildBadgesPane();
     if(profTab==='shop')      buildShopPane();
     if(profTab==='patterns')  buildPatternPane();
   }
@@ -790,32 +789,6 @@
     ];
     $('statGrid').innerHTML = cards.map(([k,v])=>`<div class="statCard"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')
       + `<div class="statCard wide"><div class="k">Progress to Champion Gold</div><div class="v">${fmtNum(Math.min(stats.wins,100))} / 100 wins</div></div>`;
-  }
-
-  function buildBadgesPane(){
-    const host=$('badgeList');
-    host.innerHTML = ACHIEVEMENTS.map(a=>{
-      const got=(stats.badges||[]).includes(a.id);
-      const claimed=(stats.claimed||[]).includes(a.id);
-      const right = !got ? `<span class="paid">+${a.coins}</span>`
-        : claimed ? `<span class="paid">CLAIMED</span>`
-        : `<button class="claim" data-badge="${a.id}">CLAIM +${a.coins}</button>`;
-      return `<div class="badgeCard ${got?'got':''}">
-        <div class="ico">${a.icon}</div>
-        <div class="txt"><div class="bn">${a.name}</div><div class="bd">${a.desc}</div></div>
-        ${right}</div>`;
-    }).join('');
-    host.querySelectorAll('button.claim').forEach(b=>{
-      b.onclick = async ()=>{
-        const id=b.dataset.badge, a=ACHIEVEMENTS.find(x=>x.id===id);
-        if(!a || (stats.claimed||[]).includes(id)) return;
-        stats.claimed = stats.claimed||[]; stats.claimed.push(id);
-        SFX.win();
-        await addCoins(a.coins, a.name);
-        await saveProfile();
-        buildBadgesPane(); refreshCoinChips();
-      };
-    });
   }
 
   function buildShopPane(){

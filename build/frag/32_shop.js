@@ -83,7 +83,8 @@
 
   function shopCard(item, big){
     const card = document.createElement('button');
-    card.className = 'shCard' + (big ? ' big' : '');
+    card.type = 'button';
+    card.className = 'uiCard shCard' + (big ? ' big' : '');
     const owned = shopOwned(item), price = shopPrice(item);
 
     const band = document.createElement('div');
@@ -96,12 +97,17 @@
     band.appendChild(pill); band.appendChild(nm);
     card.appendChild(band);
 
+    // v25: the canvas goes inside a media box that owns a RATIO, and fills it
+    // with object-fit:contain. Before this it was a bare flex child at
+    // width:100% with its height coming from a 1.5fr row -- a fraction of the
+    // VIEWPORT, with no relationship to the square bitmap inside it. That is
+    // what stretched the render and what left the huge cream margin around it.
+    const media = document.createElement('span');
+    media.className = 'uiCardMedia';
     const shot = document.createElement('canvas');
-    // Not .lkShot: that one is absolutely positioned to fill a locker tile,
-    // and borrowing it for the fade took the positioning too -- the price
-    // strip ended up above the art instead of under it.
     shot.className = 'shShot'; shot.width = shot.height = TILE_PX;
-    card.appendChild(shot);
+    media.appendChild(shot);
+    card.appendChild(media);
 
     const foot = document.createElement('div');
     foot.className = 'shFoot';
@@ -124,8 +130,14 @@
     else lkQueue.push({ canvas:shot, kind:item.kind, id:item.id, soon:true });
 
     const idx = shCards.length;
-    card.addEventListener('mouseenter', ()=>{ shIndex = idx; shSync(); });
-    card.addEventListener('click', ()=>{ shIndex = idx; shSync(); shOpenCard(); });
+    card.setAttribute('aria-label', item.name + ', ' + RARITY[item.rarity].name
+                      + (owned ? ', owned' : ''));
+    // v25 SS7: no mouseenter. Dragging the pointer across the shop used to move
+    // the selection under it, so the click that followed opened whichever card
+    // the pointer had last crossed rather than the one that was aimed at.
+    // Selecting is a click; BUYING is a second, explicit press in the detail
+    // dialog that click opens.
+    card.addEventListener('click', ()=>{ SFX.click(); shIndex = idx; shSync(); shOpenCard(); });
     shCards.push({ el:card, item });
     return card;
   }
