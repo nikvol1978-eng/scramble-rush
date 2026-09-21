@@ -36,6 +36,13 @@
 <div id="menuRings" class="hidden"></div>
 
 <div id="menuChrome" class="hidden">
+  <!-- Back to the arcade. It lives in the chrome rather than on each screen,
+       so every meta screen that shows the strip gets it for free and none of
+       them has to remember. -->
+  <button class="homeBtn" id="homeBtn" type="button" title="Back to Nikcade">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M6 10.5V20h12v-9.5"/></svg>
+    <span class="homeBtnName">NIKCADE</span>
+  </button>
   <div class="lobbyTabs" role="tablist">
     <div class="tabWrap">
       <button class="tabPill sel" id="tabPlay" data-lobby="play" aria-label="Play" title="Play">
@@ -127,6 +134,53 @@
 <!-- ================= SEASON PASS (v24 §5.5) ================= -->
 <!-- The stumbler stands in the middle of the 3D view, which shows through
      between the header on the left and the reward panel on the right. -->
+<!-- MODE SELECT: the choice PLAY used to make for you. -->
+<div id="modeSelect" class="screen shade hidden">
+  <div class="view">
+    <div class="viewHead">
+      <span class="viewTitle">Choose a mode</span>
+      <span class="viewSub">Pick one, then start.</span>
+      <span class="viewMeta">
+        <button class="btn small blue" id="modeBack" type="button">BACK</button>
+        <button class="btn small gold" id="modeGo" type="button">RACE</button>
+      </span>
+    </div>
+    <div class="viewBody">
+      <div class="modeGrid" id="modeGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BADGES: its own screen, not a pane inside the profile panel. -->
+<div id="badges" class="screen shade hidden">
+  <div class="view">
+    <div class="viewHead">
+      <span class="viewTitle">Badges</span>
+      <span class="viewSub" id="bgSummary">0 of 0 earned</span>
+      <span class="viewMeta">
+        <span class="bgBar"><span class="bgFill" id="bgFill"></span></span>
+        <button class="btn small gold" id="bgClaimAll" type="button">NOTHING TO CLAIM</button>
+        <button class="btn small blue" id="bgBackBtn" type="button">DONE</button>
+      </span>
+    </div>
+    <!-- Two panes, ONE of them in the content area at a time. Stats lived in
+         the old profile panel, which nothing opens any more now that Badges
+         has its own screen; rather than strand fifteen rows of progression it
+         moves here, where the rest of the progression already is. -->
+    <div class="bgTabs" role="tablist">
+      <button class="bgTab sel" data-bg="badges" role="tab" aria-selected="true" type="button">BADGES</button>
+      <button class="bgTab" data-bg="stats" role="tab" aria-selected="false" type="button">STATS</button>
+    </div>
+    <div class="viewBody">
+      <div class="bgGrid" id="bgGrid"></div>
+      <div class="statGrid hidden" id="bgStats"></div>
+    </div>
+    <div class="viewFoot">
+      <span class="bgPending" id="bgPending">Play a match to make progress.</span>
+    </div>
+  </div>
+</div>
+
 <div id="pass" class="screen hidden">
   <div class="psHead">
     <h2 class="psTitle">SEASON PASS</h2>
@@ -207,6 +261,10 @@
     <div class="wheelHub"></div>
   </div>
   <div id="spinResult"></div>
+  <!-- The status line is its own fixed slot. It used to be the SPIN button's
+       own label, which is why the button changed width -- and with it the whole
+       row's centring -- every time the state changed. -->
+  <div class="spinStatus" id="spinStatus" role="status" aria-live="polite"></div>
   <div class="row">
     <button class="btn gold" id="spinBtn">SPIN</button>
     <button class="btn small blue" id="dailyBackBtn">BACK</button>
@@ -235,7 +293,6 @@
     <div class="tabs" role="tablist">
       <button class="tab sel" data-tab="character" role="tab">CHARACTER</button>
       <button class="tab" data-tab="stats" role="tab">STATS</button>
-      <button class="tab" data-tab="badges" role="tab">BADGES<span class="pip hidden" id="badgePip2"></span></button>
       <button class="tab" data-tab="shop" role="tab">SKINS</button>
       <button class="tab" data-tab="patterns" role="tab">PATTERNS</button>
     </div>
@@ -256,12 +313,6 @@
       <!-- STATS -->
       <div class="tabPane hidden" data-pane="stats">
         <div class="statGrid" id="statGrid"></div>
-      </div>
-
-      <!-- BADGES -->
-      <div class="tabPane hidden" data-pane="badges">
-        <p class="paneNote">Earn badges to claim coins. Some colourways unlock with the badge itself.</p>
-        <div class="badgeList" id="badgeList"></div>
       </div>
 
       <!-- SHOP -->

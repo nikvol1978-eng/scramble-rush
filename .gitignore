@@ -21,3 +21,9 @@ __pycache__/
 # so the whole directory stays local. tools/hand-review.mjs and
 # tools/hand-sheets.mjs write it; nothing reads it but a human.
 docs/hand-review/
+
+# v25 UI review output. Before/after screenshots at seven viewports across
+# every meta screen, plus the audit JSON behind them. Megabytes of PNG that
+# only a human reads, and none of it belongs in a release -- the game is one
+# self-contained HTML file and this is not part of it.
+docs/ui-review/

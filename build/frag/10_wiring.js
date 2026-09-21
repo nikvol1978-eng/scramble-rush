@@ -7,7 +7,7 @@
   // Whatever menu screen is up, they are up with it -- a strip that vanishes
   // when you open the locker is a strip you cannot navigate with.
   function menuScreenOpen(){
-    return state === 'menu' && ['home','locker','shop','pass','profile','settings','daily','mpHome']
+    return state === 'menu' && ['home','locker','shop','pass','badges','modeSelect','profile','settings','daily','mpHome']
       .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
   }
   function syncMenuChrome(){
@@ -28,6 +28,8 @@
     if(!$('locker').classList.contains('hidden')) closeLocker();
     if(!$('shop').classList.contains('hidden')) closeShop();
     if(!$('pass').classList.contains('hidden')) closePass();
+    if(!$('badges').classList.contains('hidden')) closeBadges();
+    if(!$('modeSelect').classList.contains('hidden')) closeModeSelect();
     ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
@@ -38,7 +40,11 @@
     switch(name){
       case 'play':     backToLobby(); break;
       case 'locker':   backToLobby(); $('home').classList.add('hidden'); openLocker('skin'); break;
-      case 'badges':   backToLobby(); openProfile('badges'); break;
+      // v25: badges is a screen now, and -- like every other screen here --
+      // it hides the lobby behind it. This branch was the ONLY one that did
+      // not, which is why the badges page was a panel floating over the lobby
+      // instead of a page.
+      case 'badges':   backToLobby(); $('home').classList.add('hidden'); openBadges(); break;
       case 'shop':     backToLobby(); $('home').classList.add('hidden'); openShop(); break;
       case 'pass':     backToLobby(); $('home').classList.add('hidden'); openPass(); break;
       case 'settings': backToLobby(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); break;
@@ -95,10 +101,31 @@
   // own routing is bypassed and the tab opens a screen the strip does not
   // think is open. This one had its own handler and still opened the old
   // profile pane after §5.3 replaced it.
+  // ---- back to the arcade -----------------------------------------------
+  // SAME-ORIGIN ROOT, not history.back(). The game is reached from a few
+  // different places -- the arcade grid, a direct link, a reload -- so "the
+  // previous page" is not reliably Nikcade, and on a fresh tab there is no
+  // previous page at all. Going to '/' on this origin is the one thing that
+  // always means the arcade, and because it is a same-origin navigation the
+  // session cookie travels with it and the player stays signed in.
+  function goNikcade(){
+    SFX.click();
+    try{ saveProfile(); }catch(_){ /* a save failure must not trap anyone here */ }
+    window.location.assign('/');
+  }
+  $('homeBtn').onclick = goNikcade;
+  { const pb = $('pauseHomeBtn'); if(pb) pb.onclick = goNikcade; }
+
   $('profileBtn').onclick = ()=>{ SFX.click(); openLobbyTab('locker'); };
   $('shopBtn').onclick    = ()=>{ SFX.click(); openLobbyTab('shop'); };
   $('passBtn').onclick    = ()=>{ SFX.click(); openLobbyTab('pass'); };
-  $('badgesBtn').onclick  = ()=>{ SFX.click(); selectLobbyTab('badges'); openProfile('badges'); };
+  // v25: through openLobbyTab like every other pill. The note above this
+  // block describes exactly this bug -- a tab with its own handler that
+  // bypasses the routing -- and badges was the one still doing it: it called
+  // openProfile('badges'), so the BADGES pill opened the PROFILE panel, with
+  // its CHARACTER / STATS / SKINS / PATTERNS strip and its cosmetic pickers,
+  // and the badge list was a pane inside it.
+  $('badgesBtn').onclick  = ()=>{ SFX.click(); openLobbyTab('badges'); };
   $('homeName').addEventListener('input', e=>{ custom.name=e.target.value.slice(0,12).trim()||'YOU'; $('profNameLbl').textContent=custom.name; saveProfile(); refreshLobby(); });
   $('homeName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); e.stopPropagation(); });
   $('nameCard').onclick = ()=>{ $('homeName').focus(); };
