@@ -71,19 +71,26 @@ const ALL_SCREENS = [
   // page.evaluate. The first attempt called both, got undefined for each, and
   // photographed an empty briefing over the lobby -- which looked like a broken
   // screen and was a broken pose.
+  // Every lookup is guarded, because this same pose runs against the BEFORE
+  // build too and half these elements do not exist there -- the old briefing
+  // was a name and a tip, centred. An unguarded pose threw on the old build and
+  // took the whole sweep down with it.
   { name: 'loading2-briefing', open: null, js: `
-      document.getElementById('mapIntroName').textContent = 'SUNNY SPRINT';
-      document.getElementById('mapIntroTip').textContent =
-        'Ramps carry you further than a dive \\u2014 take them at full speed.';
-      document.getElementById('mapIntroGoal').textContent = 'REACH THE FINISH';
+      const set = (id, text) => { const e = document.getElementById(id); if (e) e.textContent = text; };
+      set('mapIntroName', 'SUNNY SPRINT');
+      set('mapIntroTip', 'Ramps carry you further than a dive \\u2014 take them at full speed.');
+      set('mapIntroGoal', 'REACH THE FINISH');
       const mode = document.getElementById('mapIntroMode');
-      mode.textContent = 'RACE'; mode.classList.remove('survival');
-      document.getElementById('mapIntroArt').setAttribute('style',
-        'background:linear-gradient(160deg,#8ecae6,#4a90c9 52%,#ffe17a)');
+      if (mode) { mode.textContent = 'RACE'; mode.classList.remove('survival'); }
+      const art = document.getElementById('mapIntroArt');
+      if (art) art.setAttribute('style', 'background:linear-gradient(160deg,#8ecae6,#4a90c9 52%,#ffe17a)');
       // The briefing is drawn over a round, where the menu chrome is down.
-      document.getElementById('menuChrome').classList.add('hidden');
-      document.getElementById('home').classList.add('hidden');
-      document.getElementById('mapIntro').classList.remove('hidden');
+      const ch = document.getElementById('menuChrome');
+      if (ch) ch.classList.add('hidden');
+      const hm = document.getElementById('home');
+      if (hm) hm.classList.add('hidden');
+      const mi = document.getElementById('mapIntro');
+      if (mi) mi.classList.remove('hidden');
   ` },
 ];
 

@@ -1018,6 +1018,29 @@
      than inheriting the padding. Same number, same source, no second guess. */
   #locker .lkPanel{ top:var(--content-top); bottom:var(--gut); right:var(--gut); }
 
+  /* ---- the locker on a phone ------------------------------------------
+     The panel is min(56%, 720px) of the width beside the character. At 390px
+     that is 218px, which gave three tiles of about 66 each: every name
+     ellipsised to two characters and a dot, and the COMMON pill was wider than
+     the card it sat on. The category tabs ran off the panel's right edge, so
+     HAT and EYES could not be reached at all.
+
+     It takes the full width and the BOTTOM of the screen here, which keeps the
+     character visible above it -- trying something on and not being able to see
+     it is the one thing the locker must not do. */
+  @media (max-width:760px){
+    #locker .lkPanel{
+      left:var(--gut); right:var(--gut); width:auto;
+      top:auto; height:62%; bottom:var(--gut);
+    }
+    .lkSubTabs{ flex-wrap:wrap; margin:10px 0 8px; }
+    .lkTab{ padding:7px 12px; font-size:0.78rem; }
+    .uiCardMedia > .rarityPill{ font-size:0.46rem; padding:1px 5px; max-width:calc(100% - 12px);
+                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .uiCardFoot{ padding:5px 6px; }
+    .uiCardName{ font-size:0.68rem; }
+  }
+
   /* ---- back to the arcade ---------------------------------------------
      Left end of the chrome row, mirroring the currency chips at the right. It
      is pointer-events:auto because #menuChrome itself is none. */
@@ -1227,6 +1250,47 @@
   /* The gold selection ring, kept, but it now means "clicked" rather than
      "the pointer happens to be here". */
   .shCard.hi{ box-shadow:0 0 0 5px var(--gold), var(--drop); transform:translateY(-2px); }
+
+  /* ---- the shop on a phone --------------------------------------------
+     There were no shop rules below 760px at all, and the season pass rail is
+     flex-basis 170px beside the content. On a 390px screen that is 44% of the
+     window: the three featured cards came out about 55px wide each and the six
+     daily cards about 38px, so "SUPER RARE" rendered as "PER RAR", every name
+     truncated to two characters and a plus sign, and the prices were clipped.
+     The layout audit called the screen clean, because nothing overlapped and
+     nothing was strictly offscreen -- it was merely unusable, which is why the
+     screenshot is the authority and not the audit.
+
+     The rail goes UNDER the shop here instead of beside it, as a short banner.
+     It is not hidden: the PASS pill in the strip is the real route to that
+     screen, and this is the promo for it. */
+  @media (max-width:760px){
+    .shWrap{ flex-direction:column; gap:var(--sp-3); }
+    .shMain{ order:1; }
+    .shPass{
+      order:2; flex:0 0 auto; width:100%;
+      flex-direction:row; align-items:stretch; min-height:74px; max-height:96px;
+    }
+    .shPass .shPassTop, .shPass .shPassBot{
+      display:flex; align-items:center; padding:0 12px; font-size:0.8rem; white-space:nowrap;
+    }
+    .shPass .shPassArt{ flex:1 1 auto; }
+    .shPass .shPassBadge{ width:46px; height:46px; font-size:1.3rem; border-radius:14px; }
+    .shRow.featured{ grid-template-columns:repeat(2, 1fr); }
+    .shRow.daily{ grid-template-columns:repeat(3, 1fr); }
+  }
+  @media (max-width:430px){
+    /* One featured card at a time, two daily across. Below this the art is
+       smaller than the price under it. */
+    .shRow.featured{ grid-template-columns:1fr; }
+    .shRow.daily{ grid-template-columns:repeat(2, 1fr); }
+    /* One card per row means the ratio would make each one ~300px tall and the
+       DAILY heading would start below the fold -- a shop you have to scroll
+       before you know there is more of it. Capped so two featured cards and the
+       start of the daily row are on screen together. */
+    .shCard.big .uiCardMedia{ max-height:clamp(104px, 17vh, 190px); }
+    .shCard .uiCardMedia{ max-height:clamp(70px, 12vh, 140px); }
+  }
 
   /* ======================================================================
      v25 §4 — DRAG SHELVES
@@ -15538,9 +15602,26 @@ const QUALITY = {
   // v24 §5.1: the strip and the chips belong to the menu, not to the lobby.
   // Whatever menu screen is up, they are up with it -- a strip that vanishes
   // when you open the locker is a strip you cannot navigate with.
+  // ONE LIST. menuScreenOpen asks whether any of them is up; hideMenuScreens
+  // puts them all away. Before this there was a list here and a different,
+  // shorter list inside backToLobby, and every screen that opened itself had
+  // its own idea of what to close first.
+  const MENU_SCREENS = ['home','locker','shop','pass','badges','modeSelect','profile','settings','daily','mpHome'];
   function menuScreenOpen(){
-    return state === 'menu' && ['home','locker','shop','pass','badges','modeSelect','profile','settings','daily','mpHome']
+    return state === 'menu' && MENU_SCREENS
       .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
+  }
+  // Close every menu screen, whichever one happened to be up.
+  //
+  // This exists because of a bug that survived the rest of this release:
+  // opening SETTINGS from BADGES left both of them live at once. #settingsBtn
+  // had its own handler that hid #home and nothing else -- so arriving from any
+  // screen other than the lobby stacked settings on top of it. That is the same
+  // fault #badgesBtn had, and the reason it is a FUNCTION now rather than a
+  // sequence each caller repeats is that a whitelist somebody has to remember
+  // to extend is a whitelist that will eventually be short again.
+  function hideMenuScreens(){
+    for(const id of MENU_SCREENS){ const e = $(id); if(e) e.classList.add('hidden'); }
   }
   function syncMenuChrome(){
     const on = menuScreenOpen();
@@ -15556,13 +15637,17 @@ const QUALITY = {
     return b ? b.dataset.lobby : 'play';
   }
   function backToLobby(){
+    // The screens with teardown of their own get it first -- a preview to
+    // clear, a profile to save, a buy dialog to dismiss -- and then everything
+    // is closed generically, so a screen added later is closed whether or not
+    // anybody remembered to name it here.
     if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
     if(!$('locker').classList.contains('hidden')) closeLocker();
     if(!$('shop').classList.contains('hidden')) closeShop();
     if(!$('pass').classList.contains('hidden')) closePass();
     if(!$('badges').classList.contains('hidden')) closeBadges();
     if(!$('modeSelect').classList.contains('hidden')) closeModeSelect();
-    ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
+    hideMenuScreens();
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
     syncMenuChrome();
@@ -16035,7 +16120,7 @@ const QUALITY = {
   });
 
   function applySettings(){ renderer.shadowMap.enabled=settings.shadows; applyQuality(settings.quality||'high'); scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; }); updateHint(); $('touchControls').classList.toggle('hidden', !(settings.touch && (state==='racing'||state==='countdown'||state==='paused'))); }
-  $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };
+  $('settingsBtn').onclick=()=>{ SFX.click(); openLobbyTab('settings'); };
   $('pauseSettingsBtn').onclick=()=>{ SFX.click(); buildSettings(); $('pause').classList.add('hidden'); $('settings').classList.remove('hidden'); };
   $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('settings').classList.add('hidden'); applySettings(); if(state==='paused') $('pause').classList.remove('hidden'); else if(state==='menu'){ $('home').classList.remove('hidden'); if(typeof selectLobbyTab==='function') selectLobbyTab('play'); } };
   $('resetSettingsBtn').onclick=()=>{ settings=JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); SFX.click(); applySettings(); buildSettings(); };

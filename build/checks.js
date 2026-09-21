@@ -6048,6 +6048,62 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join(', ') };
   }
 
+
+  // ---- ["] one screen at a time, from anywhere -------------------------
+  // EVERY tab opened FROM EVERY OTHER TAB, by CLICKING THE REAL PILL.
+  //
+  // Both halves of that matter, and the second one was learned the hard way.
+  //
+  // FROM EVERY OTHER TAB, because opening Settings from the lobby was always
+  // fine -- it was opening it from Badges that left both screens live. Every
+  // existing test and every screenshot returned to the lobby between screens,
+  // so none of them could see it.
+  //
+  // BY CLICKING THE PILL, because the first version of this check called
+  // openLobbyTab() directly and PASSED with the defect still in place.
+  // openLobbyTab was never the broken part: #settingsBtn carried its own
+  // handler that hid #home and nothing else, and calling the router by hand
+  // walked straight past it. A check that cannot fail is not a check.
+  const SCREEN_PILLS = [
+    ['play', 'tabPlay'], ['locker', 'profileBtn'], ['badges', 'badgesBtn'],
+    ['shop', 'shopBtn'], ['pass', 'passBtn'], ['settings', 'settingsBtn'],
+  ];
+  function checkOneScreen(){
+    const bad = [], notes = [];
+    const live = ()=> [...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null)
+      .map(e => e.id);
+    try{
+      state = 'menu';
+      let pairs = 0;
+      for(const [fromName, fromId] of SCREEN_PILLS){
+        for(const [toName, toId] of SCREEN_PILLS){
+          if(fromName === toName) continue;
+          const a = $(fromId), b = $(toId);
+          if(!a){ bad.push('no #' + fromId + ' to click'); continue; }
+          if(!b){ bad.push('no #' + toId + ' to click'); continue; }
+          a.click();
+          b.click();
+          pairs++;
+          const up = live();
+          if(up.length !== 1){
+            bad.push(toName + ' from ' + fromName + ' left ' + (up.length || 'no')
+                     + ' screens up: ' + (up.join(', ') || 'none'));
+          }
+          // and the strip has to agree about where you are
+          const sel = [...document.querySelectorAll('.tabPill.sel')].map(p=>p.dataset.lobby);
+          if(sel.length !== 1) bad.push(toName + ' from ' + fromName + ': strip shows ' + sel.length + ' selected');
+          else if(sel[0] !== toName) bad.push(toName + ' from ' + fromName + ': strip says ' + sel[0]);
+        }
+      }
+      notes.push(pairs + ' tab pairs walked by clicking');
+    } finally {
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'" one primary screen, whichever tab you came from',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,6).join('; ') : notes.join('; ') };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -6075,7 +6131,7 @@
       ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
-      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue]
+      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
