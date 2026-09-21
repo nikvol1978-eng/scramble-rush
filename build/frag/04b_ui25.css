@@ -675,17 +675,24 @@
      along the bottom. Everything in it is ours -- our bean, our palette, our
      wordmark -- and no part of the reference is shipped.
      ====================================================================== */
-  #bootScreen{
+  /* ONE SHELL, TWO SCREENS (v27 SS1). The startup loader and the pre-match
+     loader answer different questions -- one is about the SESSION, the other
+     about the ROUND -- but they are the same object on screen. So they are the
+     same rules here rather than a second copy of the loader's CSS that drifts
+     away from this one. Everything naming both is shared; #matchLoader's own
+     content is further down. */
+  #bootScreen, #matchLoader{
     position:fixed; inset:0; z-index:200; overflow:hidden;
     display:grid; grid-template-rows:auto 1fr auto auto;
     background:linear-gradient(170deg,#7ed0f5,#57b9ea 60%,#3d9fd6);
     transition:opacity .42s ease;
     font-family:'Fredoka',sans-serif,system-ui;
   }
-  #bootScreen.gone{ opacity:0; pointer-events:none; }
+  #bootScreen.gone, #matchLoader.gone{ opacity:0; pointer-events:none; }
+  #matchLoader.hidden{ display:none; }
   /* Vertical speed streaks, as in the reference: one repeating gradient,
      drifting. No art. */
-  #bootScreen::before{
+  #bootScreen::before, #matchLoader::before{
     content:''; position:absolute; inset:-12% 0; pointer-events:none;
     background:repeating-linear-gradient(90deg,
       rgba(255,255,255,0.16) 0 3px, rgba(255,255,255,0) 3px 46px);
@@ -789,8 +796,8 @@
   /* One way back, not two. The bar keeps its button for every other state; in
      this one the error panel owns that decision and the bar's copy would be a
      second identical button four inches below the first. */
-  #bootScreen.failed .bootHome{ display:none; }
-  #bootScreen.failed .bootMeter > i{ background:#6b5a86; }
+  #bootScreen.failed .bootHome, #matchLoader.failed .bootHome{ display:none; }
+  #bootScreen.failed .bootMeter > i, #matchLoader.failed .bootMeter > i{ background:#6b5a86; }
   .bootFailMsg{
     font-weight:700; color:#fff8ec; max-width:30ch; line-height:1.35;
     font-size:clamp(1rem,3.4vw,1.35rem);
@@ -817,10 +824,92 @@
     .bootBean{ width:min(38vh, 40vw); }
   }
   @media (prefers-reduced-motion: reduce){
-    #bootScreen::before{ animation:none; }
+    #bootScreen::before, #matchLoader::before{ animation:none; }
     .bootRing{ animation-duration:2.4s; }
     .bootBean{ animation:none; }
     .bootMeter > i{ transition:none; }
+    #mlCount.pulse > span{ animation:none; }
+  }
+
+  /* ======================================================================
+     v27 §1 — THE PRE-MATCH LOADER
+     The shell above is shared with the startup loader. What follows is only
+     the part that differs: this screen is about a ROUND, so it carries the
+     course that was drawn for it and, once everybody is ready, the countdown.
+     ====================================================================== */
+  #matchLoader{ grid-template-rows:1fr auto auto auto; }
+
+  .mlCard{
+    position:relative; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:clamp(8px,1.6vh,14px);
+    padding:clamp(14px,3vh,28px) 16px 0; min-height:0;
+  }
+  /* The course's own thumbnail, or its gradient where no shot exists yet --
+     cardArt() decides, so this and the reveal carousel can never disagree
+     about what a course looks like. Capped so it cannot stretch into a
+     letterboxed smear on a wide window. */
+  .mlArt{
+    width:min(420px,62vw); aspect-ratio:16/10; max-height:34vh;
+    border-radius:18px; border:3px solid #1a1033;
+    background-size:cover; background-position:center;
+    box-shadow:0 8px 0 rgba(26,16,51,0.45);
+  }
+  .mlInfo{ display:flex; align-items:center; gap:10px; }
+  .mlMode{
+    font-weight:700; font-size:0.72rem; letter-spacing:1.6px; text-transform:uppercase;
+    padding:4px 12px; border-radius:99px; border:2px solid #1a1033;
+    background:#ffc23d; color:#1a1033;
+  }
+  .mlMode.survival{ background:#ff6a8b; color:#fff8ec; }
+  .mlRound{
+    font-weight:700; font-size:0.72rem; letter-spacing:1.6px; text-transform:uppercase;
+    color:#fff8ec; opacity:0.85;
+  }
+  .mlName{
+    font-weight:700; text-align:center; color:#fff8ec; text-transform:uppercase;
+    font-size:clamp(1.3rem,4.6vw,2.4rem); letter-spacing:1.5px; line-height:1.05;
+    text-shadow:0 5px 0 #1a1033;
+  }
+  .mlTip{
+    margin:0; text-align:center; color:#eaf6ff; max-width:36ch; line-height:1.35;
+    font-size:clamp(0.82rem,2.6vw,1rem); opacity:0.92;
+  }
+
+  /* THE COUNTDOWN LIVES IN A FIXED BOX. 10 -> 9 loses a digit and must not move
+     anything, so the box is sized for two and the glyph is centred in it with
+     tabular figures. */
+  #mlCount{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    height:clamp(84px,15vh,132px); margin-top:clamp(4px,1vh,10px);
+  }
+  #mlCount.hidden{ display:none; }
+  #mlCount > span{
+    display:flex; align-items:center; justify-content:center;
+    width:clamp(112px,20vw,168px); height:100%;
+    font-weight:700; font-variant-numeric:tabular-nums;
+    font-size:clamp(3.2rem,11vw,6rem); line-height:1; color:#fff8ec;
+    text-shadow:0 7px 0 #1a1033;
+  }
+  /* Scale and opacity only -- nothing that changes the box, so no neighbour
+     moves when it fires. */
+  #mlCount.pulse > span{ animation:mlPop .42s cubic-bezier(.22,.9,.3,1); }
+  @keyframes mlPop{
+    from{ transform:scale(1.28); opacity:0.55; }
+    to  { transform:scale(1);    opacity:1; }
+  }
+  /* Counting down, the course steps back and the number owns the screen --
+     without swapping to an unrelated screen to do it. */
+  #matchLoader.counting .mlArt{ opacity:0.55; transform:scale(0.94); transition:opacity .4s ease, transform .4s ease; }
+  #matchLoader.counting .mlTip{ opacity:0; transition:opacity .3s ease; }
+
+  @media (max-width:520px){
+    .mlArt{ width:min(78vw,340px); max-height:26vh; }
+    .mlTip{ display:none; }              /* the bar carries the state on a phone */
+  }
+  @media (max-height:560px){
+    .mlArt{ max-height:24vh; }
+    .mlTip{ display:none; }
+    #mlCount{ height:clamp(64px,13vh,96px); }
   }
 
   /* ======================================================================

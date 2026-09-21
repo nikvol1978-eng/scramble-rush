@@ -129,7 +129,16 @@ async function main() {
 
   const page = await browser.newPage();
   const pageErrors = [];
-  page.on('pageerror', (e) => { pageErrors.push(String(e && e.message || e)); });
+  // WITH THE TOP OF THE STACK. A page error reported as a bare message names no
+  // file, no line and no check, so "Cannot read properties of undefined" is a
+  // fact nobody can act on -- it could have come from any of eighty rounds. The
+  // first frame under the message is almost always the answer.
+  page.on('pageerror', (e) => {
+    const msg = String((e && e.message) || e);
+    const frame = String((e && e.stack) || '').split('\n').slice(1, 3)
+      .map((s) => s.trim()).filter(Boolean).join(' | ');
+    pageErrors.push(frame ? `${msg}  [${frame}]` : msg);
+  });
   page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(m.text()); });
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: BOOT_TIMEOUT });

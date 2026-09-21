@@ -17,7 +17,7 @@ the fragments, not it.
 """
 import io, os, re, sys
 
-VERSION = 24                                  # single source of truth
+VERSION = 25                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base.html")
@@ -347,6 +347,60 @@ BOOT = (
     + '</div>')
 sub("<body>", "<body>" + chr(10) + BOOT, "boot screen")
 
+# ---------------------------------------------------------------- PRE-MATCH markup
+# The same shell as the startup loader -- .bootMeter, .bootBar, .bootRing,
+# .bootWord, .bootNote, .bootHome and .bootFail are all shared rules in
+# 04b_ui25.css, not a second copy -- carrying what is different about a ROUND:
+# the course that was drawn for it, and the countdown once everybody is ready.
+#
+# Every text node it will ever show is already here, empty, so 40_prematch.js
+# only ever sets textContent. Six message changes in ten seconds must not move a
+# pixel, and the countdown number sits in a fixed box so 10 -> 9 shifts nothing.
+MATCH = (
+    '<div id="matchLoader" class="hidden">' + chr(10)
+    + '  <div class="mlCard">' + chr(10)
+    + '    <div class="mlArt" id="mlArt"></div>' + chr(10)
+    + '    <div class="mlInfo">' + chr(10)
+    + '      <span class="mlMode" id="mlMode">RACE</span>' + chr(10)
+    + '      <span class="mlRound" id="mlRound"></span>' + chr(10)
+    + '    </div>' + chr(10)
+    + '    <div class="mlName" id="mlName"></div>' + chr(10)
+    + '    <p class="mlTip" id="mlTip"></p>' + chr(10)
+    + '  </div>' + chr(10)
+    + '  <div class="mlCount hidden" id="mlCount"><span id="mlCountNum">10</span></div>' + chr(10)
+    + '  <div class="bootMeter"><i id="mlBar"></i></div>' + chr(10)
+    + '  <div class="bootBar">' + chr(10)
+    + '    <span class="bootRing" id="mlSpin"></span>' + chr(10)
+    + '    <span class="bootLines">' + chr(10)
+    + '      <span class="bootWord" id="mlMsg"></span>' + chr(10)
+    + '      <span class="bootNote" id="mlNote"></span>' + chr(10)
+    + '    </span>' + chr(10)
+    + '    <button class="bootHome" id="mlBack" type="button">Back</button>' + chr(10)
+    + '  </div>' + chr(10)
+    + '  <div class="bootFail hidden" id="mlFail">' + chr(10)
+    + '    <p class="bootFailMsg" id="mlFailMsg"></p>' + chr(10)
+    + '    <span class="bootFailRow">' + chr(10)
+    + '      <button id="mlRetry" type="button">Retry</button>' + chr(10)
+    + '      <button id="mlBail" type="button">Back</button>' + chr(10)
+    + '    </span>' + chr(10)
+    + '  </div>' + chr(10)
+    + '</div>')
+sub("<body>" + chr(10) + BOOT, "<body>" + chr(10) + BOOT + chr(10) + MATCH, "pre-match screen")
+
+# ---------------------------------------------------------------- the coordinator
+# socket.io's client, from THIS origin -- the same process that served the page,
+# so the session cookie rides along and the server knows who this is without a
+# ticket. First-party, so script-src 'self' already covers it.
+#
+# Deliberately not `defer`ed and deliberately not required: when it is missing --
+# a file:// open, a static harness, a server without it -- `io` is simply
+# undefined and 40_prematch.js falls back to local authority rather than failing.
+# A single-player race must never be blocked by a socket.
+sub('<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>',
+    '<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>' + chr(10)
+    + '<script src="/socket.io/socket.io.js" onerror="window.__noCoordinator=1"></script>',
+    "socket.io client")
+
 # ---------------------------------------------------------------- LOADING 2 markup
 sub('<div id="mapIntro" class="hidden" style="position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;background:rgba(0,0,0,0.28);">\n  <div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>\n  <div id="mapIntroTip" style="font-family:\'Fredoka\',sans-serif;font-weight:600;font-size:1rem;color:#fff8ec;margin-top:12px;max-width:80vw;text-shadow:0 2px 0 rgba(0,0,0,0.4);"></div>\n</div>',
     '<!-- LOADING 2: the round briefing. Name on an angled banner, a preview of the\n     course, what the round wants from you, and a status bar. Everything in it\n     comes from the map\'s own record -- its name, its tip, its palette and the\n     thumbnail the reveal carousel already renders -- so it costs no new art. -->\n<div id="mapIntro" class="hidden">\n  <div class="miBanner"><span id="mapIntroName"></span></div>\n  <div class="miBody">\n    <div class="miShot" id="mapIntroArt"></div>\n    <div class="miSide">\n      <span class="miMode" id="mapIntroMode">RACE</span>\n      <div class="miGoal" id="mapIntroGoal"></div>\n      <h3 class="miHow">How to play</h3>\n      <p class="miTip" id="mapIntroTip"></p>\n    </div>\n  </div>\n  <div class="miBar"><span id="mapIntroStatus">GET READY&hellip;</span></div>\n</div>',
@@ -469,25 +523,56 @@ cut("  function checkObstacles(r,t){",
     "checkObstacles + minigame runtime")
 
 # ---------------------------------------------------------------- update loop
-sub("""  function update(dt,t){
+# ---------------------------------------------------------------- pre-match state
+# v27 SS1. 'loading', 'mapintro' and 'countdown' are all gone, and with them the
+# three fixed timers that made the pre-match a slideshow: a reel that ran out, a
+# flyover that ran out, and a three-count accumulated from each client's own dt
+# while the host broadcast the banner TEXT.
+#
+# One state replaces all three, and it deliberately COUNTS NOTHING. pmTick reads
+# the start instant off a timestamp every frame from the main loop, so a
+# throttled tab cannot drift and there is no second clock for the UI to disagree
+# with the race about. See build/frag/40_prematch.js.
+cut("""  function update(dt,t){
     if(state==='mapintro'){""",
+    "    if(state!=='racing') return;",
     """  function update(dt,t){
-    if(state==='loading'){
-      // the map reel is a CSS transition; we just wait it out, then reveal the course
-      loadTimer-=dt*1000;
-      if(loadTimer<=0){
-        hideMapLoader();
-        state='mapintro'; mapIntroTimer=FLY_MS;
-        $('mapIntro').classList.remove('hidden');
-      }
-      return;
-    }
-    if(state==='mapintro'){""",
-    "loading state")
+    // The pre-match owns itself: movement, the race timer and finish timing all
+    // begin at the authoritative instant, not when an animation ended.
+    if(state==='prematch') return;
+""",
+    "pre-match replaces loading/mapintro/countdown")
 
-sub("        showBanner('ROUND '+round,1200);\n        if(mp.role==='host') broadcast({type:'banner',text:'ROUND '+round,ms:1200});",
-    "        showBanner(roundLabel(round),1200);\n        if(mp.role==='host') broadcast({type:'banner',text:roundLabel(round),ms:1200});",
-    "round banner")
+# ---------------------------------------------------------------- the client's side
+# A joining player used to be dropped straight into a 2600ms mapintro the moment
+# roundStart arrived, with its meshes still being built, and then told when to
+# race by a BANNER -- `{type:'banner',text:'2'}`. So the client's countdown was
+# its own dt accumulation reacting to a word, which is exactly how a friend on a
+# slow machine arrived into a race that was already running.
+#
+# Now it runs the same pre-match as everyone else: it prepares, it reports ready
+# only when it could genuinely enter the race, and it starts on the instant the
+# server hands down. A banner is a MESSAGE again -- it cannot start a race.
+cut("""    else if(data.type==='roundStart'){""",
+    "    else if(data.type==='state'){",
+    """    else if(data.type==='roundStart'){ pmClientRound(data); }
+    // The degraded path, when the coordinator cannot be reached but peers can:
+    // the host sends the INSTANT in its own clock, which mp.tOffset already
+    // exists to convert. A number every client converts, not a word they each
+    // react to whenever their own timer happens to fire.
+    else if(data.type==='raceStart'){ pmOnPeerStart(data.hostAt); }
+    else if(data.type==='banner'){ showBanner(data.text,data.ms); }
+""",
+    "client runs the real pre-match")
+
+# ---------------------------------------------------------------- countdown tick
+# In the MAIN loop rather than in update(), because update() is the host/solo
+# path -- a PeerJS client goes through clientTick and would never have ticked.
+# Both need the countdown, and both need it read off the timestamp every frame.
+sub("    if(mp.role==='client'){ clientTick(dt); } else { update(dt,t); }",
+    "    if(mp.role==='client'){ clientTick(dt); } else { update(dt,t); }\n"
+    "    if(pm.open) pmTick();",
+    "pre-match tick")
 sub("    if(currentMap.isMinigame){ lavaZ+=lavaSpeed*dt;",
     "    if(currentMap.mode==='lava'){ lavaZ+=lavaSpeed*dt;", "lava advance")
 sub("      if(currentMap.isMinigame && !r.falling && r.y<lavaZ-40){",
@@ -769,7 +854,7 @@ sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('set
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",
     "  function buildSettings(){",
-    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("30_uikit.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("34_badges.js") + "\n" + frag("37_modeselect.js") + "\n" + frag("38_loading.js") + "\n" + frag("39_startup.js") + "\n" + frag("10_wiring.js") + "\n",
+    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("30_uikit.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("34_badges.js") + "\n" + frag("37_modeselect.js") + "\n" + frag("38_loading.js") + "\n" + frag("39_startup.js") + "\n" + frag("40_prematch.js") + "\n" + frag("10_wiring.js") + "\n",
     "preview + profile UI")
 
 # ---------------------------------------------------------------- PLAY -> mode select
@@ -831,7 +916,15 @@ sub("""    if(state==='menu'){ syncPreview(t,dt); }
     else { syncObstacles(t+mp.tOffset); syncRacers(t); syncCamera(false,dt); }
     renderer.render(scene,camera);""",
     """    if(state==='menu'){ syncPreview(t,dt); }
-    else { syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
+    // THE SCENE IS MID-REBUILD WHILE A MATCH PREPARES (v27 SS1). genCourse
+    // replaces the obstacle list and buildCourseMeshes gives those obstacles
+    // their meshes -- two steps, with a frame given up between them so the
+    // loader can paint. A frame therefore lands on obstacles that have no mesh,
+    // and syncObstacles reads `it.mesh.pivot` on the hammers. Nothing behind
+    // the loader is visible -- it is opaque and full-screen -- so there is
+    // nothing to sync. Syncing resumes for the wait and the countdown, where
+    // the camera does have to settle on the grid it is about to start on.
+    else if(!(pm.open && pm.phase === 'preparing')){ syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
     updateSkinMaterials(t);
     syncSky(dt);
     renderCoinPops(dt);
@@ -930,11 +1023,10 @@ sub("      const pct=clamp(r.y/trackLength,0,1); const d=document.createElement(
     "      const pct=clamp(r.y/((currentMap.knockout && arenaEnd) ? arenaEnd : trackLength),0,1); const d=document.createElement('div');",
     "knockout progress bar")
 
-# the HUD comes back once the opening shot is over
-sub("        $('mapIntro').classList.add('hidden');",
-    "        $('mapIntro').classList.add('hidden');"
-    + chr(10) + "        $('hud').classList.remove('hidden'); $('pauseBtn').classList.remove('hidden');",
-    "hud after flyover")
+# The HUD used to come back when the flyover timer ran out. v27 SS1: it comes
+# back at the authoritative start instant instead, in pmGo(), alongside the
+# movement unlock and the race timer -- one instant, not three things each
+# arriving when their own timer happened to expire.
 
 
 # A section nothing splices back in is dead weight that no build would ever

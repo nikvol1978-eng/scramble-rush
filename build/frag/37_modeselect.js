@@ -65,11 +65,23 @@
   }
 
   function modeStart(){
+    // ONE PRESS, ONE MATCH. The button used to stay live while the race it had
+    // asked for was being prepared, so a second click started a second
+    // preparation over the top of the first -- two courses generated, two
+    // rosters built, and two things that could each start a race. The loader
+    // being up IS the answer to "has this already been asked for?", so nothing
+    // separate has to be kept in step with it.
+    if(pm.open) return;
+    const go = $('modeGo');
+    if(go) go.disabled = true;
     const m = MODES[modeIndex];
     closeModeSelect();
     if(m.id === 'solo'){ startRound(1, null); return; }
     mpErr('');
     $('mpHome').classList.remove('hidden');
+    // The multiplayer path does not start a race here -- it opens the room
+    // screen -- so the button is handed straight back.
+    if(go) go.disabled = false;
   }
 
   // THROUGH THE ROUTER, like every other primary screen.

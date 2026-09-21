@@ -9,7 +9,7 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 24
+VERSION = 25
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 OUT = os.path.join(ROOT, "__debug.html")
@@ -109,6 +109,35 @@ hook = """
     bootMeter:(d,t)=>{ bootMeter(d,t); return ($('bootBar')||{}).style.width; },
     bootFail:(m,r)=>{ bootFail(m, r||(()=>{})); return true; },
     boot:(o)=>startupSequence(o||{}),
+
+    // THE PRE-MATCH LOADER, POSED. Same reason as the startup loader above: a
+    // real round runs its states past in a few seconds and nothing outside the
+    // page can photograph them on the way. These put the REAL markup into each
+    // state through the loader's OWN functions, so the review shots are of what
+    // ships. Spliced into __debug.html only; none of it ships.
+    pm:{
+      open:(n)=>{ pmOpen(n||1); return !$('matchLoader').classList.contains('hidden'); },
+      close:()=>{ pmClose(); return true; },
+      lobby:()=>{ goHome(); return true; },
+      map:(key,n)=>{ const m=[...MAPS,...MINIGAMES].find(x=>x.key===key)||MAPS[0];
+                     pmShowMap(m, n||1); return m.name; },
+      say:(msg,note)=>{ pmSay(msg,note); return ($('mlMsg')||{}).textContent; },
+      meter:(d,t)=>{ pmMeter(d,t); return ($('mlBar')||{}).style.width; },
+      // Show exactly N. One millisecond under N seconds ceils to N, which is
+      // the same arithmetic the countdown itself does rather than a second copy
+      // of it -- pmTick decides what the box reads, here as in a real race.
+      count:(n)=>{ pm.open = true;
+                   pmStartCountdown(pmNow() + (n*1000 - 1), 'local');
+                   pm.shown = null; pmTick(pmNow());
+                   return ($('mlCountNum')||{}).textContent; },
+      fail:(m)=>{ pmFail(m||'Could not prepare the course.'); return true; },
+      // A prepared round, crossed: the first frame of the race itself.
+      race:(key)=>{ window.__forceMap = key||null; prepareRoundNow(1, null);
+                    pmStartCountdown(pmNow(), 'local'); pmTick(pmNow());
+                    window.__dbg.tick(2); updateHud(); return state; },
+      state:()=>({ open:pm.open, phase:pm.phase, authority:pm.authority,
+                   startAt:pm.startAt, shown:pm.shown, flags:Object.assign({}, pm.flags) }),
+    },
     start:(n,map)=>{ window.__forceMap=map||null; ['home','profile','results','gameover'].forEach(id=>$(id).classList.add('hidden')); startRound(n||1,null); },
     skip:()=>{ for(const r of racers) if(!r.isPlayer){ r.finished=true; r.finishTime=raceTime; } },
     win:()=>{ const p=racers.find(r=>r.isPlayer); p.y=trackLength+10; },
@@ -144,8 +173,18 @@ hook = """
       window.__T = window.__T || performance.now()/1000;
       for(let i=0;i<n;i++){
         const t = window.__T;
+        // The pre-match countdown is read off a timestamp rather than counted
+        // down, so it needs a clock -- and this harness has its own, which runs
+        // much faster than real time. Passing it in is what lets a stepped run
+        // cross the start instant at all; the shipped loop passes nothing and
+        // gets performance.now(). Same code, same rule, one clock each.
+        if(pm.open) pmTick(t*1000);
         if(mp.role==='client'){ clientTick(dt); } else { update(dt,t); }
-        if(state==='menu'){ syncPreview(t,dt); } else { syncObstacles(t); syncRacers(t); syncCamera(false,dt); }
+        // Same guard as the shipped loop: an obstacle list that genCourse has
+        // replaced has no meshes until buildCourseMeshes runs, and syncing it
+        // in between reads it.mesh.pivot on a hammer that does not have one.
+        if(state==='menu'){ syncPreview(t,dt); }
+        else if(!(pm.open && pm.phase === 'preparing')){ syncObstacles(t); syncRacers(t); syncCamera(false,dt); }
         updateSkinMaterials(t);
         window.__T += dt;
       }

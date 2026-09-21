@@ -39,7 +39,11 @@
   const _camBack = new THREE.Vector3();
   const _camAim  = new THREE.Vector3(), _camPivot = new THREE.Vector3();
 
-  function lookActiveState(){ return state==='racing'||state==='countdown'||state==='paused'; }
+  // 'prematch' is the loader's state (v27 §1). It replaced 'loading', 'mapintro'
+  // and 'countdown', and it is a look state for the same reason 'countdown' was:
+  // the course is on screen behind the loader and the camera has to be sitting
+  // where the race will start, not where the menu left it.
+  function lookActiveState(){ return state==='racing'||state==='prematch'||state==='paused'; }
 
   // pitch is stored as the ABSOLUTE elevation of the boom above horizontal, not
   // as an offset from a resting tilt. An offset needs two clamps that have to be
@@ -235,7 +239,14 @@
   function syncCamera(snap, dt){
     // whoever the camera is on: the player, or a survivor while spectating
     const p=camSubject(); if(!p) return;
-    if(state==='mapintro'){ dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return; }
+    // The flyover runs behind the loader WHILE THE WORK IS HAPPENING, so the
+    // course is a living shot rather than a still. It stops the moment the
+    // countdown opens: from then on the camera is on the grid, where the race
+    // is about to start, which is what the old 'countdown' state showed and
+    // what somebody watching "3, 2, 1" needs to be looking at.
+    if(state==='prematch' && pm.phase === 'preparing'){
+      dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return;
+    }
     dt = dt||0.016;
     // the profile stage dims these; put them back for play
     dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
