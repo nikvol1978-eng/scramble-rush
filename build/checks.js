@@ -6153,7 +6153,23 @@
       let up = live();
       if(up.length !== 1 || up[0] !== 'modeSelect')
         bad.push('a fast start ended on [' + (up.join(', ') || 'nothing') + '], wanted [modeSelect]');
-      notes.push('fast: held ' + Math.round(took) + 'ms for a 2600ms floor');
+      //    AND WHAT THE HANDOFF LEFT. The loader sits at z-index 200 over
+      //    everything, so hiding it rather than removing it would leave a
+      //    full-screen sheet eating every click on the screen it just
+      //    revealed. Asserted on this handoff rather than on a fifth sequence
+      //    of its own: each one costs a preview rebuild, and this one is
+      //    already here and already finished.
+      for(const id of ['modeGo','modeBack']){
+        const b = $(id);
+        if(!b){ bad.push('no #' + id + ' after the handoff'); continue; }
+        const r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(Math.round(r.left + r.width/2), Math.round(r.top + r.height/2));
+        if(!hit || !b.contains(hit))
+          bad.push('#' + id + ' is covered by ' + (hit ? (hit.id ? '#'+hit.id : hit.tagName) : 'nothing'));
+      }
+      if(!document.querySelectorAll('#modeGrid .modeCard').length)
+        bad.push('the mode picker handed over with no modes in it');
+      notes.push('fast: held ' + Math.round(took) + 'ms for a 2600ms floor, controls clickable');
 
       // 2. SLOW: the work outlasts the minimum, so the WORK is what holds it.
       //    A timer running out is not permission to hand over.
@@ -6187,25 +6203,28 @@
       if(live().length) bad.push('a failed start left ' + live().join(', ') + ' live behind the error');
       notes.push('failure: error shown, nothing behind it');
 
-      // 4. AND WHAT THE HANDOFF LEAVES. The loader sits at z-index 200 over
-      //    everything; hiding it rather than removing it would leave a
-      //    full-screen sheet eating every click on the screen it just
-      //    revealed. So: gone from the document, and the mode picker's own
-      //    controls answer to a click at their own centre.
+      // 4. A HIDDEN TAB GETS NO ANIMATION FRAMES.
+      //    requestAnimationFrame does not fire in a background tab, and the
+      //    sequence waits on frames in three places -- including the handoff,
+      //    between opening the mode picker and taking the loader down. Found
+      //    on nikcade with the window behind another one: MODE SELECT was live
+      //    with the loader still on top of it, eating every click. A headless
+      //    page counts as visible, so nothing local could see it. Stubbing rAF
+      //    to never call back is what a background tab does, exactly.
       bootRemount();
-      await startupSequence({ t0:performance.now(), minMs:60, holdMs:40, gates:[gate(0)] });
-      if($('bootScreen')) bad.push('the loader is hidden rather than removed');
-      for(const id of ['modeGo','modeBack']){
-        const b = $(id);
-        if(!b){ bad.push('no #' + id + ' after the handoff'); continue; }
-        const r = b.getBoundingClientRect();
-        const hit = document.elementFromPoint(Math.round(r.left + r.width/2), Math.round(r.top + r.height/2));
-        if(!hit || !b.contains(hit))
-          bad.push('#' + id + ' is covered by ' + (hit ? (hit.id ? '#'+hit.id : hit.tagName) : 'nothing'));
+      const realRAF = window.requestAnimationFrame;
+      window.requestAnimationFrame = function(){ return 0; };
+      try{
+        await startupSequence({ t0:performance.now(), minMs:60, holdMs:40, gates:[gate(0)] });
+      } finally {
+        window.requestAnimationFrame = realRAF;
       }
-      if(!document.querySelectorAll('#modeGrid .modeCard').length)
-        bad.push('the mode picker handed over with no modes in it');
-      notes.push('handoff: loader removed, controls clickable');
+      if($('bootScreen')) bad.push('with no animation frames the loader never came down');
+      up = live();
+      if(up.length !== 1 || up[0] !== 'modeSelect')
+        bad.push('a frameless start ended on [' + (up.join(', ') || 'nothing') + ']');
+      notes.push('frameless: handed over anyway');
+
       // 5. AND THIS CHECK CLEANS UP AFTER ITSELF, provably.
       //    The loader is a fixed sheet at z-index 200. One left in the
       //    document does not fail here -- it fails whatever check runs next,

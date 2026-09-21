@@ -15908,9 +15908,29 @@ const QUALITY = {
     ];
   }
 
-  // One real painted frame, not a timer pretending to be one.
+  // A REAL PAINTED FRAME, OR 400ms, WHICHEVER ARRIVES FIRST.
+  //
+  // requestAnimationFrame does not fire AT ALL in a hidden tab, and opening
+  // the game and glancing at something else for a moment is not unusual. A
+  // frame that is never going to come is not something to wait for.
+  //
+  // Found in production, not here: headless pages count as visible, so every
+  // local run had frames. On nikcade with the window behind another one, the
+  // loader stalled on "Preparing racer" -- and worse, the HANDOFF stalled,
+  // between openModeSelect() and taking the loader down. That left the mode
+  // picker live underneath a full-screen sheet at z-index 200 that was still
+  // eating every click on it. elementFromPoint over MODE SELECT's own buttons
+  // returned the loader.
+  //
+  // The timeout is not a substitute for a frame. It is what happens when there
+  // are going to be none.
   function bootFrame(){
-    return new Promise(r => requestAnimationFrame(()=> requestAnimationFrame(r)));
+    return new Promise(r => {
+      let done = false;
+      const fin = ()=>{ if(!done){ done = true; r(); } };
+      requestAnimationFrame(()=> requestAnimationFrame(fin));
+      setTimeout(fin, 400);
+    });
   }
 
   // ---- failure -----------------------------------------------------------
