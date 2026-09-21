@@ -6,9 +6,26 @@
   // v24 §5.1: the strip and the chips belong to the menu, not to the lobby.
   // Whatever menu screen is up, they are up with it -- a strip that vanishes
   // when you open the locker is a strip you cannot navigate with.
+  // ONE LIST. menuScreenOpen asks whether any of them is up; hideMenuScreens
+  // puts them all away. Before this there was a list here and a different,
+  // shorter list inside backToLobby, and every screen that opened itself had
+  // its own idea of what to close first.
+  const MENU_SCREENS = ['home','locker','shop','pass','badges','modeSelect','profile','settings','daily','mpHome'];
   function menuScreenOpen(){
-    return state === 'menu' && ['home','locker','shop','pass','badges','modeSelect','profile','settings','daily','mpHome']
+    return state === 'menu' && MENU_SCREENS
       .some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
+  }
+  // Close every menu screen, whichever one happened to be up.
+  //
+  // This exists because of a bug that survived the rest of this release:
+  // opening SETTINGS from BADGES left both of them live at once. #settingsBtn
+  // had its own handler that hid #home and nothing else -- so arriving from any
+  // screen other than the lobby stacked settings on top of it. That is the same
+  // fault #badgesBtn had, and the reason it is a FUNCTION now rather than a
+  // sequence each caller repeats is that a whitelist somebody has to remember
+  // to extend is a whitelist that will eventually be short again.
+  function hideMenuScreens(){
+    for(const id of MENU_SCREENS){ const e = $(id); if(e) e.classList.add('hidden'); }
   }
   function syncMenuChrome(){
     const on = menuScreenOpen();
@@ -24,13 +41,17 @@
     return b ? b.dataset.lobby : 'play';
   }
   function backToLobby(){
+    // The screens with teardown of their own get it first -- a preview to
+    // clear, a profile to save, a buy dialog to dismiss -- and then everything
+    // is closed generically, so a screen added later is closed whether or not
+    // anybody remembered to name it here.
     if(!$('profile').classList.contains('hidden')){ clearPreview(); syncCustomColor(); saveProfile(); }
     if(!$('locker').classList.contains('hidden')) closeLocker();
     if(!$('shop').classList.contains('hidden')) closeShop();
     if(!$('pass').classList.contains('hidden')) closePass();
     if(!$('badges').classList.contains('hidden')) closeBadges();
     if(!$('modeSelect').classList.contains('hidden')) closeModeSelect();
-    ['profile','settings','mpHome','daily'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
+    hideMenuScreens();
     $('home').classList.remove('hidden');
     refreshPreview(); refreshCoinChips(); refreshDailyChip();
     syncMenuChrome();

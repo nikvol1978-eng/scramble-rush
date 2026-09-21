@@ -750,10 +750,21 @@ sub("    ['results','gameover','pause','settings','profile','mpHome','lobby'].fo
     "    ['results','gameover','pause','settings','profile','mpHome','lobby','mapLoader','mapIntro','daily'].forEach(id=>$(id).classList.add('hidden'));",
     "goHome hides loader")
 
-# settings back button returns to whichever screen was open
+# SETTINGS OPENS THROUGH THE ROUTER, like every other pill in the strip.
+# The base's handler hides #home and shows #settings, which is right only when
+# you arrived from the lobby: opening Settings from Badges left the badges
+# screen live underneath it, two primary screens at once. openLobbyTab closes
+# whatever was up first.
+#
+# This has to be done HERE rather than in 10_wiring.js, because that fragment is
+# spliced in above buildSettings and the base reassigns this handler further
+# down -- an override there is overwritten a moment after it is set.
+#
+# The PAUSE menu's settings button is deliberately not touched: it opens
+# settings over a paused race, where going back to the lobby would be wrong.
 sub("""  $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };""",
-    """  $('settingsBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); buildSettings(); $('settings').classList.remove('hidden'); };""",
-    "settings open")
+    """  $('settingsBtn').onclick=()=>{ SFX.click(); openLobbyTab('settings'); };""",
+    "settings opens through the router")
 
 # ---------------------------------------------------------------- main loop
 sub("""    if(state==='menu'){ syncPreview(t,dt); }
