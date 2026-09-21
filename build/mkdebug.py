@@ -128,7 +128,11 @@ hook = """
       // of it -- pmTick decides what the box reads, here as in a real race.
       count:(n)=>{ pm.open = true;
                    pmStartCountdown(pmNow() + (n*1000 - 1), 'local');
-                   pm.shown = null; pmTick(pmNow());
+                   // POSED, NOT RUNNING. pmStartCountdown now arms an interval
+                   // so a hidden tab still reaches the start instant; left
+                   // armed here it would fire a second later, take the loader
+                   // down and start a race in the middle of a photo session.
+                   if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
                    return ($('mlCountNum')||{}).textContent; },
       fail:(m)=>{ pmFail(m||'Could not prepare the course.'); return true; },
       // A prepared round, crossed: the first frame of the race itself.
