@@ -72,7 +72,16 @@
     $('mpHome').classList.remove('hidden');
   }
 
+  // THROUGH THE ROUTER, like every other primary screen.
+  //
+  // This hid #home and nothing else, which was harmless for as long as #playBtn
+  // was the only way in and #playBtn only exists on the lobby. v26 makes this
+  // the screen the game STARTS on, so it is now opened against whatever the
+  // startup loader left standing, and "hide the lobby" stopped being the same
+  // thing as "close what is open". openLobbyTab('play') is the call the six
+  // pills make; one list closes everything, in 10_wiring.js.
   function openModeSelect(){
+    openLobbyTab('play');
     buildModeSelect();
     $('home').classList.add('hidden');
     $('modeSelect').classList.remove('hidden');

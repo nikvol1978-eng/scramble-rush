@@ -99,6 +99,16 @@ hook = """
   };
 
   window.__dbg = {
+    // The startup loader, posed. A real boot holds the main thread for about
+    // three seconds, so nothing outside the page can photograph the stages as
+    // they go past. These put the REAL markup into each state through the
+    // loader's own functions, which is what the review shots are of. Spliced
+    // into __debug.html only; none of it ships.
+    bootRemount:()=>{ bootRemount(); return !!$('bootScreen'); },
+    bootSay:(m,n)=>{ bootSay(m,n); return ($('bootMsg')||{}).textContent; },
+    bootMeter:(d,t)=>{ bootMeter(d,t); return ($('bootBar')||{}).style.width; },
+    bootFail:(m,r)=>{ bootFail(m, r||(()=>{})); return true; },
+    boot:(o)=>startupSequence(o||{}),
     start:(n,map)=>{ window.__forceMap=map||null; ['home','profile','results','gameover'].forEach(id=>$(id).classList.add('hidden')); startRound(n||1,null); },
     skip:()=>{ for(const r of racers) if(!r.isPlayer){ r.finished=true; r.finishTime=raceTime; } },
     win:()=>{ const p=racers.find(r=>r.isPlayer); p.y=trackLength+10; },

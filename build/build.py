@@ -285,18 +285,67 @@ sub('<button class="btn pink" id="quitBtn">QUIT TO MENU</button>',
 # rather than by out-specifying each one.
 sub("</style>\n</head>", frag("04_menu.css") + frag("04b_ui25.css") + "</style>\n</head>", "css append")
 
-# ---------------------------------------------------------------- LOADING 1 markup
+# ---------------------------------------------------------------- STARTUP LOADER markup
 # First thing in the body, so it paints before anything else parses. It depends
 # on no font, no module and no game code -- which is the whole point of a boot
-# screen -- and 38_loading.js removes it once the lobby can be drawn.
-sub("<body>",
-    "<body>" + chr(10)
-    + '<div id="bootScreen">' + chr(10)
+# screen. The bean is inline SVG for that same reason: an <img> is a request,
+# and a request can be slow or fail, and the one thing this screen may never do
+# is fail to appear.
+#
+# Every text node it will ever show is already in this markup, empty or
+# otherwise, so 39_startup.js only ever sets textContent -- it never inserts a
+# node and never changes the shape of the page. That is what keeps six message
+# changes in five seconds from moving anything.
+BOOT = (
+    '<div id="bootScreen">' + chr(10)
     + '  <div class="bootMark">Scramble Rush</div>' + chr(10)
-    + '  <div class="bootRing"></div>' + chr(10)
-    + '  <div class="bootWord">Loading…</div>' + chr(10)
-    + '</div>',
-    "boot screen")
+    + '  <div class="bootStage">' + chr(10)
+    # Our bean, diving. Two arms swept back, the eye patch it wears everywhere
+    # else, and the flat two-tone shading the rest of the game uses. It is a
+    # drawing of our character, not the reference's -- nothing from the
+    # reference ships.
+    + '    <svg class="bootBean" viewBox="0 0 200 140" role="img" aria-label="A Scramble Rush racer diving">' + chr(10)
+    + '      <defs><linearGradient id="bootBody" x1="0" y1="0" x2="0" y2="1">' + chr(10)
+    + '        <stop offset="0" stop-color="#ff77b8"/><stop offset="1" stop-color="#d92a80"/>' + chr(10)
+    + '      </linearGradient></defs>' + chr(10)
+    # Arms in two passes -- a fat dark stroke, then a thinner pink one over it --
+    # because that gives a round-capped limb with an even outline for two paths
+    # instead of the eight-node outline a filled shape would need. They sweep
+    # OUT AND BACK: the character is coming at you, so the arms trail.
+    + '      <g fill="none" stroke-linecap="round">' + chr(10)
+    + '        <path d="M66 74 Q42 84 20 100" stroke="#1a1033" stroke-width="25"/>' + chr(10)
+    + '        <path d="M134 74 Q158 84 180 100" stroke="#1a1033" stroke-width="25"/>' + chr(10)
+    + '        <path d="M66 74 Q42 84 20 100" stroke="#ff5fa8" stroke-width="16"/>' + chr(10)
+    + '        <path d="M134 74 Q158 84 180 100" stroke="#ff5fa8" stroke-width="16"/>' + chr(10)
+    + '      </g>' + chr(10)
+    # Feet first, so the body covers where they join it.
+    + '      <g stroke="#1a1033" stroke-width="5">' + chr(10)
+    + '        <ellipse cx="86" cy="119" rx="12" ry="10" fill="#d92a80"/>' + chr(10)
+    + '        <ellipse cx="114" cy="119" rx="12" ry="10" fill="#d92a80"/>' + chr(10)
+    + '      </g>' + chr(10)
+    + '      <ellipse cx="100" cy="76" rx="47" ry="45" fill="url(#bootBody)" stroke="#1a1033" stroke-width="5"/>' + chr(10)
+    + '      <ellipse cx="100" cy="84" rx="27" ry="21" fill="#f3ecff" stroke="#1a1033" stroke-width="5"/>' + chr(10)
+    + '      <circle cx="90" cy="84" r="5.2" fill="#1a1033"/><circle cx="110" cy="84" r="5.2" fill="#1a1033"/>' + chr(10)
+    + '    </svg>' + chr(10)
+    + '  </div>' + chr(10)
+    + '  <div class="bootMeter"><i id="bootBar"></i></div>' + chr(10)
+    + '  <div class="bootBar">' + chr(10)
+    + '    <span class="bootRing" id="bootSpin"></span>' + chr(10)
+    + '    <span class="bootLines">' + chr(10)
+    + '      <span class="bootWord" id="bootMsg">Connecting…</span>' + chr(10)
+    + '      <span class="bootNote" id="bootNote"></span>' + chr(10)
+    + '    </span>' + chr(10)
+    + '    <button class="bootHome" id="bootHome" type="button">Back to Nikcade</button>' + chr(10)
+    + '  </div>' + chr(10)
+    + '  <div class="bootFail hidden" id="bootFail">' + chr(10)
+    + '    <p class="bootFailMsg" id="bootFailMsg"></p>' + chr(10)
+    + '    <span class="bootFailRow">' + chr(10)
+    + '      <button id="bootRetry" type="button">Retry</button>' + chr(10)
+    + '      <button id="bootFailHome" type="button">Back to Nikcade</button>' + chr(10)
+    + '    </span>' + chr(10)
+    + '  </div>' + chr(10)
+    + '</div>')
+sub("<body>", "<body>" + chr(10) + BOOT, "boot screen")
 
 # ---------------------------------------------------------------- LOADING 2 markup
 sub('<div id="mapIntro" class="hidden" style="position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;background:rgba(0,0,0,0.28);">\n  <div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>\n  <div id="mapIntroTip" style="font-family:\'Fredoka\',sans-serif;font-weight:600;font-size:1rem;color:#fff8ec;margin-top:12px;max-width:80vw;text-shadow:0 2px 0 rgba(0,0,0,0.4);"></div>\n</div>',
@@ -720,7 +769,7 @@ sub("  $('settingsBackBtn').onclick=()=>{ SFX.click(); listeningFor=null; $('set
 # ---------------------------------------------------------------- preview + profile UI
 cut("  function refreshPreview(){",
     "  function buildSettings(){",
-    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("30_uikit.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("34_badges.js") + "\n" + frag("37_modeselect.js") + "\n" + frag("38_loading.js") + "\n" + frag("10_wiring.js") + "\n",
+    frag("05_profile.js") + "\n" + frag("16_daily.js") + "\n" + frag("30_uikit.js") + "\n" + frag("31_locker.js") + "\n" + frag("32_shop.js") + "\n" + frag("33_pass.js") + "\n" + frag("34_badges.js") + "\n" + frag("37_modeselect.js") + "\n" + frag("38_loading.js") + "\n" + frag("39_startup.js") + "\n" + frag("10_wiring.js") + "\n",
     "preview + profile UI")
 
 # ---------------------------------------------------------------- PLAY -> mode select
@@ -730,6 +779,17 @@ cut("  function refreshPreview(){",
 sub("  $('playBtn').onclick=()=>{ SFX.click(); $('home').classList.add('hidden'); startRound(1,null); };",
     "  $('playBtn').onclick=()=>{ SFX.click(); openModeSelect(); };",
     "play opens mode select")
+
+# ---------------------------------------------------------------- startup handoff
+# `loadProfile()` was called and not awaited, so the lobby painted and the
+# profile landed on it afterwards -- coins, level, name and equipped skin all
+# arriving visibly late. The render loop still starts here; what changes is that
+# the loader now owns everything between this line and the first screen the
+# player touches, and hands over to MODE SELECT rather than dropping them on the
+# lobby. startupSequence awaits loadProfile itself. See 39_startup.js.
+sub("  updateHint(); goHome(); loadProfile();\n  requestAnimationFrame(loop);",
+    "  updateHint(); goHome();\n  requestAnimationFrame(loop);\n  startupSequence();",
+    "startup sequence")
 
 # ---------------------------------------------------------------- settings rebuild
 # v25: the whole of buildSettings is replaced. It used to be one flat
