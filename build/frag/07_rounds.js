@@ -213,6 +213,11 @@
           clearParticles(); resetLook();
           syncCamera(true);
           captureCourseThumb();                    // the reveal card shows this course, live
+          // ...and now the loader can show THIS course rather than the map's
+          // fallback gradient. cardArt reads courseThumbs, which the line above
+          // has just filled, so the preview becomes a picture of the track the
+          // player is about to run instead of a colour scheme suggesting it.
+          pmShowMap(currentMap, n);
           pm.flags.racerReady = true;
         } },
     ];

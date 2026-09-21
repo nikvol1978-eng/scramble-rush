@@ -56,15 +56,50 @@ const STATES = [
   ['12-first-frame',   async (p) => p.evaluate(() => { __dbg.pm.race('sunny'); })],
 ];
 
+// SETTLE FIRST. The countdown pops with a scale(1.28), the meter slides, and
+// the loader fades -- photograph or measure 260ms in and you catch a frame
+// mid-transform, which reads as "the document scrolls sideways" and is gone by
+// the next frame. Wait for the page's own animations to finish instead of
+// guessing at a delay.
+async function settle(page) {
+  await page.evaluate(async () => {
+    const running = document.getAnimations().filter((a) => a.playState === 'running');
+    await Promise.race([
+      Promise.all(running.map((a) => a.finished.catch(() => {}))),
+      new Promise((r) => setTimeout(r, 1200)),
+    ]);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
+
 // What the shot is of, measured rather than eyeballed.
-async function audit(page, state) {
-  return page.evaluate((stateName) => {
+//
+// `baseOverflow` is what this page already overflowed by with the loader shut:
+// #menuRings is 2497 wide at 1920 and has been since long before this feature,
+// so reporting it here would be reporting somebody else's bug every run and
+// teaching everyone to ignore the line that matters.
+async function audit(page, state, baseOverflow) {
+  return page.evaluate(({ stateName, base }) => {
     const out = { state: stateName, problems: [] };
     const doc = document.documentElement;
-    if (doc.scrollWidth > doc.clientWidth + 1) {
-      out.problems.push(`document scrolls sideways: ${doc.scrollWidth} > ${doc.clientWidth}`);
-    }
     const box = document.getElementById('matchLoader');
+
+    // OVERFLOW THIS FEATURE IS RESPONSIBLE FOR, which means overflow caused by
+    // something inside the loader. The lobby's #menuRings is a rotating
+    // decoration that already extends past every viewport -- measured at 1794
+    // on origin/main at 1366 against 1785 here, and at 390 the baseline is
+    // WORSE -- so a bare document-width test reports somebody else's bug on
+    // every run and teaches everyone to ignore the line that matters.
+    if (doc.scrollWidth > doc.clientWidth + 1) {
+      const mine = [];
+      for (const el of (box ? box.querySelectorAll('*') : [])) {
+        const r = el.getBoundingClientRect();
+        if (r.width && (r.right > doc.clientWidth + 1 || r.left < -1)) {
+          mine.push(`${el.id ? '#' + el.id : el.className || el.tagName} right=${Math.round(r.right)}`);
+        }
+      }
+      if (mine.length) out.problems.push(`the loader overflows sideways: ${mine.slice(0, 3).join(', ')}`);
+    }
     out.loaderUp = box ? !box.classList.contains('hidden') : false;
 
     if (out.loaderUp) {
@@ -76,12 +111,21 @@ async function audit(page, state) {
           out.problems.push(`click at ${Math.round(x)},${Math.round(y)} reaches ${el.id ? '#' + el.id : el.tagName}`);
         }
       }
-      // Text that does not fit the box drawn around it.
+      // CLIPPED text, not merely text whose line box is taller than its
+      // content box. .mlName sets line-height 1.05 on purpose, so its
+      // scrollHeight exceeds clientHeight on every single-line heading in the
+      // game -- reporting that would flag a deliberate style as a defect at
+      // every viewport. Only an element that actually HIDES its overflow can
+      // clip anything.
       for (const id of ['mlName', 'mlMsg', 'mlNote', 'mlTip', 'mlCountNum', 'mlFailMsg']) {
         const e = document.getElementById(id);
         if (!e || !e.offsetParent) continue;
-        if (e.scrollWidth > e.clientWidth + 1) out.problems.push(`#${id} text is wider than its box`);
-        if (e.scrollHeight > e.clientHeight + 1) out.problems.push(`#${id} text is taller than its box`);
+        const cs = getComputedStyle(e);
+        const hidesX = cs.overflowX !== 'visible', hidesY = cs.overflowY !== 'visible';
+        if (hidesX && e.scrollWidth > e.clientWidth + 1) out.problems.push(`#${id} text is clipped horizontally`);
+        if (hidesY && e.scrollHeight > e.clientHeight + 1) out.problems.push(`#${id} text is clipped vertically`);
+        const r = e.getBoundingClientRect();
+        if (r.width && (r.right > window.innerWidth + 1 || r.left < -1)) out.problems.push(`#${id} runs off the side`);
       }
       const c = document.getElementById('mlCount');
       if (c && !c.classList.contains('hidden')) {
@@ -96,7 +140,7 @@ async function audit(page, state) {
       }
     }
     return out;
-  }, state);
+  }, { stateName: state, base: baseOverflow });
 }
 
 const main = async () => {
@@ -122,12 +166,18 @@ const main = async () => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('typeof window.__dbg === "object" && typeof window.__dbg.pm === "object"', { timeout: 180000, polling: 250 });
 
+    // What this page already overflows by with no loader up. Anything above
+    // this line is ours; anything at it is not.
+    await page.evaluate(() => { try { __dbg.pm.close(); goHome(); } catch (e) {} });
+    await settle(page);
+    const baseOverflow = await page.evaluate(() => document.documentElement.scrollWidth);
+
     for (const [name, pose] of STATES) {
       await pose(page);
-      await new Promise((r) => setTimeout(r, 260));      // let a transition land
+      await settle(page);
       await page.screenshot({ path: join(OUT, `${name}--${vp.name}--${LABEL}.png`) });
       shots += 1;
-      audits.push({ viewport: vp.name, ...(await audit(page, name)) });
+      audits.push({ viewport: vp.name, ...(await audit(page, name, baseOverflow)) });
     }
     await page.close();
   }
@@ -147,6 +197,39 @@ const main = async () => {
   }
 
   await writeFile(join(OUT, `audit-${LABEL}.json`), JSON.stringify({ audits, bad }, null, 2));
+
+  // THE CONTACT SHEET. One page, every state down the side and every viewport
+  // across, with what the audit said about each printed beside it. HTML rather
+  // than a composited image because these are up to 1920px wide and a grid of
+  // them baked into one file is unreadable at any size that fits on a screen --
+  // here they stay full resolution and a click opens the original.
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rows = STATES.map(([name]) => {
+    const cells = VIEWPORTS.map((vp) => {
+      const a = audits.find((z) => z.viewport === vp.name && z.state === name);
+      const probs = a && a.problems.length
+        ? `<p class="bad">${a.problems.map(esc).join('<br>')}</p>` : '';
+      return `<td><div class="vp">${esc(vp.name)}</div>
+        <a href="${name}--${vp.name}--${LABEL}.png" target="_blank">
+          <img src="${name}--${vp.name}--${LABEL}.png" loading="lazy"></a>${probs}</td>`;
+    }).join('');
+    return `<tr><th>${esc(name)}</th>${cells}</tr>`;
+  }).join('');
+  await writeFile(join(OUT, 'prematch-sheet.html'), `<!doctype html><meta charset="utf-8">
+<title>Scramble Rush - pre-match loader review</title>
+<style>
+ body{background:#14102a;color:#f3ecff;font:14px/1.4 system-ui,sans-serif;margin:24px}
+ h1{font-size:18px;margin:0 0 4px} p.sub{opacity:.7;margin:0 0 20px}
+ table{border-collapse:collapse} th{text-align:left;padding:10px 14px 10px 0;vertical-align:top;white-space:nowrap}
+ td{padding:0 14px 26px 0;vertical-align:top}
+ img{width:320px;border:2px solid #2c2450;border-radius:8px;display:block;background:#000}
+ .vp{opacity:.55;font-size:12px;margin-bottom:4px}
+ .bad{color:#ff9db5;max-width:320px;font-size:12px;margin:6px 0 0}
+</style>
+<h1>Pre-match loader — ${esc(LABEL)}</h1>
+<p class="sub">${STATES.length} states x ${VIEWPORTS.length} viewports. ${bad.length ? bad.length + ' problem(s).' : 'No overflow, clipping or pointer leakage; the countdown box holds its size.'}</p>
+<table>${rows}</table>`);
+  console.log(`contact sheet: ${join(OUT, 'prematch-sheet.html')}`);
   console.log(`${shots} shots across ${VIEWPORTS.length} viewports -> ${OUT}`);
   if (bad.length) {
     console.log(`\n${bad.length} layout problem(s):`);

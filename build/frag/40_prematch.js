@@ -155,6 +155,7 @@
     if(box){
       box.classList.remove('hidden');
       box.classList.remove('counting');
+      box.classList.remove('failed');
     }
     const f = pmEl('mlFail'); if(f) f.classList.add('hidden');
     const c = pmEl('mlCount'); if(c) c.classList.add('hidden');
@@ -188,7 +189,7 @@
     // dead on a path somebody forgot.
     const go = pmEl('modeGo'); if(go) go.disabled = false;
     const box = pmEl('matchLoader');
-    if(box){ box.classList.add('hidden'); box.classList.remove('counting'); }
+    if(box){ box.classList.add('hidden'); box.classList.remove('counting'); box.classList.remove('failed'); }
     const c = pmEl('mlCount'); if(c) c.classList.add('hidden');
   }
 
@@ -297,6 +298,12 @@
     const m = pmEl('mlFailMsg'); if(m) m.textContent = msg;
     const s = pmEl('mlSpin'); if(s) s.style.display = 'none';
     pmSay('FAILED TO PREPARE MATCH', '');
+    // ONE WAY BACK, NOT TWO. The bar keeps its button for every other state; in
+    // this one the panel owns that choice, and without this class the screen
+    // offered BACK twice -- once in the panel and once in the bar four inches
+    // below it. The startup loader carries the same class for the same reason,
+    // and the rule in 04b_ui25.css is shared between them.
+    { const scr = pmEl('matchLoader'); if(scr) scr.classList.add('failed'); }
     box.classList.remove('hidden');
     const r = pmEl('mlRetry');
     if(r) r.onclick = ()=>{ try{ SFX.click(); }catch(e){} box.classList.add('hidden'); prepareRound(pm.round, pm.survivors); };
