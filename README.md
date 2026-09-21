@@ -192,11 +192,16 @@ is how v7 once got clobbered.
 `build/mkdebug.py` also injects `build/checks.js`. Open `__debug.html` and run:
 
 ```
-window.__checks.run()                     // everything (37 checks)
-window.__checks.run({only:'DE'})          // just the named checks
-window.__checks.run({only:'G', half:1})   // G is heavy; run it in halves
-window.__checks.run({accept:true})        // + the five-seed per-map acceptance test
+await window.__checks.run()                     // everything (80 checks)
+await window.__checks.run({only:'DE'})          // just the named checks
+await window.__checks.run({only:'G', half:1})   // G is heavy; run it in halves
+await window.__checks.run({accept:true})        // + the five-seed per-map acceptance test
 ```
+
+`run()` returns a promise — `await` it, or the console hands you a pending
+`Promise` instead of the results. It is async because `[,]` spins the daily
+wheel for real and the state it measures only exists on the far side of
+`doSpin()`'s settle timer; every other check is still synchronous.
 
 They assert that things *happen* — cannonballs in flight, tiles crumbling, a
 climb gaining height, a held diagonal staying at 45°, a hopper covering no

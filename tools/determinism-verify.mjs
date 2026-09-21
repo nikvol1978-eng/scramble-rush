@@ -58,9 +58,9 @@ async function scenario(port, label, opts) {
   page.on('pageerror', (e) => errs.push(String(e && e.message || e)));
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction('window.__dbg && window.__checks', { timeout: 180000 });
-  const res = await page.evaluate((o, target) => {
+  const res = await page.evaluate(async (o, target) => {
     window.__noRender = true;
-    const r = window.__checks.run(o);
+    const r = await window.__checks.run(o);   // async: [,] waits on a real spin
     // Match the check's ID AT THE START of its name. Searching the whole line
     // picked up check [y], whose detail reads "orbit r 228-228" -- a substring
     // search for " r " finds that, and the comparison silently became a

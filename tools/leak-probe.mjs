@@ -52,13 +52,15 @@ async function sample(port, pre) {
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction('window.__dbg && window.__checks', { timeout: 180000 });
-  const out = await page.evaluate((preIds) => {
+  const out = await page.evaluate(async (preIds) => {
     window.__noRender = true;
     // Warm on BOTH sides. __dbg.buildProbe does not go through __checks.run, so
     // without this the "fresh page" sample is an unwarmed page being compared
     // against a warmed one, and the warm-up shows up as the leak.
     window.__checks.warm();
-    if (preIds) window.__checks.run({ only: preIds });     // let other checks run first
+    // awaited: run() is async, and probing while a check was still running
+    // would measure the leak against a half-finished one.
+    if (preIds) await window.__checks.run({ only: preIds });   // let other checks run first
     return window.__dbg.buildProbe('slide', 0xC0FFEE);
   }, pre);
   await browser.close(); browser = null;
