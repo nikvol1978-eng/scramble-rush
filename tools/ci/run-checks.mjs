@@ -236,8 +236,13 @@ async function main() {
     }, 60000);
     let r;
     try {
+      // run() is async now -- [,] spins the wheel for real and the state it
+      // measures lands after doSpin()'s settle timer -- so the stringify has
+      // to happen INSIDE the page once the promise settles. JSON.stringify of
+      // a pending promise is "{}", which would read here as a check that
+      // returned nothing rather than as a broken call.
       const raw = await page.evaluate(
-        `JSON.stringify(window.__checks.run({ only: ${JSON.stringify(id)} }))`,
+        `window.__checks.run({ only: ${JSON.stringify(id)} }).then((r) => JSON.stringify(r))`,
       );
       r = JSON.parse(raw);
     } finally {

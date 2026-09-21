@@ -82,6 +82,27 @@
     openLobbyTab('play');
   }
 
+  // v25 SS-DAILY: THE BUTTON'S LABEL NEVER CHANGES.
+  // It used to carry the state -- 'SPIN' / 'SPINNING...' / 'BACK IN 21h 40m'
+  // -- which measured 124px, 186px and 235px wide. The row is centred, so
+  // every state change shifted the button and the BACK button beside it. The
+  // state lives in its own fixed slot now and the button just says SPIN.
+  //
+  // ONE OWNER, because saying that in two places is how half of it came back.
+  // buildWheel() was fixed and the last line of doSpin() was not, so the label
+  // went back to carrying the countdown the moment a spin landed -- SPIN grew
+  // from 150px to 228px and threw itself and BACK 39px apart, while the player
+  // was looking at the prize. Both callers come through here now and neither
+  // writes the button or the status line itself.
+  function syncSpinControls(){
+    const ready = spinReady();
+    const btn = $('spinBtn');
+    btn.textContent = 'SPIN';
+    btn.disabled = !ready;
+    $('spinStatus').textContent = ready ? 'Your spin is ready.'
+                                        : 'Next spin in ' + fmtWait(spinReadyIn());
+  }
+
   function buildWheel(){
     const wheel = $('wheel');
     const seg = 360/WHEEL.length;
@@ -95,17 +116,7 @@
       return `<span class="wlab" style="transform:rotate(${a}deg) translateY(-96px) rotate(${-a}deg);color:${RARITY[r].text}">${RARITY[r].name}</span>`;
     }).join('');
     $('spinResult').innerHTML = '';
-    const ready = spinReady();
-    const btn = $('spinBtn');
-    btn.disabled = !ready;
-    // v25 SS-DAILY: THE BUTTON'S LABEL NEVER CHANGES.
-    // It used to carry the state -- 'SPIN' / 'SPINNING...' / 'BACK IN 21h 40m'
-    // -- which measured 124px, 186px and 235px wide. The row is centred, so
-    // every state change shifted the button and the BACK button beside it. The
-    // state lives in its own fixed slot now and the button just says SPIN.
-    btn.textContent = 'SPIN';
-    $('spinStatus').textContent = ready ? 'Your spin is ready.'
-                                        : 'Next spin in ' + fmtWait(spinReadyIn());
+    syncSpinControls();
     spinning = false;
   }
 
@@ -159,6 +170,6 @@
          <div class="cost">+${fmtNum(prize.coins)} coins instead</div></div>`;
     }
     refreshCoinChips(); refreshDailyChip();
-    btn.textContent = 'BACK IN '+fmtWait(spinReadyIn());
+    syncSpinControls();                 // SPIN, disabled, and the wait in its own slot
     spinning = false;
   }

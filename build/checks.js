@@ -2961,12 +2961,25 @@
   // does in a real round, and only the source of the values is fixed. Both the
   // generator and the clock go back in `finally`, so a throw cannot leave the
   // next check running on a rigged random or a stopped clock.
+  // A CHECK THAT RETURNS A PROMISE KEEPS THE PINNED STREAM UNTIL IT FINISHES.
+  // A plain `finally` restores both the instant an async check reaches its
+  // first await, so everything after that await would run on the real
+  // generator and the real clock -- which is not a seed at all. Synchronous
+  // checks, which is all of them but one, behave exactly as before.
   function withSeed(seed, fn){
     const realRandom = Math.random, realT = window.__T;
+    const restore = ()=>{ Math.random = realRandom; window.__T = realT; };
     Math.random = seededRandom(seed);
     window.__T = H_T0;
-    try { return fn(); }
-    finally { Math.random = realRandom; window.__T = realT; }
+    let out;
+    try { out = fn(); }
+    catch(e){ restore(); throw e; }
+    if(out && typeof out.then === 'function'){
+      return out.then(v => { restore(); return v; },
+                      e => { restore(); throw e; });
+    }
+    restore();
+    return out;
   }
 
   // begin(), with the random stream re-pinned once the round is built.
@@ -5979,6 +5992,100 @@
   }
 
 
+  // ---- [,] the spin's controls, through the REAL doSpin() ----------------
+  // [;] above asserts this same invariant and could never have caught the
+  // defect this exists for, because [;] SIMULATES the spin: it writes the
+  // three status strings into #spinStatus by hand and injects a prize card.
+  // The line that broke it is the LAST line of doSpin(), which [;] never
+  // calls --
+  //
+  //     btn.textContent = 'BACK IN '+fmtWait(spinReadyIn());
+  //
+  // -- the state back in the control's own label, which is exactly what
+  // SS-DAILY had removed from buildWheel(). Half the fix was applied and the
+  // half in doSpin() was missed, so it survived the whole of v25: SPIN grew
+  // from 150px to 228px the moment a reward landed and threw itself and BACK
+  // 39px apart, while the player was looking at the prize.
+  //
+  // So this one SPINS. It calls doSpin() and measures the row three times --
+  // idle, mid spin, and once the reward has landed -- and it is the only
+  // async check in the registry, because that third measurement lives on the
+  // far side of doSpin()'s settle timer.
+  //
+  // matchMedia is stubbed to report reduced motion for the duration. That is
+  // a REAL production path rather than a test-only branch (the wheel skips its
+  // transition and the settle is 200ms instead of 4250ms), so the check is
+  // fast and deterministic and covers the reduced-motion path at the same
+  // time. stats.lastSpin and stats.owned are saved and put back, or this
+  // would hand the next check a spent spin and an extra skin.
+  async function checkSpinRowStill(){
+    const bad = [], notes = [];
+    const wasLastSpin = stats.lastSpin, wasOwned = (stats.owned || []).slice();
+    const realMM = window.matchMedia;
+    const box = (id)=>{ const e = $(id); if(!e) return null; const r = e.getBoundingClientRect();
+      return { x:Math.round(r.left), y:Math.round(r.top), w:Math.round(r.width) }; };
+    const rowCentre = ()=>{ const r = $('daily').querySelector('.row');
+      if(!r) return 0; const b = r.getBoundingClientRect(); return Math.round(b.left + b.width/2); };
+    const shot = ()=>({ spin:box('spinBtn'), back:box('dailyBackBtn'), centre:rowCentre(),
+                        label:$('spinBtn').textContent, status:$('spinStatus').textContent,
+                        off:$('spinBtn').disabled });
+    try{
+      state = 'menu';
+      window.matchMedia = (q)=> /prefers-reduced-motion/.test(String(q))
+        ? { matches:true, media:String(q), onchange:null, addListener(){}, removeListener(){},
+            addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } }
+        : realMM.call(window, q);
+      stats.lastSpin = 0;                       // a spin is due
+      openDaily();
+
+      const before = shot();
+      if(before.label !== 'SPIN') bad.push('idle, the button reads "' + before.label + '"');
+      if(before.off) bad.push('idle, a spin that is due is not offered');
+      if(!/ready/i.test(before.status)) bad.push('idle, the status reads "' + before.status + '"');
+
+      // THE REAL ONE. Everything up to its first await has already run by the
+      // time the promise is in hand, so this reads the true mid-spin state.
+      const spun = doSpin();
+      const during = shot();
+      if(during.label !== 'SPIN') bad.push('mid spin, the button reads "' + during.label + '"');
+      if(!/spinning/i.test(during.status)) bad.push('mid spin, the status reads "' + during.status + '"');
+
+      await spun;
+
+      const after = shot();
+      if(after.label !== 'SPIN') bad.push('after the reward, the button reads "' + after.label + '"');
+      if(!after.off) bad.push('after the reward, a spent spin is still offered');
+      if(!/next spin in/i.test(after.status)) bad.push('after the reward, the status reads "' + after.status + '"');
+      if(!$('spinResult').children.length) bad.push('the spin produced no reward at all');
+      if(!(stats.lastSpin > 0)) bad.push('the spin was not banked against the cooldown');
+
+      // and the row does not move, which is the whole point
+      for(const [when, now] of [['mid spin', during], ['after the reward', after]]){
+        for(const part of ['spin','back']){
+          const a = before[part], b = now[part];
+          if(!a || !b){ bad.push('no ' + part + ' button to measure'); continue; }
+          if(Math.abs(b.w - a.w) > 1) bad.push(part.toUpperCase() + ' went ' + a.w + 'px to ' + b.w + 'px ' + when);
+          if(Math.abs(b.x - a.x) > 1) bad.push(part.toUpperCase() + ' slid ' + Math.abs(b.x - a.x) + 'px across ' + when);
+          if(Math.abs(b.y - a.y) > 1) bad.push(part.toUpperCase() + ' slid ' + Math.abs(b.y - a.y) + 'px down ' + when);
+        }
+        if(Math.abs(now.centre - before.centre) > 1)
+          bad.push('the row recentred by ' + Math.abs(now.centre - before.centre) + 'px ' + when);
+      }
+      notes.push('SPIN ' + before.spin.w + '/' + during.spin.w + '/' + after.spin.w + 'px');
+      notes.push('BACK x' + before.back.x + '/' + during.back.x + '/' + after.back.x);
+      notes.push('centre ' + before.centre + '/' + during.centre + '/' + after.centre);
+    } finally {
+      window.matchMedia = realMM;
+      stats.lastSpin = wasLastSpin; stats.owned = wasOwned;
+      $('spinResult').innerHTML = '';
+      try{ closeDaily(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:', daily spin: a real spin never moves or relabels the controls',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,6).join('; ') : notes.join('; ') };
+  }
+
+
   // ---- ['] the catalogue -------------------------------------------------
   // Cosmetics and badges are data, and data is where a typo becomes an item
   // nobody can ever own. This walks the whole catalogue and asserts the things
@@ -6204,7 +6311,8 @@
       ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
-      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen]
+      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
+      [',',checkSpinRowStill]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
@@ -6223,7 +6331,12 @@
     // directly measures an unwarmed page against a warmed one and reports the
     // warm-up as if it were the leak.
     warm(){ warmCaches(); },
-    run(opts){
+    // ASYNC, AND THEREFORE ALWAYS AWAITED BY ITS CALLERS.
+    // [,] spins the wheel for real, and the state it exists to measure is set
+    // after doSpin()'s settle timer -- which no synchronous check can reach.
+    // Everything else here is unchanged: a synchronous check still returns its
+    // result object directly and `await` on a non-promise costs a microtask.
+    async run(opts){
       opts = opts||{};
       const only = opts.only ? new Set(opts.only.split('')) : null;
       let all = checkRegistry(opts);
@@ -6268,7 +6381,7 @@
         // does in a real round, and the real generator and clock are back in
         // place before the next check starts. Nothing here is shipped.
         _checkSeed = seedForCheck(id); _beginNth = 0;   // begin() re-pins from these
-        try { results.push(withSeed(_checkSeed, fn)); }
+        try { results.push(await withSeed(_checkSeed, fn)); }
         catch(e){ results.push({ name:id+' THREW', pass:false, detail:e.message }); }
         finally { _checkSeed = 0; _beginNth = 0; }
       }
