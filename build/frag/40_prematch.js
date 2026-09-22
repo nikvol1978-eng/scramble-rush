@@ -618,6 +618,23 @@
       await pmStep('LOADING ' + String(currentMap.name).toUpperCase() + '…', 0, TOTAL, async ()=>{
         clearGroup(racerGroup); clearGroup(courseGroup); clearParticles(); racers=[];
         obstacles = data.obstacles; trackLength = data.trackLength;
+        // THE SAME WORLD, NOT JUST THE SAME OBSTACLES. The script is what
+        // setCoursePath turns into the transform every mesh, every racer and
+        // the camera are placed through, and only genCourse makes one -- which
+        // a joiner never runs. Without this a joiner laid Boom Peak's climb
+        // out flat and straight and had no idea it had: the sim is a flat
+        // ribbon either way, so the two of them agreed about every coordinate
+        // while drawing them in differently shaped worlds.
+        //
+        // This is also where the start pad and the checkpoint flags come from
+        // -- buildCourseMeshes reads courseScript for both -- so a joiner was
+        // missing those as well.
+        //
+        // The fallback matters: a host on an older build sends no script, and
+        // the map's own path is a better answer than none.
+        courseScript = data.courseScript || null;
+        setCoursePath(courseScript ? scriptPathSpec(courseScript)
+                                   : (currentMap.path ? COURSE_PATHS[currentMap.path] : null), trackLength);
         lavaZ = currentMap.mode==='lava' ? -320 : 0;
         mp.tOffset = data.hostT - performance.now()/1000;
         pm.flags.mapReady = true;

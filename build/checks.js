@@ -6845,8 +6845,24 @@
     mp = Object.assign({}, mp, { role:'host', tOffset:0,
       conns:[{ open:true, send:(d)=>{ if(d && d.type==='roundStart') frame = d; } }] });
     prepareRoundNow(1, null);
+    // WHAT THE HOST ENDED UP LOOKING AT, measured before the joiner half is
+    // allowed to touch anything. The mesh count and two points of the world
+    // transform are what told the two of them apart: a joiner that had not
+    // been sent the course script laid Boom Peak's climb out flat, and every
+    // coordinate still agreed because the simulation is a flat ribbon either
+    // way. Only the transform shows it.
+    if(frame) frame.__host = joinerWorld();
     pmClose();
     return frame;
+  }
+
+  // The shape of the world as this page currently has it: how much was built,
+  // and where the ribbon's midpoint and three-quarter point actually land.
+  function joinerWorld(){
+    const p = (s)=>{ const w = toWorld(0, trackLength*s, 0);
+                     return [Math.round(w.x), Math.round(w.y), Math.round(w.z)].join(','); };
+    return { meshes: courseGroup.children.length, mid: p(0.5), late: p(0.9),
+             path: !!coursePath, script: courseScript ? courseScript.length : 0 };
   }
 
   // One joiner, meeting one or more frames, driven through the data channel.
@@ -6895,7 +6911,14 @@
     // when a roundStart lands on the data channel, which is what a friend's
     // browser actually does. Each frame goes through JSON on the way in,
     // because the wire does that to it too.
-    for(const f of frames) handleClientData(JSON.parse(JSON.stringify(f)));
+    // __host is the suite's own measurement riding along on the frame; the
+    // wire never carries it, so it is stripped before delivery rather than
+    // left to appear in the joiner's own diagnostics as a field the host sent.
+    for(const f of frames){
+      const wire = JSON.parse(JSON.stringify(f));
+      delete wire.__host;
+      handleClientData(wire);
+    }
 
     // AND THEN WAIT ON THE REAL SIGNAL. handleClientData is a router, not a
     // promise -- it starts the preparation and returns -- so asserting on the
@@ -6916,7 +6939,7 @@
                   missing: Object.keys(pm.flags).filter(k=>!pm.flags[k]),
                   failed:  pm.phase === 'error',
                   map:     (currentMap||{}).key || null,
-                  meshes:  courseGroup.children.length,
+                  world:   pm.phase === 'error' ? null : joinerWorld(),
                   failMsg: ($('mlFailMsg')||{}).textContent || '',
                   diag:    pm.error };
     // The role goes back before anything else runs. The checks restore it too,
@@ -6955,7 +6978,22 @@
           bad.push('the joiner races a course of '+trackLength+' against the host\'s '+frame.trackLength);
         if(!currentMap || currentMap.key !== frame.mapDef.key)
           bad.push('the joiner is on '+((currentMap||{}).key)+' and the host on '+frame.mapDef.key);
-        if(courseGroup.children.length < 1) bad.push('the joiner built no course meshes at all');
+        // THE SAME WORLD, not merely the same numbers. The simulation is a
+        // flat ribbon whichever way the course bends, so every coordinate can
+        // agree while the two players are looking at different shapes -- which
+        // is exactly what a joiner that had never been sent the course script
+        // did. The transform is the only thing that shows it.
+        const hw = frame.__host, jw = r.world;
+        if(!hw || !jw) bad.push('no world measurement to compare');
+        else {
+          if(jw.meshes !== hw.meshes)
+            bad.push('the joiner built '+jw.meshes+' course meshes against the host\'s '+hw.meshes);
+          if(jw.mid !== hw.mid || jw.late !== hw.late)
+            bad.push('the course bends differently: host ['+hw.mid+'] ['+hw.late+'] vs joiner ['+jw.mid+'] ['+jw.late+']');
+          if(jw.script !== hw.script)
+            bad.push('the joiner has '+jw.script+' course sections against the host\'s '+hw.script);
+        }
+        if(jw && jw.meshes < 1) bad.push('the joiner built no course meshes at all');
       }
     } finally {
       mp = mp0; pmSock = sock0;
@@ -7049,6 +7087,10 @@
           bad.push(key+' failed: '+(r.failMsg||'no message')+' -- '+(r.diag ? r.diag.stage+': '+r.diag.message : 'no diagnostics'));
         else if(r.missing.length)          bad.push(key+' left flags false: '+r.missing.join(', '));
         else if(r.sent.indexOf('sr:join') < 0) bad.push(key+' never emitted sr:join');
+        else if(!f.__host || !r.world)     bad.push(key+': no world measurement to compare');
+        else if(r.world.meshes !== f.__host.meshes || r.world.mid !== f.__host.mid || r.world.late !== f.__host.late)
+          bad.push(key+': host built '+f.__host.meshes+' meshes ['+f.__host.mid+'] and the joiner '
+                   +r.world.meshes+' ['+r.world.mid+']');
       }
       notes.push('neon, hopduck and shrink all prepared');
     } finally {

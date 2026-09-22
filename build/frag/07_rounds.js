@@ -197,8 +197,19 @@
           // Tell the peers with the course in hand, so they prepare ALONGSIDE
           // this client rather than after it. Sending this late is how a friend
           // ended up still building meshes while everyone was on the start line.
+          // ...INCLUDING THE SHAPE OF THE WORLD, which the frame did not carry.
+          // A course is not only its obstacles: the script says where it bends
+          // and where it climbs, and setCoursePath turns that into the
+          // transform every mesh, every racer and the camera are placed
+          // through. Only genCourse produces it, and a joiner never runs
+          // genCourse -- so a joiner built a straight corridor where the host
+          // built Boom Peak's climb, 171 course meshes against 197, and the
+          // two players watched the same race in differently shaped worlds.
+          // The script is plain data and a few dozen entries; it is what the
+          // host already has, so it is what the wire should carry.
           if(mp.role==='host' && mp.conns.length){
-            broadcast({type:'roundStart', obstacles:JSON.parse(JSON.stringify(obstacles)), trackLength, round:n, hostT:performance.now()/1000, mapDef:currentMap});
+            broadcast({type:'roundStart', obstacles:JSON.parse(JSON.stringify(obstacles)), trackLength, round:n, hostT:performance.now()/1000, mapDef:currentMap,
+                       courseScript: courseScript ? JSON.parse(JSON.stringify(courseScript)) : null});
           }
         } },
       { msg: ()=> 'BUILDING COURSE…', run: ()=>{
