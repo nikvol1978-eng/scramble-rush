@@ -9,9 +9,15 @@ frozen in some embedded preview panes.
 """
 import io, os
 
-VERSION = 25
+VERSION = 26
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
+# v26 §4: the readable assembly, not the release.
+#
+# The release is minified now, and minified text has no comment anchors to
+# splice debug hooks into. build.py writes build/__assembled.html on every
+# build for exactly this reason, so the debug page -- and therefore the whole
+# check suite -- still runs against code with its structure intact.
+SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "__assembled.html")
 OUT = os.path.join(ROOT, "__debug.html")
 
 s = io.open(SRC, encoding="utf-8").read()

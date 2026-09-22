@@ -6,7 +6,9 @@
     "dev": "vite --open",
     "build": "vite build",
     "preview": "vite preview",
-    "ci:checks": "node tools/ci/run-checks.mjs"
+    "ci:checks": "node tools/ci/run-checks.mjs",
+    "smoke:release": "node tools/release-smoke.mjs",
+    "perf:budget": "node tools/perf-budget.mjs"
   },
   "devDependencies": {
     "puppeteer": "^25.11.0",

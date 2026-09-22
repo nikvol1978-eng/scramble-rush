@@ -210,8 +210,17 @@
     syncMenuChrome();
     { const h = $('bootHome'); if(h) h.onclick = bootGoNikcade; }
 
+    // v26 §1: where REAL PREPARATION starts. Everything from here to
+    // 'boot:gates:end' is the game genuinely getting ready; the wait after it
+    // is the floor. SRPERF keeps them apart -- see frag/26a_perf.js.
+    SRPERF.mark('boot:gates:start');
+
     for(let i = 0; i < gates.length; i++){
       const g = gates[i];
+      // Per gate, so a slow startup can be blamed on the stage that was slow
+      // rather than on "startup". The name is the message the player was
+      // looking at while it ran.
+      SRPERF.mark('gate:' + i + ':start:' + g.msg.replace(/…$/, ''));
       bootSay(g.msg, '');
       bootMeter(i, gates.length + 1);
       // The note is the answer to "am I stuck?". It never transitions anything
@@ -235,15 +244,24 @@
         // of both -- a blocked player and an intact game behind the block.
       }
       clearTimeout(nag);
+      SRPERF.mark('gate:' + i + ':end');
       bootMeter(i + 1, gates.length + 1);
     }
+
+    // v26 §1: the work is finished HERE. Anything after this is presentation.
+    SRPERF.mark('boot:gates:end');
 
     bootSay('Ready!', '');
     bootMeter(1, 1);
     // THE RULE, in one line: the work is done, so the only thing left to wait
     // for is the floor -- and READY is held long enough to be read either way.
     await bootWait(Math.max(hold, minMs - (performance.now() - t0)));
+    SRPERF.mark('boot:floor:waited');
     await bootHandoff();
+    // Mode Select is on the screen and the loader is gone. This is the number
+    // a player would call "how long the loading screen lasted", and it is the
+    // one that must never be quoted as how long the game took to get ready.
+    SRPERF.mark('boot:handoff:end');
     bootSettle(true);
     return true;
   }
