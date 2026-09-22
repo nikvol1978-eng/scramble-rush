@@ -55,6 +55,11 @@
     open:false, phase:'idle', authority:'local',
     round:1, map:null, matchId:null, startAt:null,
     ready:false, shown:null, survivors:null, retryable:false, timer:null,
+    // The step being run and what went wrong in it -- diagnostics only, and
+    // nothing anywhere decides on either. `frame` is the host's roundStart as
+    // it arrived, kept so that a joiner's RETRY can run THAT course again
+    // rather than generate one of its own.
+    stage:null, error:null, frame:null,
     flags:{ profileReady:false, mapReady:false, sceneReady:false, racerReady:false, sessionReady:false },
   };
 
@@ -150,6 +155,7 @@
   function pmOpen(round){
     pm.open = true; pm.phase = 'preparing'; pm.startAt = null; pm.ready = false;
     pm.round = round; pm.matchId = null; pm.shown = null; pm.retryable = true;
+    pm.stage = null; pm.error = null; pm.frame = null;
     for(const k of Object.keys(pm.flags)) pm.flags[k] = false;
     const box = pmEl('matchLoader');
     if(box){
@@ -353,9 +359,31 @@
     { const scr = pmEl('matchLoader'); if(scr) scr.classList.add('failed'); }
     box.classList.remove('hidden');
     const r = pmEl('mlRetry');
-    if(r) r.onclick = ()=>{ try{ SFX.click(); }catch(e){} box.classList.add('hidden'); prepareRound(pm.round, pm.survivors); };
+    if(r) r.onclick = ()=>{ try{ SFX.click(); }catch(e){} box.classList.add('hidden'); pmRetry(); };
     const b = pmEl('mlBail');
     if(b) b.onclick = ()=>{ try{ SFX.click(); }catch(e){} pmBail(); };
+  }
+
+  // RETRY MEANS THE SAME COURSE, NOT ANOTHER ONE.
+  //
+  // On a joiner this button used to call prepareRound -- the HOST's path. That
+  // runs genCourse, so the client built a course of its OWN: the right map,
+  // because the host drew it, and a layout nobody else in the room had. It
+  // then reported ready on it and raced a track its friends could not see, and
+  // nothing anywhere said so. A retry that quietly desynchronises the match is
+  // worse than the failure it is recovering from.
+  //
+  // The host's frame is immutable and already in hand, so the honest retry on
+  // a joiner is to run that frame again. Re-running it is safe precisely
+  // because it carries no state of its own: the same obstacles, the same
+  // length, the same map.
+  function pmRetry(){
+    if(mp && mp.role === 'client'){
+      if(pm.frame) pmClientRound(pm.frame);
+      else pmFail('The course never arrived. Ask your friend to start the round again.');
+      return;
+    }
+    prepareRound(pm.round, pm.survivors);
   }
 
   function pmBail(){
@@ -458,18 +486,129 @@
     pmStartCountdown((hostAtSec - mp.tOffset) * 1000, 'peer');
   }
 
+  // ---- one step of the joiner's preparation ------------------------------
+  // The host runs its list in prepareRound; this is the same beat for the
+  // client's shorter one -- say what is about to happen, give the screen a
+  // frame to paint it, do the work, then move the meter.
+  //
+  // IT WAS CALLED AND NEVER WRITTEN. Three `await pmStep(...)` shipped against
+  // a name nothing defined, so the joiner's very first step threw
+  // ReferenceError before it had done anything at all and the catch below
+  // reported that as a course that could not be prepared. A joining friend
+  // therefore never reached pmJoin and never sent one byte of readiness --
+  // four production attempts in five, with the same failure on every map and
+  // at every CPU speed, because it was never about the payload or the timing.
+  //
+  // Nothing in the check suite had ever run this path: every other pre-match
+  // check drives prepareRoundNow, which is the HOST's. [{] runs this one.
+  //
+  // The step's name is kept on `pm` so a failure can say WHERE it happened,
+  // which is the difference between the sentence the player reads and a report
+  // somebody can act on.
+  async function pmStep(msg, i, total, run){
+    pm.stage = msg;
+    pmSay(msg, '');
+    pmMeter(i, total + 1);
+    await pmFrame();                             // let the screen show what it said
+    await run();
+    pmMeter(i + 1, total + 1);
+  }
+
+  // ---- what failed, not merely that it did -------------------------------
+  // The player keeps the friendly sentence. This is its other half, and its
+  // absence is why a day of production failures could only be described as
+  // "Could not prepare <map>." -- the catch did not even bind the exception.
+  //
+  // NOTHING HERE IS ABOUT THE PLAYER: no name, no id, no profile, no room
+  // code. The map, the step, the SHAPE of the host's frame, and the exception.
+  function pmDiag(e, data){
+    const d = {
+      stage:   pm.stage || 'before the first step',
+      // The map being PREPARED, which on a joiner is the host's and not
+      // whatever this client happened to have loaded -- a frame that fails
+      // validation never reaches the line that would have made them the same.
+      map:     (data && data.mapDef && data.mapDef.key) || (currentMap && currentMap.key) || null,
+      round:   pm.round,
+      message: (e && e.message) || String(e),
+      // Four frames is enough to name the call and its caller; the whole trace
+      // of a minified bundle is noise in a console the player may be reading.
+      stack:   (e && e.stack) ? String(e.stack).split('\n').slice(0, 4).join(' | ') : null,
+      frame:   data ? {
+        keys:        Object.keys(data).sort().join(','),
+        obstacles:   Array.isArray(data.obstacles) ? data.obstacles.length : ('not an array: ' + typeof data.obstacles),
+        trackLength: data.trackLength,
+        map:         data.mapDef && data.mapDef.key,
+      } : null,
+    };
+    pm.error = d;
+    // SERIALISED, not handed over as an object. A console capture -- a
+    // puppeteer run, a bug report pasted out of devtools, a remote session --
+    // renders a logged object as "[object Object]", so the one line that
+    // carries the answer arrives carrying nothing.
+    try{ console.error('[scramble-rush] pre-match preparation failed: ' + JSON.stringify(d)); }catch(_){
+      try{ console.error('[scramble-rush] pre-match preparation failed: ' + d.stage + ': ' + d.message); }catch(__){}
+    }
+    return d;
+  }
+
+  // ---- is this frame something a course can be built from? ---------------
+  // Checked BEFORE any of it is used, and named when it is not. A missing
+  // field used to surface as whatever the first line to touch it happened to
+  // throw, three steps later and under the same one sentence as everything
+  // else. `obstacles` may legitimately be empty -- an arena map has none --
+  // so this asks for an ARRAY, not for a full one.
+  function pmFrameFault(data){
+    if(!data || typeof data !== 'object')       return 'no frame at all';
+    if(!Array.isArray(data.obstacles))          return 'obstacles is ' + (data.obstacles === undefined ? 'missing' : 'a ' + typeof data.obstacles) + ', wanted an array';
+    if(typeof data.trackLength !== 'number' || !(data.trackLength > 0))
+                                                return 'trackLength is ' + data.trackLength;
+    if(typeof data.round !== 'number')          return 'round is ' + data.round;
+    if(typeof data.hostT !== 'number')          return 'hostT is ' + data.hostT;
+    if(!data.mapDef || !data.mapDef.key)        return 'mapDef carries no key';
+    return null;
+  }
+
   // ---- the client's side of the same flow --------------------------------
   // A PeerJS client does not draw a map or generate a course -- the host sends
   // both -- but it has exactly the same reason to wait: its meshes are not built
   // yet. Reporting ready before they are is how a friend used to arrive into a
   // race that had already started.
   async function pmClientRound(data){
-    round = data.round;
-    currentMap = data.mapDef || MAPS[0];
+    // ONE PREPARATION AT A TIME, which the host has had since startRound and
+    // the joiner had not. A duplicated or resent roundStart started a second
+    // preparation over the top of the first: two async chains writing the same
+    // readiness flags, and two sr:join emissions from one client. Ignoring a
+    // resend of an immutable course payload is what makes that transmission
+    // idempotent -- and the gate is synchronous, before any await, so there is
+    // no window between the test and the claim.
+    //
+    // A FAILED preparation is deliberately not covered: that is the state
+    // RETRY has to be able to leave.
+    if(pm.open && pm.phase !== 'error') return;
+
     pm.survivors = null;
-    pmOpen(data.round);
+    pmOpen((data && data.round) || 1);
+    // AFTER pmOpen, which clears it. Kept so RETRY can run this course again
+    // rather than invent one; the frame is the host's and is never modified
+    // here.
+    pm.frame = data;
     await pmFrame();
     try{
+      // CHECKED BEFORE ANY OF IT IS USED, and before one global of this
+      // client's has been changed by it. A frame that cannot build a course
+      // fails here by name, rather than three steps later as whatever the
+      // first line to touch a missing field happened to throw -- and it does
+      // not get to leave `round` and `currentMap` describing a course that was
+      // never built.
+      const fault = pmFrameFault(data);
+      if(fault){
+        pmDiag(new Error('host frame unusable: ' + fault), data);
+        pmFail('The course your friend sent could not be read.');
+        return;
+      }
+
+      round = data.round;
+      currentMap = data.mapDef;
       pm.map = currentMap;
       pmShowMap(currentMap, data.round);
       pm.flags.profileReady = true;
@@ -506,6 +645,11 @@
       await pmStep('SYNCING PLAYERS…', 2, TOTAL, async ()=>{ kind = await pmJoin(); });
       await pmAwaitStart(kind);
     }catch(e){
+      // The diagnosis first, then the sentence. The minified release had
+      // `catch{}` here -- it did not so much as bind the exception -- so the
+      // one thing that could have named this bug was discarded on the way to
+      // telling the player something friendly.
+      pmDiag(e, data);
       pmFail('Could not prepare ' + ((currentMap && currentMap.name) || 'the course') + '.');
     }
   }

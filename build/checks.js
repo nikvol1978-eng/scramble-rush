@@ -6819,6 +6819,250 @@
              detail: bad.length ? bad.join('; ') : 'started '+waited+'ms after the instant, on no frames at all' };
   }
 
+  // ---------- { : the joining peer prepares the host's course ----------
+  // WHY THIS EXISTS. Every other pre-match check drives prepareRoundNow, which
+  // is the HOST's path. pmClientRound -- the joiner's -- had no check at all,
+  // and so a call to a function that was never written shipped inside it: the
+  // first step threw ReferenceError, the catch turned it into "Could not
+  // prepare <map>.", and a joining friend never reached pmJoin. Four
+  // production attempts out of five died there and the suite was green
+  // throughout, because nothing in it had ever run that path.
+  //
+  // So this drives the REAL path end to end. It does not call pmClientRound:
+  // it captures the frame the HOST actually broadcasts, hands it to
+  // handleClientData exactly as the data channel would, and then asks the one
+  // question production could answer -- did readiness ever leave this client?
+  // The host's REAL broadcast for a map, captured off a fake connection. Both
+  // joiner checks build their payloads this way rather than keeping a second
+  // copy of the frame in the suite: a hand-written payload goes on passing on
+  // the day the real one changes shape, which is precisely the failure these
+  // checks exist to have caught.
+  function joinerHostFrame(mapKey){
+    let frame = null;
+    wipeRoundState();
+    window.__forceMap = mapKey;
+    ['home','profile','results','gameover','daily','lobby'].forEach(id=>{ const e=$(id); if(e) e.classList.add('hidden'); });
+    mp = Object.assign({}, mp, { role:'host', tOffset:0,
+      conns:[{ open:true, send:(d)=>{ if(d && d.type==='roundStart') frame = d; } }] });
+    prepareRoundNow(1, null);
+    pmClose();
+    return frame;
+  }
+
+  // One joiner, meeting one or more frames, driven through the data channel.
+  // Returns what production could measure about it: the phase it settled in,
+  // which readiness flags are still false, and every event that left it.
+  //
+  // The frames are delivered WITHOUT awaiting between them, because that is
+  // what a duplicated or resent payload does -- arrive while the first one is
+  // still being worked on.
+  async function joinerFeed(frames){
+    const sent = [];
+    const mp0 = mp, sock0 = pmSock;
+    wipeRoundState();
+    mp = Object.assign({}, mp, { role:'client', conns:[], hostConn:{open:true}, code:'TESTR', tOffset:0 });
+    // A JOINER'S BROWSER NEVER RAN genCourse. Both of these are set by the
+    // host's step one and by nothing else, and in one page the host half has
+    // just filled them -- so without this a joiner quietly inherits the host's
+    // course and the check reports an agreement the wire cannot deliver.
+    //
+    // What it exposes is a SEPARATE, older defect, and these checks do not
+    // assert it away: with both null the joiner builds a straight corridor
+    // where the host built Boom Peak's climb -- 171 course meshes against 197,
+    // and mid-course maps to y=0 rather than y=534. It is cosmetic, because
+    // the host owns the simulation and clientTick only sends input, but the
+    // two players are not looking at the same shape. It predates the pre-match
+    // work: the roundStart handler in build/base.html was written before
+    // course paths existed in v24 §2 and was never taught about them.
+    coursePath = null; courseScript = null;
+    // A coordinator that answers, so the readiness frames have somewhere to
+    // go. pmSocket caches into pmSock and would otherwise find no `io` on this
+    // page and fall back to peer authority -- which would pass these checks
+    // without one byte of readiness ever being sent, the exact thing
+    // production measured as missing.
+    pmSock = { emit:(ev, payload, ack)=>{
+      sent.push(ev);
+      if(typeof ack !== 'function') return;
+      if(ev === 'sr:time') ack({ serverNow: Date.now() });
+      else if(ev === 'sr:join') ack({ matchId:'M-TEST', late:false,
+        state:{ phase:'gathering', roster:[{id:'a',ready:false}], readyCount:0, requiredCount:2,
+                raceStartAt:null, serverNow:Date.now() } });
+      else ack(null);
+    } };
+
+    // THE ROUTER, NOT THE FUNCTION. A check that called pmClientRound would
+    // still be a check about pmClientRound; this one is about what happens
+    // when a roundStart lands on the data channel, which is what a friend's
+    // browser actually does. Each frame goes through JSON on the way in,
+    // because the wire does that to it too.
+    for(const f of frames) handleClientData(JSON.parse(JSON.stringify(f)));
+
+    // AND THEN WAIT ON THE REAL SIGNAL. handleClientData is a router, not a
+    // promise -- it starts the preparation and returns -- so asserting on the
+    // next line measures a client that has not begun and calls every flag
+    // false for the honest reason that nothing has run. Preparation is over
+    // when the pre-match has somewhere to be: waiting on the coordinator,
+    // counting down, racing, or failed.
+    const settled = await new Promise((res)=>{
+      const t0 = Date.now();
+      (function poll(){
+        if(pm.phase==='waiting' || pm.phase==='countdown' || pm.phase==='racing'
+           || pm.phase==='error' || !pm.open) return res(pm.phase);
+        if(Date.now()-t0 > 8000) return res('STALLED in '+pm.phase);
+        setTimeout(poll, 16);
+      })();
+    });
+    const out = { settled, sent,
+                  missing: Object.keys(pm.flags).filter(k=>!pm.flags[k]),
+                  failed:  pm.phase === 'error',
+                  map:     (currentMap||{}).key || null,
+                  meshes:  courseGroup.children.length,
+                  failMsg: ($('mlFailMsg')||{}).textContent || '',
+                  diag:    pm.error };
+    // The role goes back before anything else runs. The checks restore it too,
+    // but a stress run drives this helper hundreds of times with nothing else
+    // in between, and a client role left behind would turn every later round
+    // into somebody else's.
+    mp = mp0; pmSock = sock0;
+    return out;
+  }
+
+  async function checkJoinerPrepares(){
+    const bad = [];
+    const mp0 = mp, sock0 = pmSock, path0 = coursePath, script0 = courseScript;
+    let sent = [];
+    try{
+      // Boom Peak: the map of the one production run that got through.
+      const frame = joinerHostFrame('cannonc');
+      if(!frame) { bad.push('the host broadcast no roundStart frame at all'); }
+      else {
+        for(const k of ['obstacles','trackLength','round','hostT','mapDef']){
+          if(frame[k] === undefined) bad.push('the host frame carries no '+k);
+        }
+        const r = await joinerFeed([frame]);
+        sent = r.sent;
+        if(String(r.settled).indexOf('STALLED') === 0)
+          bad.push('the joiner never finished preparing: '+r.settled);
+        // The failure this exists for, stated the way production stated it.
+        if(pm.phase === 'error')
+          bad.push('preparation failed: ' + (r.failMsg || 'no message') + ' -- '
+                   + (r.diag ? r.diag.stage+': '+r.diag.message : 'NO DIAGNOSTICS RECORDED'));
+        if(r.missing.length)              bad.push('readiness flags still false: '+r.missing.join(', '));
+        if(r.sent.indexOf('sr:join') < 0)  bad.push('the joiner never emitted sr:join');
+        if(r.sent.indexOf('sr:ready') < 0) bad.push('the joiner never emitted sr:ready');
+        if(!obstacles || !obstacles.length) bad.push('the joiner built no obstacles from the host frame');
+        if(trackLength !== frame.trackLength)
+          bad.push('the joiner races a course of '+trackLength+' against the host\'s '+frame.trackLength);
+        if(!currentMap || currentMap.key !== frame.mapDef.key)
+          bad.push('the joiner is on '+((currentMap||{}).key)+' and the host on '+frame.mapDef.key);
+        if(courseGroup.children.length < 1) bad.push('the joiner built no course meshes at all');
+      }
+    } finally {
+      mp = mp0; pmSock = sock0;
+      coursePath = path0; courseScript = script0;
+      if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
+      pmClose();
+      window.__forceMap = null;
+    }
+    return { name:'{ pre-match: a joining peer prepares the host\'s course and reports ready',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ')
+                                : 'prepared the host frame and sent ['+sent.join(', ')+']' };
+  }
+
+  // ---------- } : the joiner's frame, duplicated, broken, and on other maps ----------
+  // The three things the joiner protocol has to survive once it works at all.
+  //
+  // A RESENT FRAME MUST NOT START A SECOND PREPARATION. There is no ordering
+  // hazard to test here -- the map name and the course travel in ONE frame, so
+  // a joiner cannot begin building before the course has landed -- but a
+  // duplicate could, and two preparations racing over one set of readiness
+  // flags would report this client ready twice.
+  //
+  // A BROKEN FRAME MUST FAIL BY NAME. Not as whatever the first line to touch
+  // a missing field happens to throw, three steps later, under the same one
+  // sentence every other failure gets.
+  //
+  // AND IT MUST WORK ON MORE THAN THE MAP THAT HAPPENED TO BE TRIED. Boom Peak
+  // is a path course, Hop & Duck is a minigame -- the map production failed on
+  // -- and Closing Circle is an arena with no corridor at all.
+  async function checkJoinerFrames(){
+    const bad = [];
+    const notes = [];
+    const mp0 = mp, sock0 = pmSock, path0 = coursePath, script0 = courseScript;
+    try{
+      // ---- a duplicate is ignored, not acted on twice ----
+      const dup = joinerHostFrame('cannonc');
+      if(!dup) bad.push('no host frame to duplicate');
+      else{
+        const r = await joinerFeed([dup, dup, dup]);
+        const joins = r.sent.filter(e=>e==='sr:join').length;
+        const readys = r.sent.filter(e=>e==='sr:ready').length;
+        if(joins !== 1)  bad.push('three identical frames produced '+joins+' sr:join, wanted 1');
+        if(readys !== 1) bad.push('three identical frames produced '+readys+' sr:ready, wanted 1');
+        if(r.missing.length) bad.push('after a duplicated frame these flags are false: '+r.missing.join(', '));
+        notes.push('3 frames -> 1 join');
+      }
+
+      // ---- a frame that cannot build a course says which field ----
+      const good = joinerHostFrame('cannonc');
+      const broken = [
+        ['obstacles',   Object.assign({}, good, { obstacles:undefined })],
+        ['trackLength', Object.assign({}, good, { trackLength:0 })],
+        ['mapDef',      Object.assign({}, good, { mapDef:undefined })],
+      ];
+      // THESE FAILURES ARE THE POINT, so their console output is collected
+      // rather than left to land in the page's error log -- a suite that
+      // provokes a failure on purpose and then reports it as an unexplained
+      // console error makes "zero game-originated errors" a gate nobody can
+      // use. Collecting it also turns the log line itself into an assertion:
+      // the diagnosis has to have been WRITTEN somewhere a developer looks,
+      // not merely stored on an object.
+      const realError = console.error;
+      const logged = [];
+      console.error = function(){ logged.push([...arguments].join(' ')); };
+      try{
+        for(const [field, f] of broken){
+          // JSON drops an undefined value, which is exactly how a missing
+          // field reaches a joiner over the wire.
+          const before = logged.length;
+          const r = await joinerFeed([f]);
+          if(pm.phase !== 'error'){ bad.push('a frame with no usable '+field+' was accepted'); continue; }
+          if(!r.diag)                                  bad.push('a broken '+field+' failed with no diagnostics at all');
+          else if(String(r.diag.message).indexOf(field) < 0)
+            bad.push('a broken '+field+' was reported as "'+r.diag.message+'", which does not name it');
+          if(r.sent.indexOf('sr:join') >= 0)           bad.push('a broken '+field+' still reported this client to the coordinator');
+          const line = logged.slice(before).join(' ');
+          if(!line)                                    bad.push('a broken '+field+' wrote nothing to the console');
+          else if(line.indexOf('[object Object]') >= 0) bad.push('the console diagnosis for '+field+' is an unreadable object');
+          else if(line.indexOf(field) < 0)              bad.push('the console diagnosis for '+field+' does not name it: '+line.slice(0,120));
+        }
+      } finally { console.error = realError; }
+      notes.push(broken.length+' broken fields each named, in the log too');
+
+      // ---- and the same frame handling on structurally different courses ----
+      for(const key of ['neon','hopduck','shrink']){
+        const f = joinerHostFrame(key);
+        if(!f){ bad.push(key+': the host broadcast no frame'); continue; }
+        const r = await joinerFeed([f]);
+        if(pm.phase === 'error')
+          bad.push(key+' failed: '+(r.failMsg||'no message')+' -- '+(r.diag ? r.diag.stage+': '+r.diag.message : 'no diagnostics'));
+        else if(r.missing.length)          bad.push(key+' left flags false: '+r.missing.join(', '));
+        else if(r.sent.indexOf('sr:join') < 0) bad.push(key+' never emitted sr:join');
+      }
+      notes.push('neon, hopduck and shrink all prepared');
+    } finally {
+      mp = mp0; pmSock = sock0;
+      coursePath = path0; courseScript = script0;
+      if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
+      pmClose();
+      window.__forceMap = null;
+    }
+    return { name:'} pre-match: the joiner survives a resent frame, refuses a broken one, and works on every course',
+             pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -6854,7 +7098,10 @@
       // one thing is in the foreground while it is up.
       ['(',checkPrematchReadiness],[')',checkPrematchCountdown],
       ['[',checkPrematchLock],[']',checkPrematchAuthority],['_',checkPrematchExclusive],
-      ['|',checkPrematchHiddenTab]
+      ['|',checkPrematchHiddenTab],
+      // ...and the other half of the same feature: the JOINER's path, which
+      // until now nothing in this suite had ever run.
+      ['{',checkJoinerPrepares],['}',checkJoinerFrames]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
@@ -6952,4 +7199,10 @@
     // beginSeeded and not two. H_SEEDS travels with it because seed 1048 is
     // documented above as a real defect and a sweep should keep meeting it.
     seeded: { seededRandom, withSeed, beginSeeded, wipeRoundState, H_SEEDS, T0: H_T0 },
+    // The joiner scenario, handed out whole so that a stress run reproduces a
+    // preparation EXACTLY as [{] does. tools/joiner-stress.mjs drives fifty of
+    // them across several maps looking for an intermittent failure, and that
+    // is only worth something if both sides build the joiner the same way --
+    // one implementation, not two. The same reason `seeded` is here.
+    joiner: { hostFrame: joinerHostFrame, feed: joinerFeed },
   };
