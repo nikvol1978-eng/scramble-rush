@@ -10,7 +10,10 @@
     "smoke:release": "node tools/release-smoke.mjs",
     "perf:budget": "node tools/perf-budget.mjs",
     "ci:merge-gate": "node tools/ci/merge-gate.mjs",
-    "test:merge-gate": "node --test tools/ci/merge-gate.test.mjs"
+    "test:merge-gate": "node --test tools/ci/merge-gate.test.mjs",
+    "perf:lighthouse": "node tools/prod-lighthouse.mjs",
+    "perf:ttfb": "node tools/prod-ttfb.mjs",
+    "verify:production": "node tools/post-deploy-check.mjs"
   },
   "devDependencies": {
     "puppeteer": "^25.11.0",
