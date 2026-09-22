@@ -209,3 +209,96 @@ describe('the old gate, kept only to show what it did', () => {
     }
   });
 });
+
+// ---- a required check that registers LATE ---------------------------------
+//
+// Ported from the Haxball copy of these tests so both repositories exercise the
+// one byte-identical gate against the same edge cases. Only the check's NAME
+// differs between them; every case below is the same.
+//
+// This is not a hypothetical. On PR #27 in this repository a check called
+// "CI suite" registered AFTER the twenty-five shard checks had already gone
+// green -- the gate's own transcript caught it:
+//
+//   wait: 1 check(s) still running: game checks (shard 0/25) [IN_PROGRESS]
+//   wait: 1 check(s) still running: CI suite [QUEUED]        <- appeared later
+//   merge: 27 check(s) completed successfully
+//
+// A gate that sampled once, at the moment the shards finished, would have
+// merged with the required check not yet started. Requiring it BY NAME is what
+// turns "everything visible is green" from a pass into a wait.
+describe('a required check that registers late', () => {
+  const REQUIRED = 'CI suite';
+
+  test('an empty rollup is never a pass, however long it stays empty', async () => {
+    const h = harness([{ ok: true, headSha: 'sr0001', checks: [] }],
+      { required: [REQUIRED], deadlineMs: 400, intervalMs: 100 });
+    const r = await h.run();
+    assert.equal(r.code, 3);
+    assert.deepEqual(h.merges, []);
+  });
+
+  test('other checks green but the required one absent -> still refuses', async () => {
+    const h = harness([{
+      ok: true,
+      headSha: 'sr0001',
+      checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS')],
+    }], { required: [REQUIRED], deadlineMs: 400, intervalMs: 100 });
+    const r = await h.run();
+    assert.equal(r.code, 3, 'a green rollup missing the required check is not green enough');
+    assert.match(r.reason, /CI suite/);
+    assert.deepEqual(h.merges, []);
+  });
+
+  test('the required check REGISTERING LATE keeps the gate waiting, then merges once', async () => {
+    const h = harness([
+      { ok: true, headSha: 'sr0001', checks: [] },
+      { ok: true, headSha: 'sr0001', checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS')] },
+      { ok: true, headSha: 'sr0001', checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS'), check(REQUIRED, 'QUEUED', null)] },
+      { ok: true, headSha: 'sr0001', checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS'), check(REQUIRED, 'IN_PROGRESS', null)] },
+      { ok: true, headSha: 'sr0001', checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS'), check(REQUIRED, 'COMPLETED', 'SUCCESS')] },
+    ], { required: [REQUIRED], expectedHead: 'sr0001', deadlineMs: 10_000, intervalMs: 100 });
+    const r = await h.run();
+    assert.equal(r.code, 0);
+    assert.equal(r.action, 'merge');
+    assert.equal(h.merges.length, 1, 'exactly one merge, after the late check went green');
+    // AND IT HAS TO HAVE WAITED. Asserting only that a merge happened is
+    // satisfied by a gate that merges immediately, which is precisely the
+    // single-sample behaviour this case exists to catch -- so the assertion
+    // has to be about WHEN. The fake clock advances one interval per wait, and
+    // four samples pass before the required check reports SUCCESS.
+    assert.ok(h.merges[0] >= 400,
+      `merged at t=${h.merges[0]}, before the late check could have been seen`);
+  });
+
+  test('the required check failing refuses even with everything else green', async () => {
+    const h = harness([{
+      ok: true,
+      headSha: 'sr0001',
+      checks: [check('game checks (shard 0/25)', 'COMPLETED', 'SUCCESS'), check(REQUIRED, 'COMPLETED', 'FAILURE')],
+    }], { required: [REQUIRED] });
+    const r = await h.run();
+    assert.equal(r.code, 2);
+    assert.match(r.reason, /CI suite \[FAILURE\]/);
+    assert.deepEqual(h.merges, []);
+  });
+
+  test('a cancelled required check refuses -- a superseded run is not a pass', async () => {
+    const h = harness([{ ok: true, headSha: 'sr0001', checks: [check(REQUIRED, 'COMPLETED', 'CANCELLED')] }],
+      { required: [REQUIRED] });
+    const r = await h.run();
+    assert.equal(r.code, 2);
+    assert.deepEqual(h.merges, []);
+  });
+
+  test('a head that moves after the required check went green refuses', async () => {
+    const h = harness([
+      { ok: true, headSha: 'sr0001', checks: [check(REQUIRED, 'IN_PROGRESS', null)] },
+      { ok: true, headSha: 'sr0002', checks: [check(REQUIRED, 'COMPLETED', 'SUCCESS')] },
+    ], { required: [REQUIRED], expectedHead: 'sr0001' });
+    const r = await h.run();
+    assert.equal(r.code, 2);
+    assert.match(r.reason, /head moved/);
+    assert.deepEqual(h.merges, []);
+  });
+});
