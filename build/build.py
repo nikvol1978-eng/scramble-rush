@@ -487,9 +487,21 @@ sub("<body>" + chr(10) + BOOT, "<body>" + chr(10) + BOOT + chr(10) + MATCH, "pre
 # The peerjs tag goes entirely -- see frag/26b_peer.js. It is fetched on demand
 # by srLoadPeer() when the player opens the multiplayer screen, because the
 # first screen does not use it and it cost about 1.6 s of the startup.
+# ...and the MINIFIED build of it, which is the same client and a third of the
+# work. socket.io serves both from its own handler on this origin: 155,836
+# bytes decoded against 46,822, both answering with ETag "4.8.3" -- the same
+# library at the same version, not an upgrade wearing a different filename.
+# The saving is mostly parse and compile rather than transfer: gzip takes about
+# 18 KiB off the wire, but the other ~109 KiB is source the main thread was
+# reading for nothing on every cold load.
+#
+# NOTHING ABOUT THE CONNECTION CHANGES. Same origin, same handler, same `io`
+# global, same `defer`, same onerror fallback, same namespaces and events. The
+# readiness protocol, sr:join, sr:ready, raceStartAt and PeerJS do not depend
+# on which build of the client script was fetched.
 sub('<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>',
-    '<script src="/socket.io/socket.io.js" defer onerror="window.__noCoordinator=1"></script>',
-    "socket.io client, peerjs goes on demand")
+    '<script src="/socket.io/socket.io.min.js" defer onerror="window.__noCoordinator=1"></script>',
+    "socket.io client (minified), peerjs goes on demand")
 
 # ---------------------------------------------------------------- fonts
 # gstatic was never preconnected. The stylesheet comes from fonts.googleapis.com
