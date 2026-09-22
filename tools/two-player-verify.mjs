@@ -476,6 +476,16 @@ function judge(r) {
   if (!r.goB) bad.push('B never reached GO');
   if (A.raceStartAt == null || B.raceStartAt == null) bad.push('a side never saw a countdown state');
   else if (A.raceStartAt !== B.raceStartAt) bad.push('raceStartAt differs by ' + (B.raceStartAt - A.raceStartAt) + 'ms');
+  // THE CONTRACT, measured off the countdown frame's own serverNow rather than
+  // the gathering frame before it -- that one is whenever the server last
+  // ticked, so it reads a few tens of ms over and is a property of my sampling
+  // rather than of the promise. A frame emitted on the transition tick gives
+  // exactly COUNTDOWN_MS; a later one gives less, never more.
+  for (const [w, s] of [['A', A], ['B', B]]) {
+    if (s.countdownGap == null) continue;
+    if (s.countdownGap > 10000) bad.push(w + ' was promised ' + s.countdownGap + 'ms, longer than the contract');
+    if (s.countdownGap < 9000) bad.push(w + ' was promised only ' + s.countdownGap + 'ms');
+  }
   const ge = [...r.pageErrsA, ...r.pageErrsB].filter((e) => !/404|favicon/i.test(e));
   if (ge.length) bad.push('page errors: ' + ge.slice(0, 3).join(' | '));
   return bad;
@@ -601,9 +611,16 @@ async function main() {
       const cons = (r.A.errs.length + r.B.errs.length) === 0 ? 'clean' : 'ERRORS';
       log(`${String(r.i).padStart(3)} | ${map} | ${r.B.failed.length ? 'FAIL' : ' ok '} | ${r.B.join ? ' yes' : ' NO '} | ` +
           `${r.B.ready ? ' yes ' : ' NO  '} | ${shape.padEnd(5)} | ${String(r.A.raceStartAt).padEnd(14)} | ` +
-          `${String(r.B.raceStartAt).padEnd(14)} | ${String(r.A.gap).padEnd(6)} | ${cons}`);
+          `${String(r.B.raceStartAt).padEnd(14)} | ${String(r.A.countdownGap).padEnd(6)} | ${cons}`);
     }
-    const ok = rows.length === RUNS && rows.every((r) => r.bad && r.bad.length === 0);
+    // AND AT LEAST ONE RUN HAS TO LAND THE CONTRACT EXACTLY. Every run is
+    // checked for a promise no longer than ten seconds; this asks that one of
+    // them was measured at the instant the server stamped it, which is the
+    // number the approved contract is written in.
+    const exact = rows.filter((r) => r.A && r.A.countdownGap === 10000 && r.B && r.B.countdownGap === 10000);
+    log(`
+raceStartAt - allReadyServerTime = 10000 exactly on ${exact.length}/${rows.length} run(s)`);
+    const ok = rows.length === RUNS && rows.every((r) => r.bad && r.bad.length === 0) && exact.length >= 1;
     log(`\n${ok ? 'PASS' : 'FAIL'}  ${passed}/${RUNS} valid production rounds`);
     await bA.close(); await bB.close();
     process.exit(ok ? 0 : 1);
