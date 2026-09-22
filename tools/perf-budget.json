@@ -1,0 +1,11 @@
+{
+  "_comment": "Ceilings, not records. Regenerate with: node tools/perf-budget.mjs --update",
+  "releaseRawBytes": 479072,
+  "releaseBrotliBytes": 132228,
+  "releaseGzipBytes": 142663,
+  "threeBundleRawBytes": 821056,
+  "threeBundleBrotliBytes": 219116,
+  "startupTransferBrotliBytes": 357604,
+  "thirdPartyOrigins": 2,
+  "parserBlockingScriptsInHead": 0
+}

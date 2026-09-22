@@ -96,16 +96,64 @@ jobs:
           CI_SHARD_INDEX: ${{ matrix.shard }}
           CI_SHARD_TOTAL: '25'
 
+  # The two things the sharded suite above cannot see.
+  #
+  # It runs against __debug.html, which mkdebug.py builds from the READABLE
+  # assembly -- it has to, because the debug hooks splice in at text anchors
+  # that minified code does not have. So the suite never looks at the file
+  # players actually download. It also runs at SR_QUALITY=low, which builds no
+  # composer at all, so the postprocessing path is untouched by it.
+  #
+  # One unsharded job, a couple of minutes: has the build got heavier, and does
+  # the MINIFIED release still boot.
+  release:
+    name: release budget and smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the release from the fragments
+        run: python build/build.py --force
+
+      # Deterministic: byte counts, compressed byte counts, how many
+      # third-party origins the document names, and whether a parser-blocking
+      # <script src> has reappeared in <head>. No network and no browser, so
+      # the same answer on every machine -- which is why THIS is a gate and a
+      # Lighthouse score is not. Three consecutive Lighthouse runs of one
+      # unchanged build scored 62, 99 and 99 depending on cache state.
+      - name: Performance budget
+        run: npm run perf:budget
+
+      # Boots the minified artifact and asserts it reaches Mode Select with a
+      # clean console. That is the failure mode a minifier has, and the only
+      # one nothing else here would catch.
+      - name: Release smoke
+        run: npm run smoke:release
+
   # One obvious overall answer for the PR, and the branch-protection handle if
   # it is ever wanted. It runs no browser: it exists only to be red when any
   # shard is red, including when a shard was cancelled or skipped.
   suite:
     name: CI suite
     runs-on: ubuntu-latest
-    needs: checks
+    needs: [checks, release]
     if: always()
     steps:
       - name: Report the shard result
         run: |
-          echo "shards: ${{ needs.checks.result }}"
+          echo "shards:  ${{ needs.checks.result }}"
+          echo "release: ${{ needs.release.result }}"
           test "${{ needs.checks.result }}" = "success"
+          test "${{ needs.release.result }}" = "success"

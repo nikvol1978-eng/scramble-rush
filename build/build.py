@@ -17,7 +17,7 @@ the fragments, not it.
 """
 import io, os, re, sys
 
-VERSION = 25                                  # single source of truth
+VERSION = 26                                  # single source of truth
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frag")
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base.html")
@@ -27,6 +27,20 @@ OUT  = os.path.join(ROOT, "scramble-rush-%d.0.html" % VERSION)
 # release would lose it, and this one is only ever a copy of what that file
 # has just become.
 SITE = os.path.join(ROOT, "index.html")
+
+# v26 §4: the readable assembly, kept beside the build rather than thrown away.
+#
+# The shipped release is minified (build/minify.mjs), which takes the brotli
+# document from 282 KB to 156 KB. Minified text has no anchors to splice into,
+# so mkdebug.py -- which builds the debug page and therefore the page the
+# CHECK SUITE runs against -- reads THIS file instead of the release. The
+# checks go on reading the same readable code they always did, and the thing
+# players download is the small one.
+#
+# Gitignored: it is a build intermediate, and committing a second copy of the
+# release that differs only in whitespace would double every release diff.
+ASSEMBLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "__assembled.html")
+NO_MINIFY = "--no-minify" in sys.argv
 
 SHELF = os.path.join(FRAG, "25_shelved.js")
 WITH_SHELVED = "--with-shelved" in sys.argv
@@ -118,20 +132,75 @@ def sub(old, new, label, count=1):
     src = src.replace(old, new, count)
 
 # --------------------------------------------------------------- three r160
-# r128 came off cdnjs as a global. r160 is ES modules only for the addons we
-# want (RoomEnvironment, Sky, the composer), so the page gets an import map and
-# the game script becomes a module. Module scripts are deferred, which is fine:
-# nothing outside the IIFE touches the game, and peerjs stays a global.
+# r128 came off cdnjs as a global. r160 is ES modules, and the game script
+# became a module to import it.
+#
+# v26 §5: AND THE IMPORT MAP IS GONE. It pointed three and three/addons/ at
+# jsDelivr, which meant twenty cross-origin requests and ~326 KB before the
+# first boot gate could finish. build/three-bundle.mjs builds that exact set
+# into one minified, content-hashed file served from this origin; the tag the
+# map used to occupy now preloads it, so the fetch starts while the parser is
+# still working through the rest of the document instead of waiting for the
+# module at the end of it.
+#
+# The bundle is built HERE rather than checked in, so the release and the
+# three it was built against can never disagree.
+import subprocess as _sp
+_bundle = _sp.run(["node", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "three-bundle.mjs")],
+                  cwd=ROOT, capture_output=True, text=True)
+if _bundle.returncode != 0:
+    print("FAILED: three-bundle step")
+    sys.stderr.write(_bundle.stderr)
+    sys.exit(1)
+THREE_BUNDLE = _bundle.stdout.split(" ")[0].strip()
+print("three bundle: " + _bundle.stdout.strip())
+
 sub('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
-    '<script type="importmap">' + chr(10)
-    + '{ "imports": {' + chr(10)
-    + '  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",' + chr(10)
-    + '  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"' + chr(10)
-    + '} }' + chr(10)
-    + '</script>',
-    "three r160 import map")
+    '<link rel="modulepreload" href="./' + THREE_BUNDLE + '">',
+    "three r160 local bundle preload")
+# v26 §1: the preamble gains startup instrumentation and the on-demand PeerJS
+# loader. The IIFE itself stays SYNCHRONOUS, deliberately, and the reason is
+# worth keeping because the obvious change here is a trap.
+#
+# THE THEORY. A deferred module script runs the moment parsing finishes, and
+# what it runs is several seconds of scene and UI construction. If the browser
+# could not paint until that finished, the boot screen -- plain markup, already
+# in the document, needing nothing but CSS -- would be stuck behind the whole
+# game being built. Making this IIFE `async` and awaiting one frame at the top
+# would hand the paint back. It was built that way and measured.
+#
+# WHY IT IS NOT HERE. The theory was an artefact of a broken measuring rig.
+# That rig served the release UNCOMPRESSED, so under mobile throttling the
+# 950 KB document arrived in one late lump and first paint landed at 7.1 s.
+# Served compressed, as production serves it, Chrome STREAMS the document and
+# paints the boot screen off the first few KB -- long before the module at the
+# end of the file has been parsed, let alone run. Observed first contentful
+# paint, real 4x CPU and 1,638 Kbps throttling, median of five:
+#
+#     synchronous (v25)   508 ms
+#     with the yield      536 ms
+#
+# No gain, and a real cost: moving first paint earlier than the work means
+# more of the work is counted after it, and desktop TBT went from 33 ms to
+# 511 ms. What actually made the startup cheaper is further down -- not
+# loading PeerJS at all until somebody asks for multiplayer.
+#
+# The preamble names the bundle by a stable placeholder so the fragment stays
+# readable and its diffs stay free of hash churn; the fingerprint is stamped in
+# here, at the moment it is spliced. It cannot be a normal sub() further up --
+# the preamble is not part of `src` until this line puts it there.
+_preamble = frag("26_preamble.js")
+if "'./three-bundle.js'" not in _preamble:
+    errors.append("26_preamble.js no longer imports './three-bundle.js' — "
+                  "the three bundle fingerprint has nowhere to go")
+_preamble = _preamble.replace("'./three-bundle.js'", "'./" + THREE_BUNDLE + "'")
+
 sub("<script>" + chr(10) + "(function(){",
-    '<script type="module">' + chr(10) + frag("26_preamble.js") + "(function(){",
+    '<script type="module">' + chr(10)
+    + _preamble + frag("26a_perf.js") + frag("26b_peer.js")
+    + "(function(){" + chr(10)
+    + "  SRPERF.mark('module:body:start');" + chr(10),
     "game script becomes a module")
 
 # ---------------------------------------------------------------- title
@@ -392,14 +461,38 @@ sub("<body>" + chr(10) + BOOT, "<body>" + chr(10) + BOOT + chr(10) + MATCH, "pre
 # so the session cookie rides along and the server knows who this is without a
 # ticket. First-party, so script-src 'self' already covers it.
 #
-# Deliberately not `defer`ed and deliberately not required: when it is missing --
-# a file:// open, a static harness, a server without it -- `io` is simply
-# undefined and 40_prematch.js falls back to local authority rather than failing.
-# A single-player race must never be blocked by a socket.
+# Deliberately not required: when it is missing -- a file:// open, a static
+# harness, a server without it -- `io` is simply undefined and 40_prematch.js
+# falls back to local authority rather than failing. A single-player race must
+# never be blocked by a socket.
+#
+# v26 §2: and now deliberately DEFERRED, which the previous version was not.
+# Without `defer` this is a parser-blocking script in <head>: the browser stops
+# reading the document -- before the boot screen's markup -- to fetch it.
+# Lighthouse costed that block at 151 ms on mobile for a 37 KiB file that
+# nothing touches until the pre-match screen. `defer` keeps the execution
+# ORDER (deferred classic scripts and module scripts share one list and run in
+# document order), so `io` is still defined before the game body runs; it just
+# stops holding the parser up on the way.
+#
+# The peerjs tag goes entirely -- see frag/26b_peer.js. It is fetched on demand
+# by srLoadPeer() when the player opens the multiplayer screen, because the
+# first screen does not use it and it cost about 1.6 s of the startup.
 sub('<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>',
-    '<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>' + chr(10)
-    + '<script src="/socket.io/socket.io.js" onerror="window.__noCoordinator=1"></script>',
-    "socket.io client")
+    '<script src="/socket.io/socket.io.js" defer onerror="window.__noCoordinator=1"></script>',
+    "socket.io client, peerjs goes on demand")
+
+# ---------------------------------------------------------------- fonts
+# gstatic was never preconnected. The stylesheet comes from fonts.googleapis.com
+# -- which IS preconnected -- and every face it names comes from a SECOND
+# origin, fonts.gstatic.com, whose DNS, TCP and TLS could not even begin until
+# that stylesheet had been parsed. `crossorigin` is not optional here: font
+# fetches are CORS requests, so a preconnect without it opens a connection the
+# font cannot use and the browser opens a second one.
+sub('<link rel="preconnect" href="https://fonts.googleapis.com">',
+    '<link rel="preconnect" href="https://fonts.googleapis.com">' + chr(10)
+    + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+    "preconnect to the origin the fonts actually come from")
 
 # ---------------------------------------------------------------- LOADING 2 markup
 sub('<div id="mapIntro" class="hidden" style="position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;background:rgba(0,0,0,0.28);">\n  <div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>\n  <div id="mapIntroTip" style="font-family:\'Fredoka\',sans-serif;font-weight:600;font-size:1rem;color:#fff8ec;margin-top:12px;max-width:80vw;text-shadow:0 2px 0 rgba(0,0,0,0.4);"></div>\n</div>',
@@ -1029,6 +1122,38 @@ sub("      const pct=clamp(r.y/trackLength,0,1); const d=document.createElement(
 # arriving when their own timer happened to expire.
 
 
+# ---------------------------------------------------------------- v26 §2
+# The two doors into multiplayer, now that PeerJS is not already in the page.
+#
+# The guard does not change shape: it was "is the library here?" and it still
+# is. What changes is that asking now also FETCHES it, so the answer is no only
+# when the network said no. The sentence the player reads is deliberately the
+# same one -- from their side nothing has changed, and a library that arrives
+# 200 ms after the click is still a library that arrived.
+EMD = u"—"
+FAILMSG = ("mpErr('Multiplayer library failed to load " + EMD
+           + " check your connection and reload the page.'); return; }")
+OLD_GUARD = "    if(typeof Peer==='undefined'){ " + FAILMSG
+NEW_GUARD = "    if(!await srLoadPeer()){ " + FAILMSG
+
+for btn, tail in (("hostRoomBtn", "    hostRoom();"),
+                  ("joinRoomBtn", "    joinRoom($('joinCodeInput').value);")):
+    sub("  $('" + btn + "').addEventListener('click', ()=>{" + chr(10)
+        + "    SFX.click();" + chr(10) + OLD_GUARD + chr(10) + tail,
+        "  $('" + btn + "').addEventListener('click', async ()=>{" + chr(10)
+        + "    SFX.click();" + chr(10) + NEW_GUARD + chr(10) + tail,
+        btn + " loads peerjs on demand")
+
+# Opening the multiplayer screen is the earliest HONEST signal that this player
+# is going to need PeerJS, and it is a screen with a code to read or type before
+# anything is clicked. Starting the fetch here means the library is almost
+# always already there by the time Host or Join is pressed, so the on-demand
+# load costs the player nothing. The call is deliberately not awaited: this
+# handler's job is to show a screen.
+sub("  $('mpBtn').addEventListener('click', ()=>{ SFX.click(); $('home').classList.add('hidden'); mpErr(''); $('mpHome').classList.remove('hidden'); });",
+    "  $('mpBtn').addEventListener('click', ()=>{ SFX.click(); $('home').classList.add('hidden'); mpErr(''); $('mpHome').classList.remove('hidden'); srLoadPeer(); });",
+    "warm peerjs when the multiplayer screen opens")
+
 # A section nothing splices back in is dead weight that no build would ever
 # notice was wrong, so say so rather than carrying it.
 for key in sorted(set(SHELVED) - SHELF_USED):
@@ -1039,10 +1164,44 @@ if errors:
     for e in errors: print("  - " + e)
     sys.exit(1)
 
-with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
+# The readable assembly, always written. mkdebug.py reads it, so the debug
+# build and the check suite keep working on code a human can read.
+with io.open(ASSEMBLED, "w", encoding="utf-8", newline="\n") as f:
     f.write(src)
-print("wrote %s (%d bytes, %d lines)" % (OUT, len(src.encode("utf-8")), src.count("\n")+1))
+print("wrote %s (readable assembly, for mkdebug and the checks)" % ASSEMBLED)
+
+# v26 §4: and the release is the minified one.
+#
+# --no-minify writes the readable text straight through. It exists for
+# bisecting a fault that only the minifier could have caused; it is not how a
+# release is cut, and a release built with it would be 125 KB heavier over the
+# wire than the one this repo means to ship.
+if NO_MINIFY:
+    out_src = src
+    print("--no-minify: shipping the readable assembly")
+else:
+    import subprocess
+    r = subprocess.run(
+        ["node", os.path.join(os.path.dirname(os.path.abspath(__file__)), "minify.mjs"),
+         ASSEMBLED, OUT],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    sys.stdout.write(r.stdout)
+    if r.returncode != 0:
+        # A minifier that failed must never fall back to writing the unminified
+        # file under the release name: that ships a 950 KB document that looks
+        # exactly like a successful build.
+        print("FAILED: minify step")
+        sys.stderr.write(r.stderr)
+        sys.exit(1)
+    with io.open(OUT, encoding="utf-8") as f:
+        out_src = f.read()
+
+if NO_MINIFY:
+    with io.open(OUT, "w", encoding="utf-8", newline="\n") as f:
+        f.write(out_src)
+print("wrote %s (%d bytes, %d lines)" % (OUT, len(out_src.encode("utf-8")), out_src.count("\n")+1))
 
 with io.open(SITE, "w", encoding="utf-8", newline="\n") as f:
-    f.write(src)
+    f.write(out_src)
 print("wrote %s (the copy Pages serves)" % SITE)

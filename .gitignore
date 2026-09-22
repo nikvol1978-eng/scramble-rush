@@ -27,3 +27,5 @@ docs/hand-review/
 # only a human reads, and none of it belongs in a release -- the game is one
 # self-contained HTML file and this is not part of it.
 docs/ui-review/
+docs/performance-review/
+build/__assembled.html

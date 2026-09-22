@@ -4,16 +4,27 @@
 // below are hung, so every `new THREE.MeshLambertMaterial(...)` in the twenty
 // places that build geometry becomes a physical material without any of those
 // places being touched.
-import * as R160 from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { Sky } from 'three/addons/objects/Sky.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+// v26 §5: ONE LOCAL MODULE INSTEAD OF TWENTY FROM A CDN.
+//
+// This was ten bare-specifier imports resolved by an import map to jsDelivr.
+// Cold, that cost twenty requests and about 326 KB over the wire -- jsDelivr
+// serves three.module.js UNMINIFIED, at 1.27 MB. And it was on the critical
+// path in the strongest sense: the boot sequence's first gate waits for
+// `window.load`, so the loading screen could not move off "Connecting…" until
+// the last of them landed. Measured: that gate was 1,776 ms of a 1,940 ms
+// preparation. The waterfall WAS the startup.
+//
+// build/three-bundle.mjs builds exactly this set into one minified,
+// content-hashed file and build.py rewrites the name below to the hashed one.
+// One request, ~209 KB brotli, from this origin, cacheable forever.
+//
+// The names here and in build/three-entry.js must match, and cannot drift
+// quietly: one missing from the entry is an esbuild resolve error at build
+// time, one missing here is a ReferenceError the first time the game runs.
+import {
+  R160, RoomEnvironment, Sky, EffectComposer, RenderPass, GTAOPass,
+  UnrealBloomPass, OutputPass, SMAAPass, RoundedBoxGeometry,
+} from './three-bundle.js';
 
 const THREE = Object.assign({}, R160);
 THREE.RoomEnvironment = RoomEnvironment;
