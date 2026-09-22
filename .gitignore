@@ -29,3 +29,6 @@ docs/hand-review/
 docs/ui-review/
 docs/performance-review/
 build/__assembled.html
+
+# Evidence written by tools/two-player-verify.mjs -- a run artefact, not source.
+two-player-verification.json
