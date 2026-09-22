@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "ci:checks": "node tools/ci/run-checks.mjs",
     "smoke:release": "node tools/release-smoke.mjs",
-    "perf:budget": "node tools/perf-budget.mjs"
+    "perf:budget": "node tools/perf-budget.mjs",
+    "ci:merge-gate": "node tools/ci/merge-gate.mjs",
+    "test:merge-gate": "node --test tools/ci/merge-gate.test.mjs"
   },
   "devDependencies": {
     "puppeteer": "^25.11.0",
