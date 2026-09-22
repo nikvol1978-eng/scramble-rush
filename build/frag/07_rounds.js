@@ -287,6 +287,34 @@
     await pmFrame();
     try{
       roundDraw(n);
+      // THE COORDINATOR FIRST, BEFORE A SINGLE MESH.
+      //
+      // This used to be the last line of the round, and that was the wrong end
+      // of it. Only a host declares `expect`, and the host is the slowest
+      // client there is: it generates the course, builds every mesh and makes
+      // twenty-four racers before it got here. A joiner does none of that -- it
+      // rebuilds from the frame the first step below broadcasts -- so it
+      // reached the coordinator FIRST, by 3.7 seconds measured on production.
+      //
+      // The match was therefore opened by a joiner, with no declared size. One
+      // ready player against an expectation of zero read as everybody ready:
+      // the roster froze at 1/1 and the host's own join came back `late`, so
+      // the host counted down on a local timer while its friend counted down on
+      // the server's. Two players, two clocks -- the exact fault the
+      // server-authoritative start exists to remove.
+      //
+      // Joining here fixes the ORDER rather than patching the symptom: pmJoin
+      // awaits its acknowledgement, and only then does step one broadcast
+      // roundStart. The server has the host's expectation before any joiner has
+      // even been told the round exists. See server/scramble/match.js, which
+      // holds the same invariant from its own side.
+      //
+      // Reporting ready is NOT moved. pmReport needs every flag, and the flags
+      // below are still false until the steps have run -- so the host registers
+      // early and still says nothing about being ready until it genuinely is.
+      pmSay('SYNCING PLAYERS…', '');
+      await pmFrame();
+      const kind = await pmJoin();
       const steps = roundSteps(n, survivors);
       for(let i=0;i<steps.length;i++){
         pmSay(steps[i].msg(), '');
@@ -296,8 +324,7 @@
         pmMeter(i + 1, steps.length + 1);
       }
       roundSettle(n);
-      pmSay('SYNCING PLAYERS…', '');
-      await pmAwaitStart(await pmJoin());
+      await pmAwaitStart(kind);
     }catch(e){ roundPrepFailed(e); }
   }
 

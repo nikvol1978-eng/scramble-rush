@@ -1,0 +1,187 @@
+{
+ "whoA": "70af44bb-4ba1-46e8-a8c8-1ca0bda58f47",
+ "whoB": "83d901b3-ef8c-4e0d-97f5-bf18c42487a1",
+ "rows": [
+  {
+   "i": 1,
+   "code": "ZYCTK",
+   "goA": true,
+   "goB": true,
+   "A": {
+    "who": "70af44bb-4ba1-46e8-a8c8-1ca0bda58f47",
+    "srAccess": null,
+    "wrappedConns": 1,
+    "dcSends": 33,
+    "acks": [
+     {
+      "at": 21796,
+      "keys": "matchId,late,state",
+      "matchId": true,
+      "error": null,
+      "late": true
+     },
+     {
+      "at": 21796,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     },
+     {
+      "at": 21971,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     },
+     {
+      "at": 22144,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     }
+    ],
+    "wsNew": 2,
+    "wsUrls": [
+     "wss://0.peerjs.com:443/peerjs?key=peerjs&id=scramblerush-ZYCTK&token=5vng3k90fdq&version=1.5.5",
+     "wss://nikcade.win/socket.io/?EIO=4&transport=websocket&sid=_1xho1KunUfWE9g3AAAi"
+    ],
+    "wsClose": [],
+    "wsErr": 0,
+    "countdownGap": null,
+    "roleByPeer": "host",
+    "roleBySocket": "host",
+    "expect": 2,
+    "matchCode": "ZYCTK-R1",
+    "sent": {
+     "t": "roundStart",
+     "at": 13171,
+     "round": 1,
+     "map": "slimeslope",
+     "name": "Slime Slope",
+     "len": 9598,
+     "obs": 12,
+     "scr": 14,
+     "sfp": "f12b545:592",
+     "ofp": "20ea6536:3832",
+     "keys": "courseScript,hostT,mapDef,obstacles,round,trackLength,type"
+    },
+    "recv": null,
+    "join": true,
+    "ready": false,
+    "readySeq": [],
+    "raceStartAt": null,
+    "allReady": null,
+    "gap": null,
+    "counted": [
+     "10",
+     "7",
+     "6",
+     "5",
+     "4",
+     "3",
+     "2",
+     "1"
+    ],
+    "failed": [],
+    "errs": []
+   },
+   "B": {
+    "who": "83d901b3-ef8c-4e0d-97f5-bf18c42487a1",
+    "srAccess": null,
+    "wrappedConns": 1,
+    "dcSends": 2,
+    "acks": [
+     {
+      "at": 18129,
+      "keys": "matchId,late,state",
+      "matchId": true,
+      "error": null,
+      "late": false
+     },
+     {
+      "at": 18130,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     },
+     {
+      "at": 18307,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     },
+     {
+      "at": 18481,
+      "keys": "serverNow",
+      "matchId": false,
+      "error": null,
+      "late": false
+     }
+    ],
+    "wsNew": 2,
+    "wsUrls": [
+     "wss://0.peerjs.com:443/peerjs?key=peerjs&id=130be159-4bb9-4f89-8cf6-81eb10205ce4&token=x9zly5b8na&ve",
+     "wss://nikcade.win/socket.io/?EIO=4&transport=websocket&sid=naYlT5jLt8Q0psz7AAAg"
+    ],
+    "wsClose": [],
+    "wsErr": 0,
+    "countdownGap": 10000,
+    "roleByPeer": "joiner",
+    "roleBySocket": "joiner",
+    "matchCode": "ZYCTK-R1",
+    "sent": null,
+    "recv": {
+     "t": "roundStart",
+     "at": 13213,
+     "round": 1,
+     "map": "slimeslope",
+     "name": "Slime Slope",
+     "len": 9598,
+     "obs": 12,
+     "scr": 14,
+     "sfp": "f12b545:592",
+     "ofp": "20ea6536:3832",
+     "keys": "courseScript,hostT,mapDef,obstacles,round,trackLength,type"
+    },
+    "join": true,
+    "ready": true,
+    "readySeq": [
+     "0/1",
+     "1/1"
+    ],
+    "raceStartAt": 1790074118093,
+    "allReady": 1790074108049,
+    "gap": 10044,
+    "counted": [
+     "10",
+     "9",
+     "8",
+     "7",
+     "6",
+     "5",
+     "4",
+     "3",
+     "2",
+     "1"
+    ],
+    "failed": [],
+    "errs": []
+   },
+   "ms": 31563,
+   "pageErrsA": [
+    "console: Failed to load resource: the server responded with a status of 404 ()"
+   ],
+   "pageErrsB": [
+    "console: Failed to load resource: the server responded with a status of 404 ()"
+   ],
+   "bad": [
+    "the match never required 2 players: 0/1 1/1",
+    "a side never saw a countdown state"
+   ]
+  }
+ ]
+}
