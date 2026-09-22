@@ -243,7 +243,12 @@
     state='prematch'; bannerTimer=0;
   }
 
-  function roundPrepFailed(){
+  // The exception, then the sentence -- the same rule the joiner's catch now
+  // follows. A host whose course generation throws used to leave behind the
+  // player's friendly line and nothing else; the step that failed and the map
+  // it failed on were both already known here and both were discarded.
+  function roundPrepFailed(e){
+    pmDiag(e);
     pmFail('Could not prepare ' + ((currentMap && currentMap.name) || 'the course') + '.');
   }
 
@@ -282,7 +287,7 @@
       roundSettle(n);
       pmSay('SYNCING PLAYERS…', '');
       await pmAwaitStart(await pmJoin());
-    }catch(e){ roundPrepFailed(); }
+    }catch(e){ roundPrepFailed(e); }
   }
 
   // The same round with no frame given up anywhere in it. Used by the check
@@ -306,7 +311,7 @@
       pm.flags.sessionReady = true;
       pm.phase = 'waiting';
       pmSay('READY', '');
-    }catch(e){ roundPrepFailed(); }
+    }catch(e){ roundPrepFailed(e); }
   }
 
   function endRound(){
