@@ -154,6 +154,15 @@ if _bundle.returncode != 0:
     sys.stderr.write(_bundle.stderr)
     sys.exit(1)
 THREE_BUNDLE = _bundle.stdout.split(" ")[0].strip()
+# A step that exits 0 having done nothing is worse than one that fails: the
+# first version of three-bundle.mjs had a main-module check that was true on
+# Windows and false on Linux, so CI built no bundle, printed nothing, and this
+# stamped `from './'` into the release. Twenty check shards then died on a
+# module that 404ed, several minutes and one CI run away from the cause.
+if not re.match(r"^three-[0-9a-f]{12}\.js$", THREE_BUNDLE):
+    print("FAILED: three-bundle.mjs printed %r, not a bundle filename" % (_bundle.stdout,))
+    sys.stderr.write(_bundle.stderr)
+    sys.exit(1)
 print("three bundle: " + _bundle.stdout.strip())
 
 sub('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',

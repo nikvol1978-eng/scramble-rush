@@ -29,7 +29,7 @@
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
 import { writeFile, readdir, unlink } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, dirname } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -75,7 +75,17 @@ export async function buildThree() {
   return { name, bytes: Buffer.byteLength(code) };
 }
 
-if (import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}`) {
+// pathToFileURL, NOT a hand-built file:// string.
+//
+// The hand-built version was `file:///${argv[1].replace(/\\/g,'/')}`, which is
+// right on Windows (`C:\x` -> `file:///C:/x`) and WRONG on Linux, where
+// argv[1] already starts with a slash and you get `file:////home/...` with
+// four. So on CI this comparison was false, the script did nothing at all and
+// exited 0 -- build.py read an empty filename, stamped `from './'` into the
+// release, and twenty check shards died on a module that 404ed. A silent
+// no-op is the worst thing a build step can be; build.py now also refuses an
+// empty answer, so this can never fail quietly twice.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const r = await buildThree();
   console.log(`${r.name} (${r.bytes} bytes)`);
 }

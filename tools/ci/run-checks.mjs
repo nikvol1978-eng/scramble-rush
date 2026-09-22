@@ -94,7 +94,14 @@ function serve() {
         res.writeHead(200, { 'Content-Type': MIME[extname(full)] || 'application/octet-stream' });
         res.end(body);
       } catch {
-        res.writeHead(404); res.end('not found');
+        // text/plain, explicitly, and name the path. Without a Content-Type
+        // the browser sniffs this body as HTML, and a missing module then
+        // fails with "Expected a JavaScript-or-Wasm module script but the
+        // server responded with a MIME type of text/html" -- which reads like
+        // a server misconfigured to serve HTML rather than a file that simply
+        // is not there. That wording cost a whole CI round trip to see past.
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(`not found: ${rel}\n`);
       }
     });
     server.on('error', fail);
