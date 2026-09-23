@@ -202,7 +202,7 @@
 
     // ---- SPECIAL: 1999 coins each, except Gold (100 wins) ----
     {id:'gold',      name:'Champion Gold', rarity:'special', type:'metal', color:'#ffc93d', shine:220,
-      unlock:{kind:'wins',count:100}, blurb:'Win 100 matches. Cannot be bought.'},
+      unlock:{kind:'wins',count:100}, blurb:'Win 100 matches, or land it on the Daily Spin. Cannot be bought.'},
     {id:'solarflare',name:'Solar Flare',   rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}},
     {id:'blackhole', name:'Event Horizon', rarity:'special', type:'galaxy', colors:['#000000','#1c1917','#f59e0b'], unlock:{kind:'coins',cost:1999}},
     {id:'diamond',   name:'Diamond Dust',  rarity:'special', type:'metal', color:'#bfefff', shine:250, unlock:{kind:'coins',cost:1999}}
@@ -367,6 +367,15 @@
   ];
   const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map(p=>[p.id,p]));
   function patternOf(id){ return PATTERN_BY_ID[id] || PATTERN_BY_ID['none']; }
+  // The rarity an item HAS, for any screen that prints a pill for it. Skins
+  // and patterns carry their own. Hats and eyes carry none and are everyone's
+  // from the first launch, so they are Common -- the locker always said so,
+  // and the pass said RARE for the same Crown. Both ask here now.
+  function itemRarity(kind, id){
+    if(kind === 'skin')    return skinOf(id).rarity;
+    if(kind === 'pattern') return patternOf(id).rarity;
+    return 'common';
+  }
   // Only ids the catalogue knows. A save outlives the catalogue it was written
   // against, so it can carry a pattern a later release retired or renamed; the
   // id stays in the save, but it is not a pattern on any count -- "Patterns
