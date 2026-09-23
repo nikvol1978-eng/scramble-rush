@@ -69,7 +69,6 @@
      top-aligned here with enough headroom for both, and the badge tucks in a
      little rather than relying on room the row does not have. */
   @media (max-width:760px){
-    #menuChrome{ padding:16px var(--sp-2) 0; align-items:flex-start; }
     .dailyBadge{ top:-8px; right:-8px; }
   }
 
@@ -84,6 +83,13 @@
      chrome row -- its wordmark sat at y=5 and the new NIKCADE button landed
      straight on top of it, 42px of overlap. Same selector, later in the file. */
   #home.lobby{ padding-top:var(--content-top); }
+  /* The phone headroom for the daily badge (see above), placed AFTER the
+     #menuChrome rule it adjusts. It used to sit before it: same selector, and
+     the later `padding:0 var(--gut)` won at every width, so the badge stayed
+     flush with the top of the window and its pip was clipped at y=-4. */
+  @media (max-width:760px){
+    #menuChrome{ padding:16px var(--sp-2) 0; align-items:flex-start; }
+  }
   /* The locker's panel is absolute, so it takes the token as an inset rather
      than inheriting the padding. Same number, same source, no second guess. */
   #locker .lkPanel{ top:var(--content-top); bottom:var(--gut); right:var(--gut); }
@@ -105,10 +111,6 @@
     }
     .lkSubTabs{ flex-wrap:wrap; margin:10px 0 8px; }
     .lkTab{ padding:7px 12px; font-size:0.78rem; }
-    .uiCardMedia > .rarityPill{ font-size:0.46rem; padding:1px 5px; max-width:calc(100% - 12px);
-                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .uiCardFoot{ padding:5px 6px; }
-    .uiCardName{ font-size:0.68rem; }
   }
 
   /* ---- back to the arcade ---------------------------------------------
@@ -279,6 +281,17 @@
     border-radius:50%; background:var(--teal); border:2.5px solid var(--line);
     color:var(--line); font-size:0.74rem; font-weight:700;
     display:flex; align-items:center; justify-content:center; pointer-events:none;
+  }
+  /* The locker on a phone: smaller pill, tighter footer, smaller name. These
+     sat in the phone block near the top of this file, BEFORE the card rules
+     below them in source order -- same selectors, so the desktop values won
+     at every width and at 360px 47 of 79 names ellipsised. They live after
+     the component now. */
+  @media (max-width:760px){
+    .uiCardMedia > .rarityPill{ font-size:0.46rem; padding:1px 5px; max-width:calc(100% - 12px);
+                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .uiCardFoot{ padding:5px 6px; }
+    .uiCardName{ font-size:0.68rem; }
   }
 
   /* ======================================================================
@@ -828,7 +841,6 @@
     .bootRing{ animation-duration:2.4s; }
     .bootBean{ animation:none; }
     .bootMeter > i{ transition:none; }
-    #mlCount.pulse > span{ animation:none; }
   }
 
   /* ======================================================================
@@ -893,6 +905,12 @@
   /* Scale and opacity only -- nothing that changes the box, so no neighbour
      moves when it fires. */
   #mlCount.pulse > span{ animation:mlPop .42s cubic-bezier(.22,.9,.3,1); }
+  /* After the pulse, not before it: in the reduced-motion block above this
+     rule it lost to the unconditional animation on every machine, so a player
+     who asked for less motion still got a scaling number every second. */
+  @media (prefers-reduced-motion: reduce){
+    #mlCount.pulse > span{ animation:none; }
+  }
   @keyframes mlPop{
     from{ transform:scale(1.28); opacity:0.55; }
     to  { transform:scale(1);    opacity:1; }

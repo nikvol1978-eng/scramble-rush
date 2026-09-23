@@ -5896,6 +5896,132 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---- [α] every locker card shows its name, however full the wardrobe -----
+  // A player saw the COLOUR grid with renders, rarity pills and the equipped
+  // tick -- and not one name. The name was in the DOM the whole time. The grid
+  // is a fixed-height scroller with implicit `auto` rows, and a card that clips
+  // its overflow has an automatic minimum height of ZERO: once the cards'
+  // total height outgrew the panel, the grid shrank every row towards zero
+  // instead of scrolling, and each card cut its own name footer off. [<] never
+  // saw it because a fresh profile owns six colours, which fit.
+  //
+  // So this check owns EVERYTHING first, and then measures what is painted
+  // rather than what exists: every card, all four tabs.
+  function checkLockerNames(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const overlap = (a, b)=> a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+    try{
+      state = 'menu';
+      stats.owned = SKINS.map(s => s.id);
+      stats.patterns = PATTERNS.map(p => p.id);
+      openLobbyTab('locker');
+      for(const tab of ['skin','pattern','hat','eyes']){
+        openLocker(tab);
+        void document.body.offsetWidth;
+        const grid = $('lkGrid');
+        const cards = [...grid.querySelectorAll('.uiCard')];
+        if(!cards.length){ bad.push(tab + ': no cards'); continue; }
+        const fails = {};
+        const fail = (k, name)=>{ (fails[k] = fails[k] || []).push(name); };
+        const rects = cards.map(c => c.getBoundingClientRect());
+        let truncated = 0;
+        cards.forEach((card, i)=>{
+          const cr = rects[i];
+          const nm = card.querySelector('.uiCardName');
+          if(!nm){ fail('no name element', '#' + i); return; }
+          const text = nm.textContent.trim();
+          const label = text || ('#' + i);
+          if(!text) fail('empty name', label);
+          // The card itself must not be squeezed: nothing it holds may be
+          // hidden by its own clipping.
+          if(card.scrollHeight > card.clientHeight + 1) fail('card clips its own content', label);
+          const nr = nm.getBoundingClientRect();
+          if(nr.width < 1 || nr.height < 1) fail('name has no painted size', label);
+          if(nr.top < cr.top - 0.5 || nr.bottom > cr.bottom + 0.5 || nr.left < cr.left - 0.5 || nr.right > cr.right + 0.5)
+            fail('name outside its card', label);
+          const media = card.querySelector('.uiCardMedia');
+          if(media && nr.top < media.getBoundingClientRect().bottom - 0.5) fail('name behind the preview', label);
+          const pill = card.querySelector('.rarityPill');
+          if(pill && overlap(nr, pill.getBoundingClientRect())) fail('name under the rarity pill', label);
+          const cs = getComputedStyle(nm);
+          const rgba = (cs.color.match(/rgba?\(([^)]+)\)/) || [null, '0,0,0,1'])[1].split(',').map(Number);
+          const alpha = rgba.length > 3 ? rgba[3] : 1;
+          if(cs.visibility !== 'visible' || Number(cs.opacity) === 0 || alpha === 0) fail('name painted invisible', label);
+          if(nm.scrollWidth > nm.clientWidth + 1) truncated++;
+          // Nothing else may sit on top of it once it is scrolled into view.
+          if(i === 0 || i === cards.length - 1){
+            card.scrollIntoView({ block:'nearest' });
+            const r = nm.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+            if(!hit || !nm.contains(hit)) fail('name covered by ' + (hit ? (hit.className || hit.tagName) : 'nothing'), label);
+          }
+        });
+        for(let i = 0; i < rects.length; i++){
+          for(let j = i + 1; j < rects.length; j++){
+            if(overlap(rects[i], rects[j])){ fail('cards overlap', i + '/' + j); break; }
+          }
+        }
+        // At a desktop width the ordinary names fit whole. Narrower than that,
+        // an ellipsis is a legitimate answer and is not counted against it.
+        if(window.innerWidth >= 1280 && truncated) fail('names ellipsised at ' + window.innerWidth + 'px', truncated + ' card(s)');
+        for(const [k, v] of Object.entries(fails)) bad.push(tab + ': ' + k + ' x' + v.length + ' (' + v.slice(0, 3).join(', ') + ')');
+        notes.push(tab + ' ' + cards.length);
+      }
+    } finally {
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* leaving tidy is best-effort */ }
+    }
+    return { name:'α locker: every card paints its name, with the whole catalogue owned',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join(', ') + ' cards, every name visible' };
+  }
+
+  // ---- [β] no responsive override is dead on arrival ------------------------
+  // The locker's phone rules shrank the card name and footer padding inside
+  // @media (max-width:760px) -- and the card component's own rules were
+  // written LATER in the same stylesheet with the same selectors. Same
+  // specificity, later wins: at 360px the names stayed at the desktop size and
+  // 47 of 79 ellipsised. Nothing looked wrong at 1280px, which is where every
+  // check and review ran.
+  //
+  // This finds the whole class from the CSSOM, with no false positives by
+  // construction: a declaration inside a media block is dead when a LATER,
+  // unconditional rule with the IDENTICAL selector sets the same property and
+  // is not outranked by !important. Such a declaration can never apply at any
+  // viewport, whatever the author meant.
+  function checkDeadMediaRules(){
+    const flat = [];
+    let order = 0;
+    const walk = (rules, media)=>{
+      for(const r of rules){
+        if(r.type === CSSRule.MEDIA_RULE) walk(r.cssRules, r.media.mediaText);
+        else if(r.type === CSSRule.STYLE_RULE){
+          const props = [...r.style].map(p => ({ p, imp: r.style.getPropertyPriority(p) === 'important' }));
+          for(const sel of r.selectorText.split(',').map(s => s.trim()))
+            flat.push({ sel, props, media, order: order++ });
+        }
+      }
+    };
+    let sheets = 0;
+    for(const sh of document.styleSheets){
+      try{ walk(sh.cssRules, null); sheets++; }catch(_){ /* cross-origin sheet: nothing of ours */ }
+    }
+    const dead = [];
+    for(const m of flat){
+      if(!m.media) continue;
+      for(const { p, imp } of m.props){
+        const later = flat.find(f => !f.media && f.order > m.order && f.sel === m.sel
+          && f.props.some(q => q.p === p && (q.imp || !imp)));
+        if(later) dead.push('@media ' + m.media + ' { ' + m.sel + ' { ' + p + ' } }');
+      }
+    }
+    return { name:'β css: no media-query override is shadowed by a later rule with the same selector',
+             pass: dead.length === 0,
+             detail: dead.length ? dead.length + ' dead: ' + dead.slice(0, 6).join('; ')
+                                 : flat.filter(f => f.media).length + ' media-scoped selectors across ' + sheets + ' sheet(s), none shadowed' };
+  }
+
   // ---- [>] the shop ------------------------------------------------------
   function checkUiShop(){
     const bad = [], notes = [], snap = uiSnap();
@@ -7138,7 +7264,7 @@
       ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
-      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
+      ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['-',checkStartup],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,

@@ -425,7 +425,6 @@
   @media (max-width: 1000px){
     .psHead, .psInfo{ width:min(38%, 280px); }
     .psTile{ width:74px; height:74px; }
-    .psTile.hi{ width:92px; height:92px; }
   }
   /* ---- v24 §5.4: the shop ------------------------------------------------ */
   #shop{ display:block; }
@@ -579,11 +578,17 @@
   }
   .lkTab.sel{ background:var(--teal); }
 
-  /* Four columns, and it scrolls under a header that stays. */
+  /* Four columns, and it scrolls under a header that stays.
+     grid-auto-rows:max-content IS THE SCROLL. With implicit `auto` rows the
+     grid sized each row from the card's MINIMUM height, and a card that clips
+     its overflow has an automatic minimum of zero -- so once the cards
+     outgrew the panel the rows shrank instead of the grid scrolling, and every
+     card cut off its own name footer (79 owned colours: 10px rows). A row is
+     now exactly as tall as the card in it, whatever the panel's height. */
   .lkGrid{
     flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
     display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; padding:4px 6px 8px 2px;
-    align-content:start;
+    align-content:start; grid-auto-rows:max-content;
   }
   /* display:block, not flex. As a column flexbox with an absolutely positioned
      child the tile had no content to get a height from, aspect-ratio had
@@ -753,7 +758,7 @@
      stop trying: the strip and the chips take the top line together, and the
      lobby's own content starts below them. */
   @media (max-width:760px){
-    #menuChrome{ padding:10px 8px; justify-content:center; align-items:flex-start; }
+    #menuChrome{ justify-content:center; align-items:flex-start; }
     #menuChrome .lobbyTabs{ gap:2px; padding:5px 6px; }
     #menuChrome .tabPill{ width:40px; min-width:40px; height:34px; padding:0; }
     #menuChrome .tabPill svg{ width:19px; height:19px; }
@@ -761,7 +766,6 @@
        instead of on top of it */
     #menuChrome .lobbyCurrency{ position:static; margin-left:6px; gap:5px; }
     #menuChrome .crownChip, #menuChrome .coinChip{ padding:4px 8px; font-size:0.8rem; }
-    #home.lobby{ padding-top:60px; }
     .nameCard{min-width:0;} .playBig{font-size:1.5rem;padding:8px 28px 8px 20px;}
   }
   /* Small phones. The daily badge hangs off the PLAY pill's top corner, so the
@@ -770,7 +774,6 @@
     #menuChrome .tabPill{ width:34px; min-width:34px; height:31px; }
     #menuChrome .tabPill svg{ width:17px; height:17px; }
     #menuChrome .crownChip, #menuChrome .coinChip{ padding:3px 6px; font-size:0.74rem; }
-    #home.lobby{ padding-top:54px; }
   }
 
   /* ============ ROUND REVEAL ============ */
