@@ -7232,6 +7232,645 @@
   }
 
 
+  // ---- [λ μ ν ξ] the inventory and the economy, audited as data -----------
+  // ['] asserts what must be true of each catalogue ROW. These four assert
+  // what must be true of each ITEM as the player meets it -- in the locker,
+  // the shop, the pass, the badges screen and the daily spin -- enumerated
+  // from the live registries every time, never from a count written here.
+  //
+  // They move far more of the profile than uiSnap() covers (ownership,
+  // badges, wins, level, XP, the save itself), so they snapshot the whole of
+  // `stats` -- keys and all -- and put it back whole.
+  function invSnap(){
+    let raw = null; try{ raw = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    return { stats: JSON.parse(JSON.stringify(stats)), custom: Object.assign({}, custom), raw };
+  }
+  function invStats(o){
+    for(const k of Object.keys(stats)) if(!(k in o)) delete stats[k];
+    Object.assign(stats, JSON.parse(JSON.stringify(o)));
+  }
+  function invRestore(s){
+    invStats(s.stats);
+    Object.assign(custom, s.custom);
+    lkTryOn = null; psTryOn = null;
+    try{ bgSetPane('badges'); }catch(_){ /* best effort */ }
+    // Leaving a screen saves the profile, so the screen is left FIRST -- with
+    // the real profile back in place -- and the saved bytes go back after.
+    try{ setPreview(null, null); openLobbyTab('play'); }catch(_){ /* best effort */ }
+    try{ if(s.raw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, s.raw); }catch(_){ /* none */ }
+    try{ syncCustomColor(); refreshPreview(); refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+  }
+  // A profile that has done nothing: every counter zero, every list empty.
+  // Derived from the live stats object, so a counter added later is zeroed too.
+  function invBlank(){
+    const b = {};
+    for(const [k, v] of Object.entries(stats)) b[k] = Array.isArray(v) ? [] : (typeof v === 'number' ? 0 : v);
+    b.level = 1; b.passClaimed = [];
+    return b;
+  }
+  // Every cosmetic, per kind, straight from the registries. The kind names
+  // are the locker's tab ids and the fields of `custom`.
+  function invKinds(){
+    return {
+      skin:    SKINS.map(s => ({ id:s.id, name:s.name, rarity:s.rarity, unlock:s.unlock })),
+      pattern: PATTERNS.map(p => ({ id:p.id, name:p.name, rarity:p.rarity, unlock:p.unlock })),
+      hat:     HATS.map(h => ({ id:h[0], name:h[1] })),
+      eyes:    EYES.map(e => ({ id:e[0], name:e[1] }))
+    };
+  }
+  function invOwnAll(){ stats.owned = SKINS.map(s => s.id); stats.patterns = PATTERNS.map(p => p.id); }
+  function invOpaque(data){ let n = 0; for(let i = 3; i < data.length; i += 4) if(data[i] > 0) n++; return n; }
+  function invHash(data){ let h = 0x811c9dc5; for(let i = 0; i < data.length; i++){ h ^= data[i]; h = Math.imul(h, 0x01000193); } return h >>> 0; }
+
+  // ---- [λ] every item, as the player meets it ------------------------------
+  // For every skin, pattern, hat, eyes, badge, pass tier, shop entry and spin
+  // tier: an id nobody else has and a name to show, a rarity the game knows,
+  // an unlock that the ownership code actually honours, a preview drawn by
+  // the same tile path the locker and the shop use (and not a blank, and not
+  // a copy of another item's), and -- owned -- a locker tile of its own that
+  // the EQUIP button can put on and mark.
+  function checkInventoryAudit(){
+    const bad = [], notes = [], snap = invSnap();
+    const fail = (m)=> bad.push(m);
+    const MIN_OPAQUE = Math.round(TILE_PX * TILE_PX * 0.05);
+    const KINDS = invKinds(), byId = {};
+    const badgeIds = new Set(ACHIEVEMENTS.map(a => a.id));
+    const realNow = Date.now;
+    try{
+      state = 'menu';
+
+      // ---- 1. identity -------------------------------------------------
+      if(RARITY_ORDER.length !== Object.keys(RARITY).length || RARITY_ORDER.some(r => !RARITY[r]))
+        fail('RARITY_ORDER [' + RARITY_ORDER.join(',') + '] and RARITY {' + Object.keys(RARITY).join(',') + '} disagree');
+      for(const r of RARITY_ORDER){ const R = RARITY[r] || {};
+        if(!R.name || !R.label || !R.text) fail('rarity ' + r + ' is missing its name or its colours'); }
+      const UNLOCKS = ['default', 'coins', 'badge', 'wins'];
+      for(const [kind, list] of Object.entries(KINDS)){
+        const names = new Map();
+        byId[kind] = new Map();
+        if(!list.length) fail('there is no ' + kind + ' at all');
+        for(const it of list){
+          if(typeof it.id !== 'string' || !it.id.trim()){ fail('a ' + kind + ' has no id'); continue; }
+          if(byId[kind].has(it.id)) fail(kind + ' id "' + it.id + '" appears twice');
+          byId[kind].set(it.id, it);
+          if(typeof it.name !== 'string' || !it.name.trim()) fail(kind + ' ' + it.id + ' has no display name');
+          else if(names.has(it.name)) fail(kind + 's ' + names.get(it.name) + ' and ' + it.id + ' are both called "' + it.name + '"');
+          else names.set(it.name, it.id);
+          if(kind !== 'skin' && kind !== 'pattern') continue;
+          if(!RARITY[it.rarity]) fail(kind + ' ' + it.id + ' has rarity "' + it.rarity + '"');
+          const u = it.unlock || {};
+          if(UNLOCKS.indexOf(u.kind) < 0) fail(kind + ' ' + it.id + ' unlocks by "' + u.kind + '", which nothing grants');
+          if(u.kind === 'coins' && !(Number.isInteger(u.cost) && u.cost > 0)) fail(kind + ' ' + it.id + ' costs ' + u.cost);
+          if(u.kind === 'wins' && !(Number.isInteger(u.count) && u.count > 0)) fail(kind + ' ' + it.id + ' needs ' + u.count + ' wins');
+          if(u.kind === 'badge' && !badgeIds.has(u.badge)) fail(kind + ' ' + it.id + ' unlocks from missing badge "' + u.badge + '"');
+        }
+      }
+      // What an unknown id falls back to must itself be real.
+      try{ if(!byId.skin.has(skinOf('\u0000').id)) fail('skinOf falls back to a skin that is not in SKINS'); }
+      catch(e){ fail('skinOf of an unknown id threw: ' + e.message); }
+      try{ if(!byId.pattern.has(patternOf('\u0000').id)) fail('patternOf falls back to a pattern that is not in PATTERNS'); }
+      catch(e){ fail('patternOf of an unknown id threw: ' + e.message); }
+      // The pack wears the wardrobe too.
+      for(const id of BOT_SKIN_POOL)    if(!byId.skin.has(id))    fail('bots wear skin "' + id + '", which is not a skin');
+      for(const id of BOT_PATTERN_POOL) if(!byId.pattern.has(id)) fail('bots wear pattern "' + id + '", which is not a pattern');
+      for(const id of BOT_HATS)         if(!byId.hat.has(id))     fail('bots wear hat "' + id + '", which is not a hat');
+
+      // ---- 2. every unlock route grants what it says ----------------------
+      const blank = invBlank();
+      for(const [kind, owns, list] of [['skin', ownedSkins, 'owned'], ['pattern', ownedPatterns, 'patterns']]){
+        for(const it of KINDS[kind]){
+          invStats(blank);
+          const u = it.unlock || {}, free = owns().has(it.id);
+          if(u.kind === 'default'){ if(!free) fail(kind + ' ' + it.id + ' is a starter that a new profile does not own'); continue; }
+          if(free){ fail(kind + ' ' + it.id + ' is owned by a profile that has done nothing'); continue; }
+          if(u.kind === 'coins')      stats[list] = [it.id];          // what every purchase path pushes
+          else if(u.kind === 'badge') stats.badges = [u.badge];
+          else if(u.kind === 'wins')  stats.wins = u.count;
+          if(!owns().has(it.id)) fail(kind + ' ' + it.id + ': its ' + u.kind + ' unlock does not make it owned');
+        }
+      }
+      // Badges: none free, every one reachable, each with something to show.
+      invStats(blank);
+      const free = ACHIEVEMENTS.filter(a => { try{ return !!a.check(stats); }
+                                             catch(e){ fail('badge ' + a.id + ' threw: ' + e.message); return false; } });
+      if(free.length) fail('a new profile already has ' + free.map(a => a.id).join(', '));
+      const maxed = invBlank();
+      for(const k of Object.keys(maxed)) if(typeof maxed[k] === 'number') maxed[k] = 1e6;
+      invStats(maxed); invOwnAll();
+      const never = ACHIEVEMENTS.filter(a => { try{ return !a.check(stats); }catch(_){ return true; } });
+      if(never.length) fail('no profile can ever earn ' + never.map(a => a.id).join(', '));
+      for(const a of ACHIEVEMENTS){
+        if(typeof a.icon !== 'string' || !a.icon.trim()) fail('badge ' + a.id + ' has no icon');
+        if(!(Number.isInteger(a.coins) && a.coins > 0)) fail('badge ' + a.id + ' pays ' + a.coins + ' coins');
+        if(a.xp !== undefined && !(Number.isInteger(a.xp) && a.xp > 0)) fail('badge ' + a.id + ' pays ' + a.xp + ' XP');
+      }
+
+      // ---- 3. every preview, through the real tile path -------------------
+      // Re-rendered rather than read from the cache, so it is this build's
+      // renderer that is judged. A tile identical to another of its kind is
+      // an item the player cannot tell apart from that one.
+      //
+      // KNOWN, REPORTED, AND NOT FIXED HERE. Each of these is pixel-identical
+      // to the item beside it -- in the tile and in the race:
+      //   * The skins share a material outright: skinCanvas caches one canvas
+      //     per TYPE ('oil', 'rb'), and nothing else about them differs.
+      //     Aurora differs from Rainbow only in how fast it cycles, which a
+      //     still cannot show.
+      //   * The patterns are invisible because the mesh that wears the skin
+      //     material has no `uv` attribute (position, normal, color, skinIndex,
+      //     skinWeight), so every mapped skin and every pattern samples ONE
+      //     texel. A pattern either misses that texel (these) or tints the
+      //     whole bean flat. Fixing it changes how every racer looks, and a
+      //     racer's look does not change without approved screenshots.
+      // Anything else that comes out identical fails.
+      const KNOWN_SAME = {
+        'skin:aurora':'skin:rainbow', 'skin:spectrum':'skin:rainbow', 'skin:peacock':'skin:oil',
+        'skin:prismvoid':'skin:solarflare',
+        'pattern:spots':'pattern:none', 'pattern:stars':'pattern:none', 'pattern:hearts':'pattern:none',
+        'pattern:bubbles':'pattern:none', 'pattern:circuit':'pattern:none', 'pattern:scales':'pattern:none',
+        'pattern:lightning':'pattern:none', 'pattern:glitch':'pattern:none'
+      };
+      const same = [];
+      for(const [kind, list] of Object.entries(KINDS)){
+        const seen = new Map();
+        for(const it of list){
+          const key = kind + ':' + it.id;
+          tileCache.delete(key);
+          let img = null;
+          try{ img = tilePixelsFor(kind, it.id); }catch(e){ fail(key + ' preview threw: ' + e.message); continue; }
+          const n = img && img.data ? invOpaque(img.data) : 0;
+          if(n < MIN_OPAQUE){ fail(key + ' preview has ' + n + ' opaque pixels of ' + TILE_PX*TILE_PX); continue; }
+          const h = invHash(img.data);
+          if(!seen.has(h)){ seen.set(h, key); continue; }
+          if(KNOWN_SAME[key] === seen.get(h)) same.push(it.id + '=' + seen.get(h).split(':')[1]);
+          else fail(key + ' renders pixel-identical to ' + seen.get(h));
+        }
+      }
+      if(same.length) notes.push('KNOWN identical renders (not fixed here): ' + same.join(' '));
+      for(const s of SKINS){ const sw = skinSwatch(s); if(typeof sw !== 'string' || !sw.trim()) fail('skin ' + s.id + ' has no swatch'); }
+      for(const p of PATTERNS){
+        let css = '';
+        try{ css = patternPreviewCSS(p); }catch(e){ fail('pattern ' + p.id + ' swatch threw: ' + e.message); continue; }
+        if(p.id !== 'none' && !/^url\(data:image\//.test(css)) fail('pattern ' + p.id + ' swatch is "' + String(css).slice(0, 24) + '"');
+      }
+      notes.push(Object.entries(KINDS).map(([k, l]) => l.length + ' ' + k).join(', ') + ' rendered');
+
+      // ---- 4. owned and equipped, through the locker's own controls -------
+      invStats(blank); invOwnAll();
+      openLobbyTab('locker');
+      let equipped = 0;
+      for(const [kind, list] of Object.entries(KINDS)){
+        openLocker(kind);
+        if(lkInventory().length !== list.length)
+          fail(kind + ': the locker holds ' + lkInventory().length + ' of ' + list.length + ' owned');
+        const unpainted = [...document.querySelectorAll('#lkGrid .lkTile canvas')].filter(c => !c.classList.contains('done')).length;
+        if(unpainted) fail(kind + ': ' + unpainted + ' locker tiles have no render');
+        list.forEach((it, i)=>{
+          const tile = document.querySelectorAll('#lkGrid .lkTile')[i];
+          const nm = tile && tile.querySelector('.uiCardName');
+          if(!nm || nm.textContent !== it.name){ fail(kind + ' ' + it.id + ' has no locker tile of its own'); return; }
+          tile.click();                                   // selects
+          const act = $('lkAction');
+          if(!act.disabled) act.click();                  // equips
+          const on = [...document.querySelectorAll('#lkGrid .lkTile.equipped')];
+          const onName = on.length === 1 ? on[0].querySelector('.uiCardName').textContent : null;
+          if(custom[kind] !== it.id) fail(kind + ' ' + it.id + ': EQUIP left the ' + kind + ' as ' + custom[kind]);
+          else if(onName !== it.name) fail(kind + ' ' + it.id + ': ' + on.length + ' tiles marked equipped' + (onName ? ' (' + onName + ')' : ''));
+          else if($('lkAction').textContent !== 'EQUIPPED') fail(kind + ' ' + it.id + ': the button reads ' + $('lkAction').textContent + ' once equipped');
+          else equipped++;
+        });
+      }
+      notes.push(equipped + ' equipped through EQUIP');
+
+      // ---- 5. the pass: thirty real items, and claiming grants each -------
+      invStats(blank);
+      const rewards = passRewards();
+      if(rewards.length !== PASS_TIERS) fail('the pass has ' + rewards.length + ' tiers, not ' + PASS_TIERS);
+      for(let t = 1; t <= PASS_TIERS; t++){
+        const n = rewards.filter(r => r.tier === t).length;
+        if(n !== 1) fail('pass tier ' + t + ' appears ' + n + ' times');
+      }
+      for(const r of rewards){
+        const tag = 'pass tier ' + r.tier;
+        if(!r.label) fail(tag + ' has no label');
+        if(!RARITY[r.rarity]) fail(tag + ' has rarity "' + r.rarity + '"');
+        if(r.kind === 'coins'){
+          if(!(Number.isInteger(r.coins) && r.coins > 0)) fail(tag + ' pays ' + r.coins + ' coins');
+          else if(String(r.name).indexOf(String(r.coins)) < 0) fail(tag + ' is called "' + r.name + '" and pays ' + r.coins);
+          continue;
+        }
+        const item = byId[r.kind] && byId[r.kind].get(r.id);
+        if(!item){ fail(tag + ' gives ' + r.kind + ' "' + r.id + '", which does not exist'); continue; }
+        if(r.name !== item.name) fail(tag + ' calls ' + r.kind + ' ' + r.id + ' "' + r.name + '"; it is "' + item.name + '"');
+      }
+      stats.passClaimed = [];
+      for(const r of rewards){
+        const tag = 'pass tier ' + r.tier, c0 = stats.coins || 0;
+        try{ psGive(r); }catch(e){ fail(tag + ' threw on claim: ' + e.message); continue; }
+        if(r.kind === 'coins'){ if(stats.coins !== c0 + r.coins) fail(tag + ' paid ' + (stats.coins - c0) + ' of ' + r.coins); }
+        else if(r.kind === 'skin'){ if(!ownedSkins().has(r.id)) fail(tag + ' was claimed and ' + r.id + ' is not owned'); }
+        else if(r.kind === 'pattern'){ if(!ownedPatterns().has(r.id)) fail(tag + ' was claimed and ' + r.id + ' is not owned'); }
+        else { openLocker(r.kind); if(!lkInventory().some(it => it.id === r.id)) fail(tag + ': ' + r.id + ' is not in the locker'); }
+      }
+      openLobbyTab('pass');
+      document.querySelectorAll('#pass .psTile').forEach((t, i)=>{
+        const r = psRewards[i]; if(!r) return;
+        if(r.kind === 'coins'){ if(t.textContent.indexOf(String(r.coins)) < 0) fail('pass tier ' + r.tier + ' tile does not show its coins'); return; }
+        const c = t.querySelector('canvas');
+        if(!c || !c.classList.contains('done')) fail('pass tier ' + r.tier + ' tile has no render');
+      });
+
+      // ---- 6. the shop: every entry real, priced, dealt and drawable -------
+      const pool = shopPool(), poolKeys = pool.map(it => it.kind + ':' + it.id);
+      const want = [...KINDS.skin, ...KINDS.pattern].filter(it => it.unlock.kind !== 'default')
+                   .map(it => (byId.skin.get(it.id) === it ? 'skin:' : 'pattern:') + it.id);
+      if(new Set(poolKeys).size !== poolKeys.length) fail('the shop pool lists an item twice');
+      const missing = want.filter(k => poolKeys.indexOf(k) < 0), extra = poolKeys.filter(k => want.indexOf(k) < 0);
+      if(missing.length) fail('never in the shop: ' + missing.slice(0, 4).join(', '));
+      if(extra.length) fail('in the shop but not in the catalogue: ' + extra.slice(0, 4).join(', '));
+      for(const it of pool){
+        const item = byId[it.kind] && byId[it.kind].get(it.id);
+        if(!item){ fail('shop entry ' + it.kind + ':' + it.id + ' is not a real ' + it.kind); continue; }
+        const pr = shopPrice(it);
+        if(pr.kind === 'coins' || pr.kind === 'crowns'){ if(!(pr.n > 0)) fail('shop entry ' + it.id + ' is priced at ' + pr.n + ' ' + pr.kind); }
+        else if(!(it.unlock.kind === 'badge' && badgeIds.has(it.unlock.badge))) fail('shop entry ' + it.id + ' is shown as a badge unlock but unlocks by ' + it.unlock.kind);
+        if(pr.kind !== 'coins' && !unlockText(it)) fail('shop entry ' + it.id + ' has no unlock text to show');
+      }
+      const rareN = pool.filter(p => FEATURED_TIERS.includes(p.rarity)).length, plainN = pool.length - rareN;
+      const day0 = shopDay();
+      for(let d = 0; d < 120; d++){
+        Date.now = ()=> (day0 + d) * DAY_MS + 3600000;
+        const rows = shopRows();
+        const dealt = [...rows.featured, ...rows.daily].map(it => it.kind + ':' + it.id);
+        if(rows.featured.length !== Math.min(SHOP_FEATURED, rareN || pool.length) || rows.daily.length !== Math.min(SHOP_DAILY, plainN || pool.length))
+          fail('day +' + d + ' deals ' + rows.featured.length + ' + ' + rows.daily.length + ' cards');
+        if(new Set(dealt).size !== dealt.length) fail('day +' + d + ' deals the same item twice');
+        const stray = dealt.filter(k => poolKeys.indexOf(k) < 0);
+        if(stray.length) fail('day +' + d + ' deals ' + stray.join(', '));
+      }
+      Date.now = realNow;
+      invStats(blank);
+      openLobbyTab('shop');
+      const n0 = shCards.length;
+      for(const it of pool){
+        let card;
+        try{ card = shopCard(it, false); }catch(e){ fail('shop card for ' + it.id + ' threw: ' + e.message); continue; }
+        const nm = card.querySelector('.shName'), foot = card.querySelector('.shFoot'), shot = card.querySelector('canvas');
+        if(!nm || nm.textContent !== it.name) fail('shop card for ' + it.id + ' is named "' + (nm ? nm.textContent : '') + '"');
+        if(!foot || !foot.textContent.trim()) fail('shop card for ' + it.id + ' shows no price or unlock');
+        if(!shot || !shot.classList.contains('done')) fail('shop card for ' + it.id + ' has no render');
+        else if(invOpaque(shot.getContext('2d').getImageData(0, 0, shot.width, shot.height).data) < MIN_OPAQUE)
+          fail('shop card for ' + it.id + ' painted an empty render');
+      }
+      shCards.length = n0;
+      notes.push(pool.length + ' shop entries, 120 days dealt');
+
+      // ---- 7. the daily spin: every tier it can land has a wedge and a skin --
+      for(const [k, w] of SPIN_ODDS){
+        if(!RARITY[k]) fail('SPIN_ODDS rolls "' + k + '", which is not a rarity');
+        if(!(w > 0)) fail('SPIN_ODDS gives ' + k + ' a weight of ' + w);
+      }
+      for(const w of WHEEL) if(!RARITY[w]) fail('a wheel wedge is "' + w + '", not a rarity');
+      for(const r of RARITY_ORDER){
+        if(!SKINS.some(s => s.rarity === r)) fail('no skin is ' + r + ', so the spin can land on an empty tier');
+        if(WHEEL.indexOf(r) < 0) fail('the wheel has no ' + r + ' wedge for a ' + r + ' prize to land on');
+      }
+
+      // ---- 8. badges, on their own screen, earned and paid ----------------
+      invStats(blank);
+      stats.badges = ACHIEVEMENTS.map(a => a.id);
+      stats.claimed = ACHIEVEMENTS.filter((a, i) => i % 2).map(a => a.id);
+      openLobbyTab('badges');
+      const cards = [...document.querySelectorAll('#bgGrid .bgCard')];
+      if(cards.length !== ACHIEVEMENTS.length) fail(cards.length + ' badge cards for ' + ACHIEVEMENTS.length + ' badges');
+      ACHIEVEMENTS.forEach((a, i)=>{
+        const c = cards[i]; if(!c) return;
+        const nm = c.querySelector('.bgName'), ico = c.querySelector('.bgIco'), paid = i % 2 === 1;
+        if(!nm || nm.textContent !== a.name) fail('badge card ' + i + ' is not ' + a.name);
+        if(!ico || !ico.textContent.trim()) fail('badge ' + a.id + ' shows no icon');
+        if(!c.classList.contains('got')) fail('badge ' + a.id + ' is earned and not shown as earned');
+        if(c.classList.contains('paid') !== paid) fail('badge ' + a.id + (paid ? ' is paid and not shown as paid' : ' is shown as paid'));
+        if(!paid && !c.querySelector('.bgClaim')) fail('badge ' + a.id + ' is earned and unpaid with no CLAIM');
+      });
+      notes.push(ACHIEVEMENTS.length + ' badges, ' + PASS_TIERS + ' pass tiers');
+    } finally {
+      Date.now = realNow;
+      invRestore(snap);
+    }
+    return { name:'λ inventory: every item has an id, a name, a real unlock, a render and a locker tile that equips',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [μ] the rarity a screen shows is the rarity the item has -----------
+  // The locker, the pass and the shop each print a rarity pill for an item.
+  // The locker is the inventory -- the screen that shows what the player
+  // actually has -- so it is the reference, and it is itself held to the
+  // catalogue for everything the catalogue gives a rarity. A pill anywhere
+  // else that disagrees with it tells the player the item is something it
+  // is not. ([γ] holds the daily spin's prize card to the tier it awarded.)
+  //
+  // And the words: a line of catalogue copy that says how an item is got
+  // must not leave out a way the game actually gives it. Every colourway is
+  // a daily-spin candidate, so copy that names a route must name the spin.
+  function checkRarityShown(){
+    const bad = [], notes = [], snap = invSnap();
+    try{
+      state = 'menu';
+      invStats(invBlank()); invOwnAll();
+      const locker = new Map();
+      openLobbyTab('locker');
+      for(const kind of LK_TABS.map(t => t.id)){
+        openLocker(kind);
+        const tiles = document.querySelectorAll('#lkGrid .lkTile');
+        lkInventory().forEach((it, i)=>{
+          const pill = tiles[i] && tiles[i].querySelector('.rarityPill');
+          const shown = pill ? pill.textContent : '(none)';
+          locker.set(kind + ':' + it.id, shown);
+          const cat = kind === 'skin' ? SKIN_BY_ID[it.id] : kind === 'pattern' ? PATTERN_BY_ID[it.id] : null;
+          if(cat && shown !== RARITY[cat.rarity].name.toUpperCase())
+            bad.push('locker ' + kind + ' ' + it.id + ' shows ' + shown + ', the catalogue says ' + cat.rarity);
+        });
+      }
+      // The pass, each tier selected the way a player selects it.
+      openLobbyTab('pass');
+      const tiles = document.querySelectorAll('#pass .psTile');
+      let passN = 0;
+      psRewards.forEach((r, i)=>{
+        if(r.kind === 'coins' || !tiles[i]) return;
+        tiles[i].click();
+        passN++;
+        const shown = $('psRarity').textContent, want = locker.get(r.kind + ':' + r.id);
+        if(shown !== want) bad.push('pass tier ' + r.tier + ' ' + r.name + ' (' + r.kind + ') shows ' + shown + '; the locker shows ' + want);
+      });
+      // Every card the shop can deal.
+      openLobbyTab('shop');
+      const pool = shopPool(), n0 = shCards.length;
+      for(const it of pool){
+        const pill = shopCard(it, false).querySelector('.rarityPill');
+        const shown = pill ? pill.textContent : '(none)', want = locker.get(it.kind + ':' + it.id);
+        if(shown !== want) bad.push('shop ' + it.kind + ' ' + it.id + ' shows ' + shown + '; the locker shows ' + want);
+      }
+      shCards.length = n0;
+      // The copy.
+      const ROUTE = /\b(win|wins|match|matches|badge|coins?|buy|bought|sold|shop|pass|spin|only)\b/i;
+      let blurbs = 0;
+      for(const s of SKINS){
+        if(!s.blurb) continue;
+        blurbs++;
+        if(!ROUTE.test(s.blurb)) continue;
+        if(!/\bspin\b/i.test(s.blurb)) bad.push(s.id + ' says "' + s.blurb + '" -- the daily spin gives it too');
+        if(/cannot be bought|can't be bought|not for sale/i.test(s.blurb) && shopPrice(Object.assign({ kind:'skin' }, s)).kind === 'coins')
+          bad.push(s.id + ' says it cannot be bought, and the shop sells it');
+        if(/\bonly\b/i.test(s.blurb)) bad.push(s.id + ' says "' + s.blurb + '", and more than one thing gives it');
+      }
+      notes.push(locker.size + ' locker pills, ' + passN + ' pass tiers, ' + pool.length + ' shop cards, ' + blurbs + ' blurb(s)');
+    } finally {
+      invRestore(snap);
+    }
+    return { name:'μ rarity: the pass and the shop show each item the rarity the locker shows it, and the copy is true',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ν] the daily spin's prize, as data --------------------------------
+  // [γ] watches the wheel land. This is the half before the animation: the
+  // real pickSpinPrize(), called thousands of times against ownership states
+  // chosen to corner it -- a new profile, each tier the only one left, each
+  // tier exhausted, each tier down to its last skin, everything owned,
+  // ownership by badge and by wins, a save carrying retired ids and
+  // duplicates, and forty random collections. In every one, and for every
+  // tier the roll can come out as, the pick is walked across every candidate
+  // of the tier it lands in, so no skin can hide behind the draw.
+  //
+  // The draw is stubbed only to aim it: rollSpinRarity() and pick() consume
+  // Math.random as they always do, and the value that lands tier T is the
+  // middle of T's band, read off SPIN_ODDS itself. Then the same function is
+  // run free on a seeded stream, and a new profile must reach all six tiers.
+  //
+  // What is held: the prize is a real catalogue skin, never one already
+  // owned; `landed` -- what the wheel is turned to -- is that skin's rarity
+  // and has a wedge; a roll that has unowned skins in its own tier is not
+  // slid elsewhere; the coin prize comes only when nothing is left.
+  function checkSpinPrizeData(){
+    const bad = [], notes = [], snap = invSnap();
+    const realRandom = Math.random;
+    const total = SPIN_ODDS.reduce((a, b)=> a + b[1], 0);
+    const mid = {}; { let acc = 0; for(const [k, v] of SPIN_ODDS){ mid[k] = (acc + v/2) / total; acc += v; } }
+    const aim = (vals)=>{ let i = 0; return ()=> i < vals.length ? vals[i++] : realRandom(); };
+    const fails = new Map();
+    const note = (k, ex)=>{ const f = fails.get(k); if(f) f.n++; else fails.set(k, { n:1, ex }); };
+    let calls = 0, granted = new Set();
+    const judge = (tag, rolled)=>{
+      const owned = ownedSkins();
+      let p;
+      try{ p = pickSpinPrize(); }catch(e){ note('threw: ' + e.message, tag); return null; }
+      calls++;
+      if(!p || typeof p !== 'object'){ note('returned no prize', tag); return null; }
+      if(!RARITY[p.landed]){ note('landed "' + p.landed + '", not a rarity', tag); return p; }
+      if(WHEEL.indexOf(p.landed) < 0) note('landed ' + p.landed + ', which has no wedge', tag);
+      if(p.skin){
+        if(SKIN_BY_ID[p.skin.id] !== p.skin){ note('granted "' + (p.skin && p.skin.id) + '", not a catalogue skin', tag); return p; }
+        granted.add(p.skin.id);
+        if(owned.has(p.skin.id)) note('granted an owned skin', tag + ': ' + p.skin.id);
+        if(p.skin.rarity !== p.landed) note('reported one rarity and awarded another', tag + ': ' + p.landed + ' for ' + p.skin.id + ' (' + p.skin.rarity + ')');
+        if(rolled && p.landed !== rolled && SKINS.some(s => s.rarity === rolled && !owned.has(s.id)))
+          note('slid off a tier that still had skins', tag + ': ' + rolled + ' -> ' + p.landed);
+      } else {
+        const left = SKINS.filter(s => !owned.has(s.id)).length;
+        if(left) note('paid coins with skins still unowned', tag + ': ' + left + ' left');
+        if(!(Number.isInteger(p.coins) && p.coins > 0)) note('the all-owned prize is not coins', tag + ': ' + p.coins);
+      }
+      return p;
+    };
+    try{
+      const blank = invBlank(), ids = SKINS.map(s => s.id);
+      const states = [['a new profile', []]];
+      for(const T of RARITY_ORDER){
+        const inT = SKINS.filter(s => s.rarity === T).map(s => s.id);
+        states.push(['only ' + T + ' left', ids.filter(id => inT.indexOf(id) < 0)]);
+        states.push([T + ' all owned', inT]);
+        states.push([T + ' down to its last', inT.slice(0, -1)]);
+        states.push(['one ' + T + ' left in the game', ids.filter(id => id !== inT[inT.length - 1])]);
+      }
+      states.push(['everything owned', ids.slice()]);
+      states.push(['every badge and 100 wins', [], { badges: ACHIEVEMENTS.map(a => a.id), wins: 100 }]);
+      states.push(['retired ids and duplicates in the save', ['zz_retired', ids[8], ids[8], 'zz_renamed', ids[20]]]);
+      const rs = seededRandom(0x5B1D);
+      for(let k = 0; k < 40; k++){
+        const keep = [0.2, 0.5, 0.8, 0.97][k % 4];
+        states.push(['random collection ' + k, ids.filter(()=> rs() < keep)]);
+      }
+      const set = (st)=>{ invStats(blank); stats.owned = st[1].slice(); if(st[2]) Object.assign(stats, st[2]); };
+
+      // 1. aimed: every state, every rolled tier, every candidate
+      for(const st of states){
+        set(st);
+        granted = new Set();
+        const own = ownedSkins(), unowned = SKINS.filter(s => !own.has(s.id)).map(s => s.id);
+        for(const T of RARITY_ORDER){
+          Math.random = aim([mid[T], 0]);
+          const first = judge(st[0] + ', rolled ' + T, T);
+          if(!first || !first.skin) continue;
+          const m = SKINS.filter(s => s.rarity === first.landed && !own.has(s.id)).length;
+          for(let j = 1; j < m; j++){
+            Math.random = aim([mid[T], (j + 0.5) / m]);
+            judge(st[0] + ', rolled ' + T, T);
+          }
+        }
+        const unreached = unowned.filter(id => !granted.has(id));
+        if(unreached.length) note('a candidate the spin can never give', st[0] + ': ' + unreached.slice(0, 4).join(', '));
+      }
+      // 2. free-running, on a seeded stream
+      Math.random = seededRandom(0xD1CE);
+      for(let k = 0; k < 3000; k++){ const st = states[k % states.length]; set(st); judge(st[0] + ', free draw', null); }
+      set(states[0]);
+      const tiers = new Set();
+      for(let k = 0; k < 4000; k++){ const p = judge('a new profile, free draw', null); if(p) tiers.add(p.landed); }
+      const never = RARITY_ORDER.filter(r => !tiers.has(r));
+      if(never.length) note('a new profile never lands some tiers', never.join(', '));
+      notes.push(calls + ' real pickSpinPrize() calls over ' + states.length + ' ownership states; free draws landed ' + [...tiers].join('/'));
+    } finally {
+      Math.random = realRandom;
+      invRestore(snap);
+    }
+    for(const [k, f] of fails) bad.push(k + ' x' + f.n + ' (e.g. ' + f.ex + ')');
+    return { name:'ν daily spin: the prize is a real, unowned skin of the tier the wheel is turned to, across every ownership',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ξ] a save the catalogue has moved on from --------------------------
+  // A save outlives the catalogue it was written against: a colourway is
+  // retired or renamed, a badge id changes, and the old id stays in
+  // stats.owned or stats.badges for good. It must not be counted. Built as a
+  // real saved profile (scrambleRush.profile.v6) and loaded by the real
+  // loadProfile(), then read off the screens a player reads:
+  //   * the Stats rows "Colourways owned", "Patterns owned" and "Badges
+  //     earned" must agree with the locker's tiles and the badge cards,
+  //   * the header's "N of T earned" must agree with the cards too,
+  //   * a collection badge ("Own 30 colourways") is earned exactly when the
+  //     locker shows that many -- its promise, measured where it is kept --
+  //   * and the unknown ids are still in the save afterwards: counting only
+  //     what the game knows, not deleting what it does not.
+  // Last, the duplicate the pass writes when it grants a colourway the
+  // player already bought: reproduced through CLAIM, and shown harmless.
+  async function checkOrphanCounts(){
+    const bad = [], notes = [], snap = invSnap();
+    const GHOST_SKINS = ['zz_retired_colour', 'zz_renamed_colour'], GHOST_PAT = 'zz_retired_pattern', GHOST_BADGE = 'zz_retired_badge';
+    const rows = ()=>{
+      openLobbyTab('badges');
+      const tab = document.querySelector('#badges .bgTab[data-bg="stats"]');
+      if(tab) tab.click(); else bad.push('no STATS tab on the badges screen');
+      const out = {};
+      for(const c of document.querySelectorAll('#bgStats .statCard')){
+        const k = c.querySelector('.k'), v = c.querySelector('.v');
+        if(k && v) out[k.textContent.trim()] = v.textContent.trim();
+      }
+      const got = document.querySelectorAll('#bgGrid .bgCard.got').length;
+      const head = (($('bgSummary').textContent || '').match(/(\d+)\s+of\s+(\d+)/) || []);
+      const tab2 = document.querySelector('#badges .bgTab[data-bg="badges"]');
+      if(tab2) tab2.click();
+      return { out, got, head: head[1] === undefined ? null : Number(head[1]) };
+    };
+    const tiles = ()=>{
+      openLobbyTab('locker');
+      const n = {};
+      for(const kind of ['skin', 'pattern']){ openLocker(kind); n[kind] = document.querySelectorAll('#lkGrid .lkTile').length; }
+      return n;
+    };
+    const load = async (st)=>{
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ custom: snap.custom, stats: st }));
+      await loadProfile();
+    };
+    // The counts a player reads, against what the same player can see.
+    const judge = (tag)=>{
+      const t = tiles(), r = rows();
+      const want = { 'Colourways owned': t.skin + ' / ' + SKINS.length,
+                     'Patterns owned':   t.pattern + ' / ' + PATTERNS.length,
+                     'Badges earned':    r.got + ' / ' + ACHIEVEMENTS.length };
+      for(const [k, v] of Object.entries(want))
+        if(r.out[k] !== v) bad.push(tag + ': Stats says ' + k + ' ' + r.out[k] + '; the ' + (k === 'Badges earned' ? 'badge cards show ' : 'locker shows ') + v);
+      if(r.head !== r.got) bad.push(tag + ': the header says ' + r.head + ' earned; ' + r.got + ' cards are earned');
+      return t;
+    };
+    try{
+      state = 'menu';
+      // ---- A. just under both collection badges, plus retired ids ---------
+      const collect = (noun)=> ACHIEVEMENTS.find(a => new RegExp('^own \\d+ ' + noun + '$', 'i').test(a.desc || ''));
+      const cSk = collect('colourways'), cPt = collect('patterns');
+      if(!cSk || !cPt) bad.push('no "Own N colourways" / "Own N patterns" badge to test against');
+      const need = (a)=> Number((a.desc.match(/\d+/) || [0])[0]);
+      const gated = new Set([...SKINS, ...PATTERNS].filter(i => i.unlock.kind === 'badge').map(i => i.unlock.badge));
+      const inert = ACHIEVEMENTS.filter(a => !gated.has(a.id) && a !== cSk && a !== cPt).slice(0, 2).map(a => a.id);
+      const skins = SKINS.filter(s => s.unlock.kind === 'coins').map(s => s.id)
+                    .slice(0, need(cSk) - 1 - SKINS.filter(s => s.unlock.kind === 'default').length);
+      const pats  = PATTERNS.filter(p => p.unlock.kind === 'coins').map(p => p.id)
+                    .slice(0, need(cPt) - 1 - PATTERNS.filter(p => p.unlock.kind === 'default').length);
+      await load(Object.assign(invBlank(), {
+        owned:    [...skins, ...GHOST_SKINS, GHOST_SKINS[0], skins[0]],
+        patterns: [...pats, GHOST_PAT, GHOST_PAT],
+        badges:   [...inert, GHOST_BADGE, inert[0]],
+        claimed:  [GHOST_BADGE],
+        passClaimed: [1, 999, 'x']
+      }));
+      const tA = judge('A (' + (need(cSk) - 1) + ' colourways, ' + (need(cPt) - 1) + ' patterns, + retired ids)');
+      if(tA.skin !== need(cSk) - 1 || tA.pattern !== need(cPt) - 1)
+        bad.push('A: the locker shows ' + tA.skin + ' colourways and ' + tA.pattern + ' patterns; built ' + (need(cSk) - 1) + ' and ' + (need(cPt) - 1));
+      for(const [a, have] of [[cSk, tA.skin], [cPt, tA.pattern]]){
+        if(!a) continue;
+        const earned = stats.badges.includes(a.id);
+        if(earned !== (have >= need(a)))
+          bad.push('A: "' + a.desc + '" is ' + (earned ? 'earned' : 'not earned') + ' with ' + have + ' in the locker');
+      }
+      await saveProfile();
+      const saved = (JSON.parse(localStorage.getItem(SAVE_KEY) || '{}').stats) || {};
+      const kept = [...GHOST_SKINS.map(g => (saved.owned || []).includes(g)), (saved.patterns || []).includes(GHOST_PAT),
+                    (saved.badges || []).includes(GHOST_BADGE)];
+      if(kept.some(k => !k)) bad.push('A: a retired id was deleted from the save');
+      openLobbyTab('pass');
+      const claimedTiles = document.querySelectorAll('#pass .psTile.claimed').length;
+      if(claimedTiles !== 1) bad.push('A: passClaimed [1, 999, "x"] shows ' + claimedTiles + ' claimed tiers, not 1');
+      notes.push('A: ' + tA.skin + ' colourways, ' + tA.pattern + ' patterns, collection badges ' +
+                 (stats.badges.includes(cSk.id) || stats.badges.includes(cPt.id) ? 'EARNED' : 'not earned') + ', retired ids kept in the save');
+
+      // ---- B. the whole catalogue, plus retired ids ------------------------
+      await load(Object.assign(invBlank(), {
+        owned:    [...SKINS.map(s => s.id), ...GHOST_SKINS],
+        patterns: [...PATTERNS.map(p => p.id), GHOST_PAT],
+        badges:   [...ACHIEVEMENTS.map(a => a.id), GHOST_BADGE, ACHIEVEMENTS[0].id]
+      }));
+      const tB = judge('B (everything, + retired ids)');
+      notes.push('B: ' + tB.skin + ' / ' + SKINS.length + ' colourways');
+
+      // ---- C. the duplicate the pass writes ------------------------------
+      const rewards = passRewards();
+      const rs = rewards.find(r => r.kind === 'skin'), rp = rewards.find(r => r.kind === 'pattern');
+      let xp = 0; for(let n = 1; n <= PASS_TIERS; n++) xp += passTierCost(n);
+      await load(Object.assign(invBlank(), { owned:[rs.id], patterns:[rp.id], xp }));
+      openLobbyTab('pass');
+      for(const r of [rs, rp]){
+        const i = psRewards.findIndex(x => x.tier === r.tier);
+        const tile = document.querySelectorAll('#pass .psTile')[i];
+        if(!tile){ bad.push('C: no tile for pass tier ' + r.tier); continue; }
+        tile.click();
+        $('psAction').click();                            // CLAIM
+      }
+      const dupS = stats.owned.filter(id => id === rs.id).length, dupP = stats.patterns.filter(id => id === rp.id).length;
+      if(dupS !== 2 || dupP !== 2) notes.push('C: claiming did not duplicate (' + dupS + ', ' + dupP + ')');
+      const tC = judge('C (bought ' + rs.id + ' and ' + rp.id + ', then claimed both from the pass)');
+      openLobbyTab('locker');
+      openLocker('skin');
+      const same = [...document.querySelectorAll('#lkGrid .uiCardName')].filter(n => n.textContent === rs.name).length;
+      if(same !== 1) bad.push('C: ' + rs.name + ' has ' + same + ' locker tiles after the duplicate');
+      notes.push('C: the pass wrote ' + rs.id + ' x' + dupS + ' and ' + rp.id + ' x' + dupP + ' into the save; locker, Stats and badges still count it once (' + tC.skin + ' colourways)');
+    } catch(e){
+      bad.push('threw: ' + (e && e.message));
+    } finally {
+      invRestore(snap);
+    }
+    return { name:'ξ profile: retired and duplicate ids in a save are never counted, and never deleted',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+
   // ---- ["] one screen at a time, from anywhere -------------------------
   // EVERY PRIMARY SCREEN opened FROM EVERY OTHER ONE, by CLICKING THE REAL
   // CONTROL.
@@ -7931,6 +8570,7 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7962,6 +8602,9 @@
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
       ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
       ['θ',checkDailyNudge],['ι',checkSpinBanksCoins],['κ',checkOrphanLook],
+      // the inventory and economy audit: every item, the pills, the spin's
+      // prize as data, and a save the catalogue has moved on from
+      ['λ',checkInventoryAudit],['μ',checkRarityShown],['ν',checkSpinPrizeData],['ξ',checkOrphanCounts],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
