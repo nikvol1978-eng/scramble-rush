@@ -7416,19 +7416,32 @@
       notes.push(Object.entries(KINDS).map(([k, l]) => l.length + ' ' + k).join(', ') + ' rendered');
 
       // ---- 4. owned and equipped, through the locker's own controls -------
+      // First the whole catalogue owned: every item on its shelf, rendered.
       invStats(blank); invOwnAll();
       openLobbyTab('locker');
-      let equipped = 0;
       for(const [kind, list] of Object.entries(KINDS)){
         openLocker(kind);
         if(lkInventory().length !== list.length)
           fail(kind + ': the locker holds ' + lkInventory().length + ' of ' + list.length + ' owned');
         const unpainted = [...document.querySelectorAll('#lkGrid .lkTile canvas')].filter(c => !c.classList.contains('done')).length;
         if(unpainted) fail(kind + ': ' + unpainted + ' locker tiles have no render');
-        list.forEach((it, i)=>{
-          const tile = document.querySelectorAll('#lkGrid .lkTile')[i];
+      }
+      // Then each item on its own: owned through the list a purchase writes
+      // to, found on its shelf, selected, and put on by EQUIP. One item at a
+      // time keeps the shelf a few tiles long -- equipping all 79 colourways
+      // against a full shelf rebuilds 6,000 canvases, and the GC that leaves
+      // behind is still running when whatever check comes next starts timing.
+      let equipped = 0;
+      for(const [kind, list] of Object.entries(KINDS)){
+        for(const it of list){
+          invStats(blank);
+          if(kind === 'skin')    stats.owned = [it.id];
+          if(kind === 'pattern') stats.patterns = [it.id];
+          openLocker(kind);
+          const i = lkInventory().findIndex(x => x.id === it.id);
+          const tile = i < 0 ? null : document.querySelectorAll('#lkGrid .lkTile')[i];
           const nm = tile && tile.querySelector('.uiCardName');
-          if(!nm || nm.textContent !== it.name){ fail(kind + ' ' + it.id + ' has no locker tile of its own'); return; }
+          if(!nm || nm.textContent !== it.name){ fail(kind + ' ' + it.id + ' is owned and has no locker tile of its own'); continue; }
           tile.click();                                   // selects
           const act = $('lkAction');
           if(!act.disabled) act.click();                  // equips
@@ -7438,7 +7451,7 @@
           else if(onName !== it.name) fail(kind + ' ' + it.id + ': ' + on.length + ' tiles marked equipped' + (onName ? ' (' + onName + ')' : ''));
           else if($('lkAction').textContent !== 'EQUIPPED') fail(kind + ' ' + it.id + ': the button reads ' + $('lkAction').textContent + ' once equipped');
           else equipped++;
-        });
+        }
       }
       notes.push(equipped + ' equipped through EQUIP');
 
