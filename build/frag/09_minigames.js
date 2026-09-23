@@ -790,13 +790,46 @@
     boulders.push(b);
   }
 
-  function updateMinigames(dt,t){
+  // ============================================================
+  // WHAT A MINIGAME LOOKS LIKE, AND WHAT A JOINER IS TOLD ABOUT IT
+  // ============================================================
+  // updateMinigames is the simulation, and only a host or a solo game runs it:
+  // a joiner's loop runs clientTick instead. It used to draw as it went -- the
+  // tiles wobbling and dropping, the ring's scale, the cannon's warning, the
+  // cannonballs' meshes -- so a joiner drew none of it, and since the state
+  // message carried no obstacle state either, a joiner's walls, arms, ring,
+  // floors, logs, decks, slabs and doors all stood as they were at the gun.
+  //
+  // Now the drawing is presentMinigames, which syncObstacles runs every frame
+  // on both, so a host and a joiner render the same state by the same code.
+  // The host puts that state in its existing periodic 'state' message
+  // (netObsSnapshot), the joiner applies it (applyObsSnapshot) and carries the
+  // moving parts on between messages by the host's own rules (netObsTick).
+  // A client that predates this ignores the extra field; a joiner of a host
+  // that predates it gets no field and nothing changes.
+  const shotMeshes = [];                  // [{b, m}]: the mesh drawn for each ball in flight
+  function presentFloor(cells, fuseTime, warnAt, warnHex, wobRate, wobAmp, dropBy, axis, turnBy, t){
+    for(const c of cells){
+      const m = c.mesh; if(!m) continue;
+      if(c.touched && !c.gone){
+        m.position.y = c.baseY + Math.sin(t*wobRate)*Math.max(0, 1-c.fuse/fuseTime)*wobAmp;
+        if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<warnAt ? warnHex : 0xffd166);
+      } else if(c.gone){
+        if(m.visible){
+          const d = Math.min(1, c.drop||0);
+          m.position.y = c.baseY - d*dropBy; m.rotation[axis] = d*turnBy;
+          if(d >= 1) m.visible = false;
+        }
+      } else if(!m.visible || m.position.y !== c.baseY || m.rotation[axis] !== 0){
+        // rebuilt: back into place
+        m.visible = true; m.rotation[axis] = 0; m.position.y = c.baseY;
+        if(c.topMat && c.topMat.color) c.topMat.color.setHex(0xffffff);
+      }
+    }
+  }
+  function presentMinigames(t){
     for(const o of obstacles){
-      if(o.type==='mover'){
-        const x = moverX(o,t);
-        o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
-        o._px = x;
-      } else if(o.type==='gems'){
+      if(o.type==='gems'){
         if(o.meshes) o.meshes.forEach((m,i)=>{
           const g=o.items[i];
           m.visible = !g.taken;
@@ -805,6 +838,252 @@
             m.position.y = m.userData.baseY + Math.sin(t*3+g.spin)*5;
           }
         });
+      } else if(o.type==='ring'){
+        if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
+      } else if(o.type==='disc'){
+        if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + (o.ang||0);
+      } else if(o.type==='doors'){
+        if(o.meshes) o.items.forEach((it,i)=>{ const m=o.meshes[i]; if(it.broken && m && m.panel && m.panel.visible) m.panel.visible=false; });
+      } else if(o.type==='cannon'){
+        // Drawn when the fuse moved, which is exactly the cannons the pack is
+        // near: one far down the course keeps the warning it had.
+        if(o.meshes) o.items.forEach((it,i)=>{
+          const m = o.meshes[i];
+          if(!m || !m.warn || it.cool === it._drawnCool) return;
+          // the first sight of it only notes where the fuse stands: a fuse
+          // that never moves never lights anything
+          if(it._drawnCool === undefined){ it._drawnCool = it.cool; return; }
+          it._drawnCool = it.cool;
+          const lead = it.cool;                       // seconds until this one fires
+          if(lead <= CANNON_WARN && lead > 0){
+            m.warn.visible = true;
+            // flash faster as it gets closer, so urgency reads without a HUD
+            const urgency = 1 - lead/CANNON_WARN;
+            m.warn.material.opacity = (0.18 + 0.42*urgency) * (0.55 + 0.45*Math.sin(t*(14+urgency*22)));
+          } else { m.warn.visible = false; }
+        });
+      } else if(o.type==='tilefield'){
+        presentFloor(o.tiles, o.fuseTime, o.fuseTime*0.4, 0xff7a5c, 26, 2.2, 140, 'z', 0.5, t);
+      } else if(o.type==='hexfield'){
+        presentFloor(o.cells, o.fuseTime, hexFuse(o)*0.45, 0xff5a4d, 30, 2.4, 160, 'x', 0.6, t);
+      }
+    }
+    // cannonballs: a mesh for each one in flight, gone with it
+    for(let i=shotMeshes.length-1;i>=0;i--){
+      const e = shotMeshes[i];
+      if(shots.indexOf(e.b) < 0){ if(e.m.parent) e.m.parent.remove(e.m); shotMeshes.splice(i,1); }
+    }
+    for(const b of shots){
+      if(!b.mesh){
+        const g = new THREE.Mesh(new THREE.SphereGeometry(b.r,14,10), shotMaterial());
+        g.castShadow = true; courseGroup.add(g); b.mesh = g; shotMeshes.push({b, m:g});
+        const co = b.src && obstacles[b.src[0]];
+        const cm = co && co.type==='cannon' && co.meshes && co.meshes[b.src[1]];
+        if(cm) cm.recoil = 1;
+      }
+      placeAt(b.mesh, b.x, b.y, b.r+26); b.mesh.rotation.z = -(b.spin||0);
+    }
+  }
+
+  // ---- the host's side: the stateful part of the course, compactly ----
+  // Continuous values in every message. Tiles and hexes are two bits a cell
+  // (touched, gone): all of them about once a second, and in between only the
+  // cells that changed, so a message that goes missing costs at most a second.
+  let netSeq = 0, netShotId = 0, netClock = 0;
+  // The obstacle list a snapshot has been heard for. A joiner of a host that
+  // sends none -- one that predates this -- never carries anything on.
+  let netHeardFor = null;
+  const NET_FULL_EVERY = 22;              // at the 45ms cadence, about a second
+  const netQ2 = (v)=>Math.round(v*100)/100, netQ4 = (v)=>Math.round(v*1e4)/1e4;
+  function netCellState(c){ return (c.touched?1:0) | (c.gone?2:0); }
+  function netPack(states){
+    const bytes = new Uint8Array(Math.ceil(states.length/4));
+    for(let i=0;i<states.length;i++) bytes[i>>2] |= states[i] << ((i&3)*2);
+    let s = ''; for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function netUnpack(str, n){
+    const raw = atob(str), out = new Array(n);
+    for(let i=0;i<n;i++) out[i] = (raw.charCodeAt(i>>2) >> ((i&3)*2)) & 3;
+    return out;
+  }
+  function netObsSnapshot(){
+    const full = (netSeq++ % NET_FULL_EVERY) === 0;
+    const o = [];
+    obstacles.forEach((ob,i)=>{
+      switch(ob.type){
+        case 'blockwall': if(ob.travel) o.push([i,'w', netQ2(ob.wy), netQ2(ob.travel), ob.gapStart]); break;
+        case 'spinlaser': if(ob.ramp) o.push([i,'b', netQ4(ob.ang||0), netQ4(ob.speed)]); break;
+        case 'ring': o.push([i,'r', netQ2(ob.r), netQ2(ob.wait)]); break;
+        case 'disc': o.push([i,'d', netQ4(ob.ang||0)]); break;
+        case 'logroll': o.push([i,'l'].concat(ob.logs.map(l=>netQ4(l.ang)))); break;
+        case 'tiltdeck': { const e = [i,'t']; for(const d of ob.decks) e.push(netQ4(d.tx), netQ4(d.ty)); o.push(e); break; }
+        case 'crumble': {
+          // only the slabs that are not simply standing there; the rest are
+          const e = [i,'c'];
+          ob.slabs.forEach((sl,k)=>{ if(sl.touched || sl.gone || sl.drop>0 || sl.fuse>0)
+            e.push(k, netQ4(sl.fuse), netQ4(sl.back||0), netQ4(sl.drop||0), (sl.touched?1:0)|(sl.gone?2:0)); });
+          o.push(e); break;
+        }
+        case 'tilefield': case 'hexfield': {
+          const cells = ob.type==='tilefield' ? ob.tiles : ob.cells;
+          const now = cells.map(netCellState), e = [i, ob.type==='tilefield' ? 'T' : 'H'];
+          if(full || !ob._netSent) e.push(1, netPack(now));
+          else { const ch = []; for(let k=0;k<now.length;k++) if(now[k]!==ob._netSent[k]) ch.push(k, now[k]); e.push(0, ch); }
+          ob._netSent = now;
+          // how far gone each shaking cell is, which is what the shake and the colour read
+          const fz = []; cells.forEach((c,k)=>{ if(c.touched && !c.gone) fz.push(k, netQ2(c.fuse)); });
+          e.push(fz); o.push(e); break;
+        }
+        case 'doors': { let m = 0; ob.items.forEach((it,k)=>{ if(it.broken) m |= 1<<k; }); o.push([i,'o', m]); break; }
+        case 'gems': o.push([i,'g', ob.items.map(g=>g.taken?1:0).join('')]); break;
+        case 'cannon': o.push([i,'k'].concat(ob.items.map(it=>netQ4(it.cool)))); break;
+      }
+    });
+    const s = [];
+    for(const b of shots){
+      if(!b.id) b.id = ++netShotId;
+      s.push(b.id, netQ2(b.x), netQ2(b.y), b.r, netQ2(b.vx), netQ4(b.spin||0), b.src?b.src[0]:-1, b.src?b.src[1]:-1);
+    }
+    return { f:full?1:0, o, s };
+  }
+
+  // ---- the joiner's side ----
+  function netSetCell(c, st){
+    const touched = !!(st&1), gone = !!(st&2);
+    if(gone && !c.gone) c.drop = 0;                        // it starts to fall now, here
+    if(!gone && c.gone){ c.drop = 0; c.fuse = -1; }        // rebuilt
+    c.touched = touched; c.gone = gone;
+  }
+  function applyObsSnapshot(snap){
+    if(!snap || !Array.isArray(snap.o)) return;
+    netHeardFor = obstacles;
+    const num = (v)=> typeof v === 'number' && isFinite(v);
+    for(const e of snap.o){
+      if(!Array.isArray(e)) continue;
+      const ob = obstacles[e[0]]; if(!ob) continue;
+      switch(e[1]){
+        case 'w':
+          if(ob.type!=='blockwall' || !ob.travel) break;
+          if(num(e[2])) ob.wy = e[2]; if(num(e[3])) ob.travel = e[3];
+          if(num(e[4]) && e[4] !== ob.gapStart){
+            ob.gapStart = e[4];
+            const it = wallItems(ob);
+            for(let k=0;k<ob.items.length && k<it.length;k++) ob.items[k].x = it[k].x;
+          }
+          break;
+        case 'b': if(ob.type==='spinlaser'){ if(num(e[2])) ob.ang = e[2]; if(num(e[3])) ob.speed = e[3]; } break;
+        case 'r': if(ob.type==='ring'){ if(num(e[2])) ob.r = e[2]; if(num(e[3])) ob.wait = e[3]; } break;
+        case 'd': if(ob.type==='disc' && num(e[2])) ob.ang = e[2]; break;
+        case 'l': if(ob.type==='logroll') ob.logs.forEach((l,k)=>{ if(num(e[2+k])) l.ang = e[2+k]; }); break;
+        case 't':
+          // the deck's lean follows the weight on it, which only the host
+          // knows: carry on at the rate the last two messages showed, briefly
+          if(ob.type==='tiltdeck') ob.decks.forEach((d,k)=>{
+            const tx = e[2+2*k], ty = e[3+2*k]; if(!num(tx) || !num(ty)) return;
+            const el = d._netT===undefined ? 0 : netClock - d._netT;
+            d._vx = el > 0.001 ? (tx - d._nx)/el : 0; d._vy = el > 0.001 ? (ty - d._ny)/el : 0;
+            d._nx = tx; d._ny = ty; d._netT = netClock; d._ext = 0;
+            d.tx = tx; d.ty = ty;
+          });
+          break;
+        case 'c':
+          if(ob.type==='crumble'){
+            const listed = new Set();
+            for(let k=2;k+4<e.length;k+=5){
+              const sl = ob.slabs[e[k]]; if(!sl) continue; listed.add(e[k]);
+              if(num(e[k+1])) sl.fuse = e[k+1]; if(num(e[k+2])) sl.back = e[k+2]; if(num(e[k+3])) sl.drop = e[k+3];
+              sl.touched = !!(e[k+4]&1); sl.gone = !!(e[k+4]&2);
+            }
+            ob.slabs.forEach((sl,k)=>{ if(!listed.has(k)){ sl.touched = false; sl.gone = false; sl.drop = 0; sl.fuse = -1; } });
+          }
+          break;
+        case 'T': case 'H': {
+          const cells = (e[1]==='T' && ob.type==='tilefield') ? ob.tiles : (e[1]==='H' && ob.type==='hexfield') ? ob.cells : null;
+          if(!cells) break;
+          if(e[2]===1 && typeof e[3]==='string'){ const st = netUnpack(e[3], cells.length); cells.forEach((c,k)=>netSetCell(c, st[k])); }
+          else if(Array.isArray(e[3])) for(let k=0;k+1<e[3].length;k+=2){ const c = cells[e[3][k]]; if(c) netSetCell(c, e[3][k+1]); }
+          if(Array.isArray(e[4])) for(let k=0;k+1<e[4].length;k+=2){ const c = cells[e[4][k]]; if(c && num(e[4][k+1])) c.fuse = e[4][k+1]; }
+          break;
+        }
+        case 'o': if(ob.type==='doors' && num(e[2])) ob.items.forEach((it,k)=>{ if(e[2] & (1<<k)) it.broken = true; }); break;
+        case 'g': if(ob.type==='gems' && typeof e[2]==='string') ob.items.forEach((g,k)=>{ g.taken = e[2][k]==='1'; }); break;
+        case 'k': if(ob.type==='cannon') ob.items.forEach((it,k)=>{ if(num(e[2+k])) it.cool = e[2+k]; }); break;
+      }
+    }
+    if(Array.isArray(snap.s)){
+      const keep = new Set();
+      for(let k=0;k+7<snap.s.length;k+=8){
+        const q = snap.s, id = q[k];
+        if(!num(q[k+1]) || !num(q[k+2]) || !num(q[k+3]) || !num(q[k+4])) continue;
+        keep.add(id);
+        let b = shots.find(x=>x.id===id);
+        if(!b){ b = { id, spin:0 }; if(q[k+6] >= 0) b.src = [q[k+6], q[k+7]]; shots.push(b); }
+        b.x = q[k+1]; b.y = q[k+2]; b.r = q[k+3]; b.vx = q[k+4]; if(num(q[k+5])) b.spin = q[k+5];
+      }
+      for(let k=shots.length-1;k>=0;k--) if(!keep.has(shots[k].id)) shots.splice(k,1);
+    }
+  }
+  // Between messages the course keeps moving on a joiner's screen by the
+  // host's own rules. Nothing here decides anything: a tile shakes until the
+  // host says it went, and every message puts the joiner back on the host.
+  function netObsTick(dt){
+    netClock += dt;
+    if(state!=='racing' || netHeardFor !== obstacles) return;
+    let packBack = 1e9, packFront = -1e9;
+    for(const r of racers){ if(r.y < packBack) packBack = r.y; if(r.y > packFront) packFront = r.y; }
+    for(const o of obstacles){
+      if(o.type==='blockwall' && o.travel){
+        o.travel = Math.min(o.travelMax, o.travel + o.ramp*dt);
+        o.wy -= o.travel*dt;
+        if(o.wy < o.wrapLo) o.wy += o.cycle;           // the new gap comes with the next message
+      } else if(o.type==='spinlaser' && o.ramp){
+        const dir = Math.sign(o.speed) || 1;
+        if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
+        o.ang = (o.ang||0) + o.speed*dt;
+      } else if(o.type==='ring'){
+        if(o.wait > 0) o.wait -= dt; else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
+      } else if(o.type==='disc'){
+        o.ang = (o.ang||0) + o.speed*dt;
+      } else if(o.type==='logroll'){
+        for(const l of o.logs) l.ang += l.spin*dt;
+      } else if(o.type==='tiltdeck'){
+        for(const d of o.decks){
+          if(d._netT===undefined || d._ext >= 0.1) continue;
+          const k = Math.min(dt, 0.1 - d._ext); d._ext += dt;
+          d.tx = clamp(d.tx + d._vx*k, -1, 1); d.ty = clamp(d.ty + d._vy*k, -1, 1);
+        }
+      } else if(o.type==='crumble'){
+        for(const sl of o.slabs){
+          if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
+          if(sl.gone){
+            sl.drop = Math.min(1, sl.drop + dt*2.4);
+            sl.back -= dt;
+            if(sl.back <= 0){ sl.gone = false; sl.touched = false; sl.fuse = -1; }
+          } else if(sl.drop > 0) sl.drop = Math.max(0, sl.drop - dt*3.2);
+        }
+      } else if(o.type==='tilefield' || o.type==='hexfield'){
+        const cells = o.type==='tilefield' ? o.tiles : o.cells, rate = o.type==='tilefield' ? 1.6 : 1.5;
+        for(const c of cells){
+          if(c.touched && !c.gone) c.fuse = Math.max(0, c.fuse - dt);
+          else if(c.gone && c.drop < 1) c.drop += dt*rate;
+        }
+      } else if(o.type==='cannon'){
+        for(const it of o.items){
+          if(it.y > packFront+2200 || it.y < packBack-700) continue;
+          it.cool -= dt; if(it.cool <= 0) it.cool = it.interval;
+        }
+      }
+    }
+    for(const b of shots){ b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r; }
+  }
+
+  function updateMinigames(dt,t){
+    for(const o of obstacles){
+      if(o.type==='mover'){
+        const x = moverX(o,t);
+        o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
+        o._px = x;
       } else if(o.type==='blockwall' && o.travel){
         // Faster for as long as the round lasts, and a new gap every lap: a
         // wall you have already read is not a wall you get to read twice.
@@ -824,7 +1103,6 @@
         // the ring waits a beat, then closes for the rest of the round
         if(o.wait > 0) o.wait -= dt;
         else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
-        if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
       } else if(o.type==='spinlaser' && o.ramp){
         // Not until the gun. The reveal and the flyover run about eleven
         // seconds and the field cannot move for any of it, so arms that swept
@@ -860,7 +1138,6 @@
         }
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
-        if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
       } else if(o.type==='crumble'){
         for(const sl of o.slabs){
           if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
@@ -914,38 +1191,33 @@
         // runner switched cannons off for the whole pack behind them.
         if(it.y > packFront+2200 || it.y < packBack-700) continue;
         it.cool -= dt;
+        // The warning on the floor is drawn by presentMinigames from it.cool;
+        // what stays here is the sound, once, as it lights.
         const m = o.meshes && o.meshes[i];
         if(m && m.warn){
           const lead = it.cool;                       // seconds until this one fires
           if(lead <= CANNON_WARN && lead > 0){
-            m.warn.visible = true;
-            // flash faster as it gets closer, so urgency reads without a HUD
-            const urgency = 1 - lead/CANNON_WARN;
-            m.warn.material.opacity = (0.18 + 0.42*urgency) * (0.55 + 0.45*Math.sin(t*(14+urgency*22)));
             if(!it.warned){ it.warned = true;
               const p = racers.find(r=>r.isPlayer);
               if(p && Math.abs(p.y - it.y) < 900) SFX.count();
             }
-          } else { m.warn.visible = false; }
+          }
         }
         if(it.cool<=0){
           it.warned = false;
           it.cool = it.interval;
+          // Which cannon fired it travels with it: presentMinigames gives the
+          // ball its mesh and that barrel its recoil, on a host and a joiner alike.
           const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
-                      vx: it.side<0 ? it.speed : -it.speed, spin:0 };
-          const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMaterial());
-          g.castShadow=true; placeAt(g, b.x, b.y, it.r+26);
-          courseGroup.add(g); b.mesh=g;
+                      vx: it.side<0 ? it.speed : -it.speed, spin:0, src:[obstacles.indexOf(o), i] };
           shots.push(b);
-          if(o.meshes && o.meshes[i]) o.meshes[i].recoil = 1;
         }
       }
     }
     for(let i=shots.length-1;i>=0;i--){
       const b=shots[i];
       b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r;
-      if(b.mesh){ placeAt(b.mesh, b.x, b.y, b.r+26); b.mesh.rotation.z = -b.spin; }
-      if(b.x < -60 || b.x > TRACK_W+60){ if(b.mesh) courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
+      if(b.x < -60 || b.x > TRACK_W+60){ shots.splice(i,1); continue; }
 
       // ---- a cannonball is not only a threat to racers ----
       // It brings a crumbling slab down under it...
@@ -1004,28 +1276,20 @@
     const field = obstacles.find(o=>o.type==='tilefield');
     if(field){
       for(const tl of field.tiles){
+        // State only: presentMinigames draws each tile from it.
         if(tl.touched && !tl.gone){
           tl.fuse -= dt;
-          if(tl.mesh){
-            const wob = Math.sin(t*26)*Math.max(0, 1-tl.fuse/field.fuseTime)*2.2;
-            tl.mesh.position.y = tl.baseY + wob;
-            if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(tl.fuse<field.fuseTime*0.4 ? 0xff7a5c : 0xffd166);
-          }
           if(tl.fuse<=0){ tl.gone=true; tl.drop=0;
             tl.back = (tl.layer>=2) ? Infinity : field.respawnTime;   // the bottom floor stays gone
             spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
         } else if(tl.gone){
           if(tl.drop<1){
             tl.drop += dt*1.6;
-            if(tl.mesh){ tl.mesh.position.y = tl.baseY - tl.drop*140; tl.mesh.rotation.z = tl.drop*0.5;
-              if(tl.drop>=1) tl.mesh.visible=false; }
           } else {
             tl.back -= dt;
             if(tl.back<=0){
               // rebuild: rise back into place
               tl.gone=false; tl.touched=false; tl.fuse=-1; tl.drop=0;
-              if(tl.mesh){ tl.mesh.visible=true; tl.mesh.rotation.z=0; tl.mesh.position.y=tl.baseY;
-                if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(0xffffff); }
               spawnBurst3D(tl.x, tl.y, 0xffffff, 4);
             }
           }
@@ -1037,12 +1301,9 @@
     const hf = obstacles.find(o=>o.type==='hexfield');
     if(hf){
       for(const c of hf.cells){
+        // State only, as for the tiles.
         if(c.touched && !c.gone){
           c.fuse -= dt;
-          if(c.mesh){
-            c.mesh.position.y = c.baseY + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
-            if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hexFuse(hf)*0.45 ? 0xff5a4d : 0xffd166);
-          }
           // Infinity, not a flag checked at the other end: the rebuild below
           // counts this down, so a rung that is never coming back is one whose
           // countdown never finishes.
@@ -1051,14 +1312,10 @@
         } else if(c.gone){
           if(c.drop<1){
             c.drop += dt*1.5;
-            if(c.mesh){ c.mesh.position.y = c.baseY - c.drop*160; c.mesh.rotation.x = c.drop*0.6;
-              if(c.drop>=1) c.mesh.visible=false; }
           } else {
             c.back -= dt;
             if(c.back<=0){
               c.gone=false; c.touched=false; c.fuse=-1; c.drop=0;
-              if(c.mesh){ c.mesh.visible=true; c.mesh.rotation.x=0; c.mesh.position.y=c.baseY;
-                if(c.topMat && c.topMat.color) c.topMat.color.setHex(0xffffff); }
             }
           }
         }

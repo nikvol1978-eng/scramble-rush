@@ -2,6 +2,10 @@
   // Euler angles.
   const _syncUp = new THREE.Vector3(0,1,0), _syncN = new THREE.Vector3(), _syncQ = new THREE.Quaternion();
   function syncObstacles(t){
+    // What the minigames' state looks like: tiles, hexes, the ring, cannon
+    // warnings and cannonballs. Here rather than in updateMinigames, so that a
+    // joiner, which never runs the simulation, draws it the same way a host does.
+    presentMinigames(t);
     for(const o of obstacles){
       if(o.type==='hammer'){
         for(const it of o.items){

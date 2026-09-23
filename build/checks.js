@@ -7915,6 +7915,171 @@
                    + ' over '+JSON.stringify(seen) };
   }
 
+  // ---------- σ: a joiner sees the course the host is running ----------
+  // A joiner never runs update(): the loop gives mp.role==='client' clientTick,
+  // which only sent input. So every obstacle whose state the host's simulation
+  // MOVES -- Wall Rush walls, Beam Team's arms, the closing ring, tiles and
+  // hexes falling, logs turning, decks tilting, slabs crumbling, paper doors
+  // tearing, cannonballs -- stood still on a joiner's screen, and the state
+  // message carried no floorH, so a joiner drew every racer on a log, a deck or
+  // a lower tier at the height of a floor that was not there.
+  //
+  // The host half is a real round with a peer that captures every 'state'
+  // message the real update() broadcasts through the real serializer, and what
+  // the host's world was when it sent it. The joiner half is the same page put
+  // back to the round's opening state and switched to mp.role 'client', fed
+  // those messages through the real handleClientData while the debug loop runs
+  // its client branch. After each message the joiner must hold what the host
+  // held; between messages the moving parts must stay with the host.
+  function checkJoinerObstacles(){
+    const bad = [], rep = {};
+    const mp0 = mp;
+    const LAYER = { tilefield:'tiles', hexfield:'cells' };
+    const read = ()=>{
+      const s = {};
+      obstacles.forEach((o,i)=>{
+        if(o.type==='blockwall' && o.travel) s[i] = { wy:o.wy, gap:o.gapStart };
+        else if(o.type==='spinlaser' && o.ramp) s[i] = { ang:o.ang };
+        else if(o.type==='ring') s[i] = { r:o.r };
+        else if(o.type==='disc') s[i] = { ang:o.ang||0 };
+        else if(o.type==='logroll') s[i] = { angs:o.logs.map(l=>l.ang) };
+        else if(o.type==='tiltdeck') s[i] = { tilt:o.decks.map(d=>[d.tx, d.ty]) };
+        else if(o.type==='crumble') s[i] = { down:o.slabs.map(x=>x.gone?1:0).join(''), drop:o.slabs.map(x=>x.drop||0) };
+        else if(LAYER[o.type]) s[i] = { gone:o[LAYER[o.type]].map(x=>x.gone?1:0).join(''),
+                                        touched:o[LAYER[o.type]].map(x=>x.touched?1:0).join('') };
+        else if(o.type==='doors') s[i] = { broken:o.items.map(x=>x.broken?1:0).join('') };
+        else if(o.type==='cannon') s[i] = { cool:o.items.map(x=>x.cool) };
+      });
+      s.shots = shots.map(b=>[b.x, b.y]);
+      return s;
+    };
+    const floors = ()=>{ const f = {}; for(const r of racers) f[r.remoteId||r._localId] = r.floorH||0; return f; };
+    // The round's opening state, which is what a joiner is built from.
+    const plain = (k,v)=> (v && typeof v==='object' && (v.isObject3D || v.isMaterial || v.isTexture || v.isBufferGeometry)) ? undefined
+                          : (k==='meshes'||k==='mesh'||k==='pegMeshes'||k==='armPivot'||k==='panel'||k==='lip'||k==='topMat') ? undefined : v;
+    const put = (dst, src)=>{
+      for(const k in src){
+        const v = src[k];
+        if(v && typeof v==='object' && dst[k] && typeof dst[k]==='object') put(dst[k], v);
+        else dst[k] = (v===null && typeof dst[k]==='number') ? dst[k] : v;
+      }
+    };
+    const near = (a,b,tol)=> typeof a==='number' && typeof b==='number' && Math.abs(a-b) <= tol;
+    // tight after a message; loose for the moving parts between messages
+    const diff = (J, H, loose)=>{
+      const out = [];
+      const T = loose ? { wy:1.0, ang:0.02, r:0.8, tilt:0.06, drop:0.06, cool:0.06 }
+                      : { wy:0.011, ang:2e-4, r:0.011, tilt:2e-4, drop:0.002, cool:0.011 };
+      for(const i in H){
+        if(i==='shots') continue;
+        const h = H[i], j = J[i]; if(!j){ out.push(i+' missing'); continue; }
+        if('wy' in h && !near(j.wy, h.wy, T.wy)) out.push('wall '+i+' y '+(+j.wy).toFixed(1)+' vs '+h.wy.toFixed(1));
+        if('gap' in h && !loose && j.gap !== h.gap) out.push('wall '+i+' gap '+j.gap+' vs '+h.gap);
+        if('ang' in h && !near(j.ang, h.ang, T.ang)) out.push('ang '+i+' '+(+j.ang).toFixed(3)+' vs '+h.ang.toFixed(3));
+        if('r' in h && !near(j.r, h.r, T.r)) out.push('ring '+i+' r '+(+j.r).toFixed(1)+' vs '+h.r.toFixed(1));
+        if(h.angs) h.angs.forEach((a,k)=>{ if(!near(j.angs[k], a, T.ang)) out.push('log '+i+'/'+k+' '+(+j.angs[k]).toFixed(3)+' vs '+a.toFixed(3)); });
+        if(h.tilt) h.tilt.forEach((t,k)=>{ if(!near(j.tilt[k][0], t[0], T.tilt) || !near(j.tilt[k][1], t[1], T.tilt))
+                                            out.push('deck '+i+'/'+k+' '+j.tilt[k].map(v=>(+v).toFixed(3))+' vs '+t.map(v=>v.toFixed(3))); });
+        if('down' in h && !loose && j.down !== h.down) out.push('slabs '+i+' '+j.down+' vs '+h.down);
+        if(h.drop) h.drop.forEach((d,k)=>{ if(!near(j.drop[k], d, T.drop)) out.push('slab '+i+'/'+k+' drop '+(+j.drop[k]).toFixed(2)+' vs '+d.toFixed(2)); });
+        if('gone' in h && !loose && (j.gone !== h.gone || j.touched !== h.touched)){
+          let n = 0; for(let k=0;k<h.gone.length;k++) if(j.gone[k]!==h.gone[k] || j.touched[k]!==h.touched[k]) n++;
+          out.push('floor '+i+': '+n+' cells differ');
+        }
+        if('broken' in h && !loose && j.broken !== h.broken) out.push('doors '+i+' '+j.broken+' vs '+h.broken);
+        if(h.cool) h.cool.forEach((c,k)=>{ if(!near(j.cool[k], c, T.cool)) out.push('cannon '+i+'/'+k+' cool '+(+j.cool[k]).toFixed(2)+' vs '+c.toFixed(2)); });
+      }
+      if(!loose){
+        if(J.shots.length !== H.shots.length) out.push('shots '+J.shots.length+' vs '+H.shots.length);
+        else H.shots.forEach((s,k)=>{ if(!near(J.shots[k][0], s[0], 0.011)) out.push('shot '+k+' x '+J.shots[k][0].toFixed(1)+' vs '+s[0].toFixed(1)); });
+      }
+      return out;
+    };
+    const setup = {
+      logjam:(p)=>{ const o = obstacles.find(x=>x.type==='logroll'); const l = o.logs[0]; Object.assign(p, { x:l.cx, y:l.a+30 }); },
+      tiltdeck:(p)=>{ const o = obstacles.find(x=>x.type==='tiltdeck'); const d = o.decks[0]; Object.assign(p, { x:d.cx+d.w*0.3, y:d.y-d.d*0.3 }); },
+      sunny:(p)=>{ const o = obstacles.find(x=>x.type==='crumble'); Object.assign(p, { x:o.slabs[0].x, y:o.yStart-30 }); },
+    };
+    const MAPS = ['walls','beam','shrink','tiles','comb','lastrung','logjam','tiltdeck','doors','sunny','cannonc'];
+    try {
+      for(const key of MAPS){
+        begin(key);
+        const p = player();
+        if(setup[key]){ setup[key](p); p.vx = 0; p.vy = 0; p.h = 0; p.vh = 0; p.falling = false; }
+        const start = JSON.parse(JSON.stringify(obstacles, plain));
+        const msgs = [], truth = [], at = [], bytes = [];
+        let tick = 0;
+        mp = Object.assign({}, mp0, { role:'host', tOffset:0, sendAccum:0,
+          conns:[{ open:true, send:(d)=>{ if(!d || d.type!=='state') return;
+            const s = JSON.stringify(d); bytes.push(s.length); msgs.push(JSON.parse(s));
+            truth.push({ s:read(), f:floors() }); at.push(tick); } }] });
+        timeLimit = raceTime + 900;
+        window.__dbg.hold('w', true);
+        for(tick=0; tick<60*8 && state==='racing'; tick++) window.__dbg.tick(1);
+        window.__dbg.hold('w', false);
+        // what moved at any point, not just between the first message and the
+        // last: a slab that fell and came back ends where it started
+        const H0 = truth[0] && truth[0].s;
+        const moved = H0 ? Object.keys(H0).filter(k=>truth.some(t=>JSON.stringify(t.s[k])!==JSON.stringify(H0[k]))).length : 0;
+        const floored = truth.some(t=>Object.values(t.f).some(v=>Math.abs(v) > 1));
+        // the joiner: the opening state, the client branch, the host's own messages
+        obstacles.forEach((o,i)=>put(o, start[i]));
+        shots.length = 0;
+        mp = Object.assign({}, mp0, { role:'client', conns:[], hostConn:{ open:true, send(){} }, tOffset:0, sendAccum:0 });
+        state = 'racing';
+        const errs = [];
+        let fErr = 0, fWorst = 0;
+        for(let k=0;k<msgs.length && errs.length<4;k++){
+          if(k>0){
+            for(let n=at[k]-at[k-1]; n>0; n--) window.__dbg.tick(1);
+            const d = diff(read(), truth[k].s, true);
+            if(d.length) errs.push('between msgs '+(k-1)+'-'+k+': '+d.slice(0,3).join(', '));
+          }
+          handleClientData(msgs[k]);
+          const d = diff(read(), truth[k].s, false);
+          if(d.length) errs.push('after msg '+k+': '+d.slice(0,3).join(', '));
+          const hf = truth[k].f;
+          for(const r of racers) if(r._netId && r._netId in hf){
+            const e = Math.abs((r.floorH||0) - hf[r._netId]);
+            if(e > 0.06){ fErr++; fWorst = Math.max(fWorst, e); }
+          }
+        }
+        if(fErr) errs.push('floorH off on '+fErr+' racer-messages, by up to '+fWorst.toFixed(1));
+        // And a host that predates all this sends neither field: a joiner of
+        // one must go on exactly as it did, nothing carried on and no error.
+        if(key==='walls'){
+          obstacles.forEach((o,i)=>put(o, start[i]));
+          shots.length = 0;
+          netHeardFor = null;             // a joiner that has never heard a snapshot this round
+          const before = JSON.stringify(read());
+          try {
+            for(let k=0;k<msgs.length;k++){
+              const m = JSON.parse(JSON.stringify(msgs[k])); delete m.obs;
+              for(const r of m.racers) delete r.floorH;
+              handleClientData(m);
+              if(k+1<msgs.length) for(let n=at[k+1]-at[k]; n>0; n--) window.__dbg.tick(1);
+            }
+            if(JSON.stringify(read()) !== before) errs.push('messages from an old host moved the course on the joiner');
+            if(racers.some(r=>r._netId && (r.floorH||0) !== 0)) errs.push('messages from an old host left a floorH behind');
+          } catch(e){ errs.push('messages from an old host threw: '+e.message); }
+        }
+        const avg = bytes.length ? Math.round(bytes.reduce((a,b)=>a+b,0)/bytes.length) : 0;
+        const inFlight = truth.reduce((m,t)=>Math.max(m, t.s.shots.length), 0);
+        rep[key] = msgs.length+' msgs, '+moved+' stateful moved, '+(floored?'floorH seen':'no floorH')
+                 +(inFlight ? ', up to '+inFlight+' shots in flight' : '')
+                 +', bytes avg '+avg+' max '+(bytes.length?Math.max(...bytes):0);
+        if(!msgs.length) bad.push(key+': the host sent no state');
+        else if(!moved) bad.push(key+': nothing stateful moved on the host, so nothing was measured');
+        if(key==='cannonc' && !inFlight) bad.push('cannonc: no cannonball was in flight, so none was measured');
+        if(errs.length) bad.push(key+': '+errs.join(' | '));
+        mp = mp0;
+      }
+    } finally { mp = mp0; }
+    return { name:'σ a joiner sees the walls, arms, rings, floors, logs, decks, slabs, doors and shots the host is running',
+             pass: bad.length===0,
+             detail: (bad.length ? bad.slice(0,6).join('; ')+' || ' : '') + JSON.stringify(rep) };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7928,8 +8093,9 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
-      // Solids stay solid, the eliminated are not bodies, hazards are drawn where they hit.
-      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],['ρ',checkHazardMeshes],
+      // Solids stay solid, the eliminated are not bodies, hazards are drawn where they hit,
+      // and a joiner sees the course the host is running.
+      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],['ρ',checkHazardMeshes],['σ',checkJoinerObstacles],
       // These two used to be pinned to the end of the registry as a WORKAROUND:
       // the suite shared one Math.random stream and one accumulating clock, [~]
       // steps ninety simulated seconds of lobby into that clock, and putting it
