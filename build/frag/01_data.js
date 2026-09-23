@@ -367,8 +367,12 @@
   ];
   const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map(p=>[p.id,p]));
   function patternOf(id){ return PATTERN_BY_ID[id] || PATTERN_BY_ID['none']; }
+  // Only ids the catalogue knows. A save outlives the catalogue it was written
+  // against, so it can carry a pattern a later release retired or renamed; the
+  // id stays in the save, but it is not a pattern on any count -- "Patterns
+  // owned N / total" and the Wardrobe badge both read this.
   function ownedPatterns(){
-    const set = new Set(stats.patterns||[]);
+    const set = new Set((stats.patterns||[]).filter(id=>PATTERN_BY_ID[id]));
     for(const p of PATTERNS){
       if(p.unlock.kind==='default') set.add(p.id);
       if(p.unlock.kind==='badge' && (stats.badges||[]).includes(p.unlock.badge)) set.add(p.id);
@@ -395,8 +399,11 @@
                 winStreak:0, bestStreak:0, cleanWins:0 };
   function xpForLevel(l){ return 100+(l-1)*40; }
 
+  // Only ids the catalogue knows, for the reason ownedPatterns gives: a
+  // retired colourway in the save must not reach "Colourways owned N / total"
+  // or the Collector badge. The save itself is left as it is.
   function ownedSkins(){
-    const set = new Set(stats.owned||[]);
+    const set = new Set((stats.owned||[]).filter(id=>SKIN_BY_ID[id]));
     for(const s of SKINS){
       if(s.unlock.kind==='default') set.add(s.id);
       if(s.unlock.kind==='badge' && (stats.badges||[]).includes(s.unlock.badge)) set.add(s.id);

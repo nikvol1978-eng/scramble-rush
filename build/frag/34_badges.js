@@ -20,6 +20,14 @@
                                  && !(stats.claimed||[]).includes(a.id));
   }
 
+  // Earned badges the game knows, each once. The header and the Stats row
+  // both count this, so they cannot disagree: a save can hold a badge id a
+  // later release renamed, or the same id twice, and neither is a badge.
+  function bgEarned(){
+    const got = new Set(stats.badges||[]);
+    return ACHIEVEMENTS.filter(a => got.has(a.id));
+  }
+
   function bgTierOf(a){
     // Cheap banding for the eye, off the size of the payout. It is only used
     // to colour the card's rail, never to decide anything.
@@ -96,7 +104,7 @@
 
   function bgSyncHead(){
     const total = ACHIEVEMENTS.length;
-    const earned = (stats.badges||[]).filter(id=>ACHIEVEMENTS.some(a=>a.id===id)).length;
+    const earned = bgEarned().length;
     const pending = bgClaimable().length;
     $('bgSummary').textContent = earned + ' of ' + total + ' earned';
     $('bgFill').style.width = (total ? (earned/total)*100 : 0) + '%';
@@ -185,7 +193,7 @@
       ['Clean rounds (no falls)', fmtNum(stats.noFallFinishes)],
       ['Online matches', fmtNum(stats.mpRaces)],
       ['Best win streak', fmtNum(stats.bestStreak || 0)],
-      ['Badges earned',  (stats.badges||[]).length + ' / ' + ACHIEVEMENTS.length],
+      ['Badges earned',  bgEarned().length + ' / ' + ACHIEVEMENTS.length],
       ['Colourways owned', owned + ' / ' + SKINS.length],
       ['Patterns owned', ownedPatterns().size + ' / ' + PATTERNS.length],
     ];
