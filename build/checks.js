@@ -6621,6 +6621,130 @@
   }
 
 
+  // ---- [δ] a menu hotkey acts on the screen it is printed on ---------------
+  // ENTER and F are the two prompts printed on the lobby's PLAY and INVITE
+  // buttons, and the lobby's keydown listener fired them from EVERY menu
+  // screen. Enter in the locker equipped and then threw you into Mode Select;
+  // Enter in the shop opened the buy dialog and then Mode Select on top of it;
+  // Enter on the FRIENDS card of Mode Select opened the room screen and at once
+  // re-opened Mode Select, so that card could not be taken by keyboard at all;
+  // F stacked the invite screen over whatever was open. The same listener
+  // turned the key you were binding in SETTINGS into a tab change, took keys
+  // typed into the support form's <select>, and walked the tabs while no menu
+  // screen was up at all -- under the boot loader and over the room screen.
+  //
+  // Real keydown events through the real listeners, from the real screens.
+  function checkMenuHotkeys(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const keys0 = Object.assign({}, settings.keys);
+    const shown = (id)=>{ const e = $(id); return !!e && !e.classList.contains('hidden'); };
+    const live = ()=>[...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden')).map(e => e.id).sort().join('+') || 'nothing';
+    const press = (key, target)=>{
+      (target || document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles:true, cancelable:true }));
+    };
+    const mp = $('mpBtn'), mode0 = modeIndex; let invites = 0;
+    try{
+      state = 'menu';
+      // F would really open the invite screen and fetch PeerJS; counting the
+      // press is all this needs, so the button's click is shadowed for the run.
+      mp.click = ()=>{ invites++; };
+
+      // 0. THE STRIP'S OWN KEYS STILL WALK IT FROM ANY MENU SCREEN.
+      openLobbyTab('locker');
+      press('e');
+      if(live() !== 'badges') bad.push('E on LOCKER did not step to BADGES (live: ' + live() + ')');
+      press('q');
+      if(live() !== 'locker') bad.push('Q on BADGES did not step back to LOCKER (live: ' + live() + ')');
+
+      // 1. ON THE LOBBY BOTH PROMPTS STILL WORK -- this is the half that must
+      //    not be lost while fixing the other.
+      openLobbyTab('play');
+      press('Enter');
+      if(!shown('modeSelect')) bad.push('Enter on the lobby did not open Mode Select (live: ' + live() + ')');
+      openLobbyTab('play');
+      press('f');
+      if(invites !== 1) bad.push('F on the lobby pressed INVITE ' + invites + ' times, not once');
+
+      // 2. EVERY OTHER MENU SCREEN KEEPS ITS OWN ENTER AND IGNORES F.
+      const opens = {
+        locker:()=>openLobbyTab('locker'), shop:()=>openLobbyTab('shop'), pass:()=>openLobbyTab('pass'),
+        badges:()=>openLobbyTab('badges'), settings:()=>openLobbyTab('settings'), daily:()=>openDaily(),
+      };
+      for(const [id, open] of Object.entries(opens)){
+        open();
+        for(const key of ['Enter', 'f']){
+          closeBuy();                     // the shop's own Enter opens its dialog; F is asked of the screen
+          invites = 0;
+          press(key);
+          const now = live();
+          if(now !== id) bad.push(key + ' on ' + id.toUpperCase() + ' left ' + now + ' live');
+          if(invites) bad.push(key + ' on ' + id.toUpperCase() + ' pressed INVITE');
+          if(now !== id) open();
+        }
+      }
+      closeBuy();
+
+      // 3. THE FRIENDS CARD CAN BE TAKEN BY KEYBOARD.
+      openModeSelect();
+      const cards = [...document.querySelectorAll('#modeGrid .modeCard')];
+      if(cards.length < 2) bad.push('Mode Select has ' + cards.length + ' cards');
+      else{
+        cards[cards.length - 1].click();
+        press('Enter');
+        if(live() !== 'mpHome') bad.push('Enter on the friends card left ' + live() + ' live, not the invite screen');
+      }
+
+      // 4. A KEY BEING BOUND IS BOUND, AND DOES NOTHING ELSE.
+      openLobbyTab('settings');
+      const kb = document.querySelector('#settings .keybtn');
+      if(!kb) bad.push('no key-binding button in settings');
+      else{
+        kb.click();
+        press('e');
+        if(live() !== 'settings') bad.push('binding a key to E also walked the tabs: ' + live() + ' live');
+        if(!Object.values(settings.keys).includes('e')) bad.push('the key being bound was not bound');
+      }
+      Object.assign(settings.keys, keys0);
+
+      // 5. A FORM CONTROL IN THE SUPPORT DIALOG OWNS ITS KEYS.
+      openLobbyTab('settings');
+      openSupport();
+      const sel = $('supCategory');
+      for(const key of ['e', 'Enter', 'f', ']']){
+        invites = 0;
+        press(key, sel);
+        if(!shown('support') || live() !== 'settings' || invites)
+          bad.push(key + ' in the support form\'s <select> left ' + live() + (shown('support') ? '' : ', support closed') + (invites ? ', INVITE pressed' : ''));
+      }
+      closeSupport();
+
+      // 6. NO MENU SCREEN UP -- the boot loader's state, and the room's -- NO KEYS.
+      openLobbyTab('play');
+      hideMenuScreens(); syncMenuChrome();
+      $('lobby').classList.remove('hidden');
+      for(const key of ['e', ']', 'Enter']){
+        invites = 0;
+        press(key);
+        if(live() !== 'lobby' || invites) bad.push(key + ' with no menu screen up opened ' + live());
+      }
+      $('lobby').classList.add('hidden');
+      notes.push('Enter/F on the lobby only; 6 screens x 2 keys; friends card; key binding; support <select>; no-screen state');
+    } finally {
+      delete mp.click;
+      modeIndex = mode0;
+      Object.assign(settings.keys, keys0);
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ closeSupport(); closeBuy(); $('lobby').classList.add('hidden'); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshPreview(); }catch(_){ /* best effort */ }
+    }
+    return { name:'δ menu hotkeys: Enter and F belong to the lobby, and nothing fires through a screen, a form or a binding',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7584,6 +7708,7 @@
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
+      ['δ',checkMenuHotkeys],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly

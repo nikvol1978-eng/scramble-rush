@@ -678,7 +678,9 @@
   function keyName(k){ return k===' '?'SPACE': k==='arrowup'?'↑': k==='arrowdown'?'↓': k==='arrowleft'?'←': k==='arrowright'?'→': k.length===1?k.toUpperCase():k.toUpperCase(); }
   window.addEventListener('keydown', e=>{
     const k = e.key.toLowerCase();
-    if(listeningFor){ e.preventDefault(); settings.keys[listeningFor]=k; listeningFor=null; buildSettings(); updateHint(); return; }
+    // A key being bound is consumed here: without stopImmediatePropagation the
+    // lobby's listener also acted on it, so binding E walked the tabs away.
+    if(listeningFor){ e.preventDefault(); e.stopImmediatePropagation(); settings.keys[listeningFor]=k; listeningFor=null; buildSettings(); updateHint(); return; }
     keys[k]=true;
     if(k===settings.keys.jump){ e.preventDefault(); tryJump(); }
     if(k===settings.keys.dive){ e.preventDefault(); tryDive(); }

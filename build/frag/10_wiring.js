@@ -76,9 +76,24 @@
     const i = LOBBY_TABS.indexOf(lobbyTabSelected());
     openLobbyTab(LOBBY_TABS[(i + dir + LOBBY_TABS.length) % LOBBY_TABS.length]);
   }
+  // A dialog that sits over a menu screen owns the keyboard while it is up.
+  function menuDialogOpen(){
+    return ['buyBox','support'].some(id => { const e = $(id); return e && !e.classList.contains('hidden'); });
+  }
+  // WHICH SCREEN A KEY BELONGS TO. Q/E and [ ] walk the strip, so they work
+  // wherever the strip is -- which is exactly when a menu screen is up: not
+  // under the boot loader, and not over the multiplayer room, where the strip
+  // is hidden and these keys used to open screens underneath it. ENTER and F
+  // are the prompts printed on the lobby's PLAY and INVITE buttons, so they
+  // are the LOBBY's. They used to fire from every menu screen: Enter in the
+  // locker equipped and then opened Mode Select, Enter in the shop opened Mode
+  // Select over its own buy dialog, and Enter on Mode Select's friends card
+  // opened the room screen and immediately re-opened Mode Select on top of it.
   window.addEventListener('keydown', e=>{
     if(state!=='menu') return;
-    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+    if(!menuScreenOpen() || $('bootScreen') || menuDialogOpen()) return;
+    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA' || e.target.tagName==='SELECT')) return;
+    const onLobby = !$('home').classList.contains('hidden');
     if(e.key==='q' || e.key==='Q'){ SFX.click(); cycleLobbyTab(-1); e.preventDefault(); }
     if(e.key==='e' || e.key==='E'){ SFX.click(); cycleLobbyTab(1);  e.preventDefault(); }
     // The bracket keys do the same thing. Q/E is the habit from the pad's
@@ -88,8 +103,8 @@
     // The lobby advertised the gamepad face buttons A and Y whether or not a
     // pad was plugged in, and neither had a keyboard equivalent bound -- so on
     // a keyboard the two prompts on the screen were both wrong and both dead.
-    if(e.key==='Enter'){ const b=$('playBtn'); if(b){ b.click(); e.preventDefault(); } }
-    if(e.key==='f' || e.key==='F'){ const b=$('mpBtn'); if(b){ b.click(); e.preventDefault(); } }
+    if(onLobby && e.key==='Enter'){ const b=$('playBtn'); if(b){ b.click(); e.preventDefault(); } }
+    if(onLobby && (e.key==='f' || e.key==='F')){ const b=$('mpBtn'); if(b){ b.click(); e.preventDefault(); } }
   });
 
   // Which prompts to show. A pad that is plugged in gets its own glyphs; with
