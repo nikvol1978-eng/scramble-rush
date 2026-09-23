@@ -2,7 +2,7 @@
   // STARTUP  (v26 §1)
   // ============================================================
   // What this replaces: `updateHint(); goHome(); loadProfile();` and a boot
-  // screen taken down on window.load. Three things were wrong with that.
+  // screen taken down on window.load. Two things were wrong with that.
   //
   //   loadProfile() WAS NEVER AWAITED. It is async -- it reads the profile off
   //   the Nikcade storage bridge -- so the lobby painted first and the coins,
@@ -11,12 +11,15 @@
   //   THE LOBBY WAS ALREADY UP behind the boot screen, which came down on a
   //   load event that has nothing to do with whether the game can be played.
   //
-  //   AND IT WENT TO THE LOBBY, not to a choice. The first thing the player
-  //   met was a screen about their bean rather than a question about what they
-  //   wanted to do.
+  // Now: the loader stays up until the work is actually done, and the work is
+  // real.
   //
-  // Now: the loader stays up until the work is actually done, the work is real,
-  // and the handoff is to MODE SELECT.
+  // AND THE HANDOFF IS TO THE LOBBY. v26 §1 sent the player straight to MODE
+  // SELECT, on the argument that the first screen should be a question about
+  // what to play rather than a screen about their bean. The player asked for
+  // the opposite: land on the home page, with the mode picker one PLAY press
+  // away as it is from everywhere else. So it is openLobbyTab('play') -- the
+  // same route the PLAY pill and Mode Select's own BACK take.
   //
   // THE RULE FOR THE MINIMUM. Transition when `ready && elapsed >= minimum`.
   // Never on a timer alone -- a clock running out is not a reason to show
@@ -105,11 +108,12 @@
         } },
       { msg:'Preparing game…', required:false, run: async ()=>{
           // Fredoka decides the width of every label on every screen behind
-          // this one. Handing over before it lands means the mode cards reflow
-          // in front of the player.
+          // this one. Handing over before it lands means the lobby's labels
+          // reflow in front of the player. (Mode Select is not built here any
+          // more: openModeSelect rebuilds its grid every time it opens, so
+          // building it for a boot that does not show it was work thrown away.)
           if(document.fonts && document.fonts.ready) await document.fonts.ready;
           refreshLobby(); refreshCoinChips(); refreshDailyChip();
-          buildModeSelect();          // the screen we are about to hand over to
           await bootFrame();
         } },
     ];
@@ -160,8 +164,8 @@
   function bootGoNikcade(){ window.location.assign('/'); }
 
   // ---- the handoff -------------------------------------------------------
-  // SWITCH FIRST, THEN FADE. openModeSelect goes through backToLobby, which
-  // rebuilds the character preview, and that is not cheap: measured at 1.8s on
+  // SWITCH FIRST, THEN FADE. openLobbyTab('play') goes through backToLobby,
+  // which rebuilds the character preview, and that is not cheap: measured at 1.8s on
   // a software renderer. Fading the loader out first and opening the screen
   // afterwards left the player looking at a bare canvas for the whole of it --
   // no loader, no screen, just the 3D background. So the screen is put up
@@ -172,7 +176,7 @@
   // its box and goes on eating clicks, and this one sits at z-index 200 over
   // every screen in the game -- the daily-spin fault, one layer up.
   async function bootHandoff(){
-    openModeSelect();
+    openLobbyTab('play');
     await bootFrame();
     const b = $('bootScreen');
     if(b){

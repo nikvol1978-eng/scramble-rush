@@ -353,6 +353,8 @@ async function setGrant(pageA, targetId, on) {
 
 // ---------------------------------------------------------------- the round
 const sel = {
+  home: '#home',
+  play: '#playBtn',
   modeSelect: '#modeSelect',
   card: '#modeGrid .modeCard',
   go: '#modeGo',
@@ -376,7 +378,14 @@ async function bootToModeSelect(page) {
   if (/not authorised|forbidden|403/i.test(gated) && gated.length < 200) {
     throw new Error('the game route refused this session: ' + gated.trim());
   }
-  await page.waitForFunction(visible(sel.modeSelect), { timeout: 90000, polling: 500 });
+  // The game starts on the lobby; Mode Select is one PLAY press away. Wait for
+  // the loader to be GONE as well as the lobby to show -- the lobby is built
+  // behind the loader first -- then press the real PLAY button, the way a
+  // player gets there.
+  await page.waitForFunction(`!document.getElementById('bootScreen') && ${visible(sel.home)}`,
+    { timeout: 90000, polling: 500 });
+  await page.evaluate((s) => document.querySelector(s).click(), sel.play);
+  await page.waitForFunction(visible(sel.modeSelect), { timeout: 30000, polling: 250 });
   await page.evaluate(() => { try { window.__c.who = null; } catch (e) {} });
 }
 

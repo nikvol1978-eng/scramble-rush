@@ -6241,16 +6241,20 @@
       if(!seenFast.loader) bad.push('the loader was already gone while the gates were still running');
       if(seenFast.live && seenFast.live.length) bad.push('during the load these were live: ' + seenFast.live.join(', '));
       if(loaderUp()) bad.push('the loader is still in the document after a fast start');
+      // THE GAME STARTS ON THE LOBBY. v26 §1 handed over to MODE SELECT; the
+      // player asked for the home page first, with the mode picker one PLAY
+      // press away as it is from everywhere else.
       let up = live();
-      if(up.length !== 1 || up[0] !== 'modeSelect')
-        bad.push('a fast start ended on [' + (up.join(', ') || 'nothing') + '], wanted [modeSelect]');
+      if(up.length !== 1 || up[0] !== 'home')
+        bad.push('a fast start ended on [' + (up.join(', ') || 'nothing') + '], wanted [home]');
       //    AND WHAT THE HANDOFF LEFT. The loader sits at z-index 200 over
       //    everything, so hiding it rather than removing it would leave a
       //    full-screen sheet eating every click on the screen it just
       //    revealed. Asserted on this handoff rather than on a fifth sequence
       //    of its own: each one costs a preview rebuild, and this one is
-      //    already here and already finished.
-      for(const id of ['modeGo','modeBack']){
+      //    already here and already finished. PLAY and multiplayer are the
+      //    two ways out of the lobby into a round.
+      for(const id of ['playBtn','mpBtn']){
         const b = $(id);
         if(!b){ bad.push('no #' + id + ' after the handoff'); continue; }
         const r = b.getBoundingClientRect();
@@ -6258,8 +6262,10 @@
         if(!hit || !b.contains(hit))
           bad.push('#' + id + ' is covered by ' + (hit ? (hit.id ? '#'+hit.id : hit.tagName) : 'nothing'));
       }
-      if(!document.querySelectorAll('#modeGrid .modeCard').length)
-        bad.push('the mode picker handed over with no modes in it');
+      // Arrived by the router, the way the PLAY pill arrives: the lobby with
+      // its own tab selected, not #home shown by hand under another tab.
+      if(lobbyTabSelected() !== 'play')
+        bad.push('the lobby handed over with the ' + lobbyTabSelected() + ' tab selected, wanted play');
       notes.push('fast: held ' + Math.round(took) + 'ms for a 2600ms floor, controls clickable');
 
       // 2. SLOW: the work outlasts the minimum, so the WORK is what holds it.
@@ -6273,8 +6279,8 @@
       if(!seenSlow.loader) bad.push('a slow gate lost the loader while it was still working');
       if(seenSlow.live && seenSlow.live.length) bad.push('a slow start showed ' + seenSlow.live.join(', ') + ' before it was ready');
       up = live();
-      if(up.length !== 1 || up[0] !== 'modeSelect')
-        bad.push('a slow start ended on [' + (up.join(', ') || 'nothing') + ']');
+      if(up.length !== 1 || up[0] !== 'home')
+        bad.push('a slow start ended on [' + (up.join(', ') || 'nothing') + '], wanted [home]');
       notes.push('slow: waited ' + Math.round(took) + 'ms for a 700ms gate');
 
       // 3. FAILURE: a required gate throws. The player gets told, and gets a
@@ -6297,8 +6303,8 @@
       // 4. A HIDDEN TAB GETS NO ANIMATION FRAMES.
       //    requestAnimationFrame does not fire in a background tab, and the
       //    sequence waits on frames in three places -- including the handoff,
-      //    between opening the mode picker and taking the loader down. Found
-      //    on nikcade with the window behind another one: MODE SELECT was live
+      //    between opening the first screen and taking the loader down. Found
+      //    on nikcade with the window behind another one: the screen was live
       //    with the loader still on top of it, eating every click. A headless
       //    page counts as visible, so nothing local could see it. Stubbing rAF
       //    to never call back is what a background tab does, exactly.
@@ -6312,8 +6318,8 @@
       }
       if($('bootScreen')) bad.push('with no animation frames the loader never came down');
       up = live();
-      if(up.length !== 1 || up[0] !== 'modeSelect')
-        bad.push('a frameless start ended on [' + (up.join(', ') || 'nothing') + ']');
+      if(up.length !== 1 || up[0] !== 'home')
+        bad.push('a frameless start ended on [' + (up.join(', ') || 'nothing') + '], wanted [home]');
       notes.push('frameless: handed over anyway');
 
       // 5. AND THIS CHECK CLEANS UP AFTER ITSELF, provably.
