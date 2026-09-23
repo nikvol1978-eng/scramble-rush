@@ -6380,6 +6380,35 @@
       el.appendChild(m); const r = m.getBoundingClientRect(); m.remove();
       return [r.left, r.top]; });
     const fixedParts = ()=> ['.wheelPin', '.wheelHub'].map(q => W().querySelector(q));
+    // Resolves once the wheel has stopped: no transform transition running
+    // anywhere inside the wrap, AND every element's computed transform
+    // unchanged over three polls in a row -- the first catches a timeline
+    // that stalled mid-transition, the second anything that turns without a
+    // transition. Gives { turned: ms a transition was still running for,
+    // ms: ms until the pose held }, or null if the wheel is still moving at
+    // the ceiling. Structure-agnostic like everything else here: it asks the
+    // whole wrap, not an element it expects to be the rotor.
+    const wheelStops = async (ms)=>{
+      const start = performance.now(), end = start + ms;
+      const turning = ()=> W().getAnimations({ subtree:true }).filter(a =>
+        a.transitionProperty === 'transform' && a.playState !== 'finished');
+      const pose = ()=> [...W().querySelectorAll('*')].map(e => getComputedStyle(e).transform).join('|');
+      let last = null, same = 0, turned = 0;
+      while(performance.now() < end){
+        const run = turning();
+        if(run.length){
+          await Promise.race([Promise.all(run.map(a => a.finished.catch(()=>{}))),
+                              wait(Math.max(0, end - performance.now()))]);
+          turned = performance.now() - start;
+          last = null; same = 0; continue;
+        }
+        const p = pose();
+        if(p === last){ if(++same >= 3) return { turned, ms: performance.now() - start }; }
+        else { last = p; same = 0; }
+        await wait(50);
+      }
+      return null;
+    };
     const sample = (when)=>{
       const c = centre();
       return { when, c, disc: discRot(),
@@ -6505,7 +6534,15 @@
       const deadline = performance.now() + 9000;
       while(spinning && performance.now() < deadline) await wait(50);
       if(spinning) bad.push('the spin never settled');
-      await wait(60);
+      // doSpin's 4250ms timer is not the wheel's clock. The 4.1s transition
+      // runs on the document timeline, which starts late and advances late on
+      // a loaded machine, so 60ms after the timer the wedges could still be a
+      // few degrees short of where they stop -- and the landing below judged a
+      // wheel that was still turning. Wait for the wheel itself, however long
+      // that takes up to a ceiling, and fail if it never stops.
+      const stillAt = await wheelStops(10000);
+      if(!stillAt) bad.push('the wheel was still turning ' + ((performance.now() - t0)/1000).toFixed(1)
+                            + 's after the press');
       const fin = sample('landed');
       samples.push(fin);
       const during = samples.slice(1, -1);
@@ -6560,7 +6597,9 @@
       const got = judgeLanding('animated', fin, owned0);
       if(got) notes.push('animated: ' + got.tier + ' on wedge ' + got.L.w + ', ' + got.L.edge.toFixed(1)
                          + ' deg in from its edge');
-      notes.push(during.length + ' samples, ' + distinct + ' angles, names within ' + drift.toFixed(2) + ' deg');
+      notes.push(during.length + ' samples, ' + distinct + ' angles, names within ' + drift.toFixed(2) + ' deg'
+                 + (stillAt ? ', still turning ' + Math.round(stillAt.turned) + 'ms after doSpin returned, at rest by '
+                              + Math.round(stillAt.ms) + 'ms' : ''));
       notes.push('clearances: hub ' + worstIn.toFixed(1) + 'px, rim ' + worstOut.toFixed(1) + 'px, wedge '
                  + worstAng.toFixed(1) + ' deg');
 
