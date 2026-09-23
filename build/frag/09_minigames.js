@@ -1223,7 +1223,9 @@
         // on nothing. Differencing the position itself cannot drift, because it
         // IS the position.
         if(ridden && !(r.tumbleT>0)){
-          const step = platX(ridden, t) - platX(ridden, t - frameK/60);
+          // t is the OBSTACLE clock, which a frenzy runs at eventSpeed(): step
+          // back by what it advanced this frame, or the deck outruns its rider
+          const step = platX(ridden, t) - platX(ridden, t - eventSpeed()*frameK/60);
           r.x += step;
           // ...and the same thing as a velocity, in the units r.vx is in, so
           // that doJump can hand it to the jump.
