@@ -7320,7 +7320,12 @@
     };
     const mp = $('mpBtn'), mode0 = modeIndex; let invites = 0;
     try{
-      state = 'menu';
+      // From the lobby, reached the way a player reaches it. A check that ran
+      // a race before this one can leave its results screen up -- [o] does,
+      // and the 25-shard CI layout runs it right before this -- and
+      // openLobbyTab never closes that, because no lobby tab is on it. So
+      // every press below was judged with a race's results still live.
+      goHome();
       // F would really open the invite screen and fetch PeerJS; counting the
       // press is all this needs, so the button's click is shadowed for the run.
       mp.click = ()=>{ invites++; };
@@ -9698,6 +9703,13 @@
     const MAPS = ['walls','beam','shrink','tiles','comb','lastrung','logjam','tiltdeck','doors','sunny','cannonc'];
     try {
       for(const key of MAPS){
+        // EACH MAP'S FIELD FROM ITS OWN SEED. begin() re-pins the stream only
+        // after the build, so the course and the field -- every bot's speed,
+        // hat and slot -- came from wherever the previous map's race left the
+        // stream, and whatever ran before this check besides. A change to the
+        // log jam's race changed who stood on the tilt deck. Pinned here, a
+        // map's field is a function of this check and that map, nothing else.
+        Math.random = seededRandom(seedForCheck('σ:' + key));
         begin(key);
         const p = player();
         if(setup[key]){ setup[key](p); p.vx = 0; p.vy = 0; p.h = 0; p.vh = 0; p.falling = false; }
@@ -9723,11 +9735,17 @@
         mp = Object.assign({}, mp0, { role:'client', conns:[], hostConn:{ open:true, send(){} }, tOffset:0, sendAccum:0 });
         state = 'racing';
         const errs = [];
-        let fErr = 0, fWorst = 0;
+        let fErr = 0, fWorst = 0, tiltWorst = -1;
         for(let k=0;k<msgs.length && errs.length<4;k++){
           if(k>0){
             for(let n=at[k]-at[k-1]; n>0; n--) window.__dbg.tick(1);
-            const d = diff(read(), truth[k].s, true);
+            // how far the joiner's deck lean has drifted from the host's by
+            // the time the next message lands: the margin, not just pass/fail
+            const now = read(), want = truth[k].s;
+            for(const i in want) if(want[i] && want[i].tilt && now[i] && now[i].tilt)
+              want[i].tilt.forEach((t,m)=>{ tiltWorst = Math.max(tiltWorst,
+                Math.abs(now[i].tilt[m][0] - t[0]), Math.abs(now[i].tilt[m][1] - t[1])); });
+            const d = diff(now, want, true);
             if(d.length) errs.push('between msgs '+(k-1)+'-'+k+': '+d.slice(0,3).join(', '));
           }
           handleClientData(msgs[k]);
@@ -9760,9 +9778,17 @@
         }
         const avg = bytes.length ? Math.round(bytes.reduce((a,b)=>a+b,0)/bytes.length) : 0;
         const inFlight = truth.reduce((m,t)=>Math.max(m, t.s.shots.length), 0);
+        // the host's whole run as one number: every state message it sent,
+        // hashed, so a change meant for the joiner can be shown not to have
+        // moved the host by so much as a bit
+        let fp = 0x811c9dc5;
+        const all = JSON.stringify(msgs);
+        for(let i=0;i<all.length;i++){ fp ^= all.charCodeAt(i); fp = Math.imul(fp, 0x01000193); }
         rep[key] = msgs.length+' msgs, '+moved+' stateful moved, '+(floored?'floorH seen':'no floorH')
                  +(inFlight ? ', up to '+inFlight+' shots in flight' : '')
-                 +', bytes avg '+avg+' max '+(bytes.length?Math.max(...bytes):0);
+                 +(tiltWorst >= 0 ? ', tilt worst between msgs '+tiltWorst.toFixed(4) : '')
+                 +', bytes avg '+avg+' max '+(bytes.length?Math.max(...bytes):0)
+                 +', host '+(fp>>>0).toString(16);
         if(!msgs.length) bad.push(key+': the host sent no state');
         else if(!moved) bad.push(key+': nothing stateful moved on the host, so nothing was measured');
         if(key==='cannonc' && !inFlight) bad.push('cannonc: no cannonball was in flight, so none was measured');

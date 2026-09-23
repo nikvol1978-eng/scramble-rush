@@ -972,13 +972,13 @@
         case 'd': if(ob.type==='disc' && num(e[2])) ob.ang = e[2]; break;
         case 'l': if(ob.type==='logroll') ob.logs.forEach((l,k)=>{ if(num(e[2+k])) l.ang = e[2+k]; }); break;
         case 't':
-          // the deck's lean follows the weight on it, which only the host
-          // knows: carry on at the rate the last two messages showed, briefly
-          if(ob.type==='tiltdeck') ob.decks.forEach((d,k)=>{
+          // the host's lean, exactly; between messages leanDeck carries it on
+          // by the host's rule (netObsTick)
+          if(ob.type!=='tiltdeck') break;
+          netTrackRacers();
+          ob.decks.forEach((d,k)=>{
             const tx = e[2+2*k], ty = e[3+2*k]; if(!num(tx) || !num(ty)) return;
-            const el = d._netT===undefined ? 0 : netClock - d._netT;
-            d._vx = el > 0.001 ? (tx - d._nx)/el : 0; d._vy = el > 0.001 ? (ty - d._ny)/el : 0;
-            d._nx = tx; d._ny = ty; d._netT = netClock; d._ext = 0;
+            d._netT = netClock;
             d.tx = tx; d.ty = ty;
           });
           break;
@@ -1043,11 +1043,10 @@
       } else if(o.type==='logroll'){
         for(const l of o.logs) l.ang += l.spin*dt;
       } else if(o.type==='tiltdeck'){
-        for(const d of o.decks){
-          if(d._netT===undefined || d._ext >= 0.1) continue;
-          const k = Math.min(dt, 0.1 - d._ext); d._ext += dt;
-          d.tx = clamp(d.tx + d._vx*k, -1, 1); d.ty = clamp(d.ty + d._vy*k, -1, 1);
-        }
+        // the lean follows the weight on the deck: the host's own spring,
+        // on the racers the host has told us about, where it last put them.
+        // A deck no message has described yet stays where it is.
+        for(const d of o.decks) if(d._netT !== undefined) leanDeck(o, d, dt, true);
       } else if(o.type==='crumble'){
         for(const sl of o.slabs){
           if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
@@ -1071,6 +1070,57 @@
       }
     }
     for(const b of shots){ b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r; }
+  }
+
+  // A tilt deck leans toward the weight on it, one spring step. ONE rule for
+  // both ends: the host runs it on its own racers, and a joiner between
+  // messages runs it on the racers the host has told it about (netOnly),
+  // each where it is heading by its last two messages (netTrackRacers) -- so
+  // the joiner's deck goes where the host's is going, a racer stepping on
+  // counted about when it steps on, instead of the deck carrying on in a
+  // straight line; and every message still puts it back on the host's lean.
+  function leanDeck(o, dk, dt, netOnly){
+    let sx = 0, sy = 0, n = 0;
+    for(const r of racers){
+      let x = r.x, y = r.y, h = r.h;
+      if(netOnly){
+        if(r._netId === undefined) continue;
+        if(r._nt !== undefined){
+          // height too: a racer coming down from a jump lands on the deck,
+          // and starts to weigh on it, between one message and the next
+          const a = Math.min(netClock - r._nt, 0.15);
+          x += (r._nvx||0)*a; y += (r._nvy||0)*a; h = Math.max(0, (h||0) + (r._nvh||0)*a);
+        }
+      }
+      if(r.lavaOut || r.falling || h > 40) continue;
+      if(Math.abs(x-dk.cx) > dk.w/2 || Math.abs(y-dk.y) > dk.d/2) continue;
+      sx += (x-dk.cx)/(dk.w/2); sy += (y-dk.y)/(dk.d/2); n++;
+    }
+    // Weight, not position. Divided by the count alone this was the mean
+    // offset, so one racer standing at the edge tipped the deck as hard as
+    // twenty did -- which is not what a deck on a pivot does and not what
+    // the round is called. Dividing by at least `hold` racers instead
+    // makes the first few of them count for what they weigh: one at the
+    // edge is a lean you can feel, five is the deck going over.
+    const w = Math.max(o.hold, n);
+    const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
+    const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
+    const k = Math.min(1, o.spring*dt);
+    dk.tx += (tX - dk.tx)*k;
+    dk.ty += (tY - dk.ty)*k;
+  }
+  // Where each racer the host describes is heading, from its last two
+  // messages, for leanDeck to weigh it there. Once per message however many
+  // decks there are; a respawn is a jump, not a speed, so it carries nothing.
+  function netTrackRacers(){
+    for(const r of racers){
+      if(r._netId === undefined || r._nt === netClock) continue;
+      const el = r._nt === undefined ? 0 : netClock - r._nt;
+      let vx = el > 0.001 ? (r.x - r._nx)/el : 0, vy = el > 0.001 ? (r.y - r._ny)/el : 0;
+      let vh = el > 0.001 ? ((r.h||0) - r._nh)/el : 0;
+      if(Math.hypot(vx, vy) > 900){ vx = 0; vy = 0; vh = 0; }
+      r._nx = r.x; r._ny = r.y; r._nh = r.h||0; r._nt = netClock; r._nvx = vx; r._nvy = vy; r._nvh = vh;
+    }
   }
 
   function updateMinigames(dt,t){
@@ -1111,26 +1161,7 @@
       } else if(o.type==='logroll'){
         for(const l of o.logs) l.ang += l.spin*dt;
       } else if(o.type==='tiltdeck'){
-        for(const dk of o.decks){
-          let sx = 0, sy = 0, n = 0;
-          for(const r of racers){
-            if(r.lavaOut || r.falling || r.h > 40) continue;
-            if(Math.abs(r.x-dk.cx) > dk.w/2 || Math.abs(r.y-dk.y) > dk.d/2) continue;
-            sx += (r.x-dk.cx)/(dk.w/2); sy += (r.y-dk.y)/(dk.d/2); n++;
-          }
-          // Weight, not position. Divided by the count alone this was the mean
-          // offset, so one racer standing at the edge tipped the deck as hard as
-          // twenty did -- which is not what a deck on a pivot does and not what
-          // the round is called. Dividing by at least `hold` racers instead
-          // makes the first few of them count for what they weigh: one at the
-          // edge is a lean you can feel, five is the deck going over.
-          const w = Math.max(o.hold, n);
-          const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
-          const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
-          const k = Math.min(1, o.spring*dt);
-          dk.tx += (tX - dk.tx)*k;
-          dk.ty += (tY - dk.ty)*k;
-        }
+        for(const dk of o.decks) leanDeck(o, dk, dt, false);
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
       } else if(o.type==='crumble'){
