@@ -617,6 +617,9 @@
 
       await pmStep('LOADING ' + String(currentMap.name).toUpperCase() + '…', 0, TOTAL, async ()=>{
         clearGroup(racerGroup); clearGroup(courseGroup); clearParticles(); racers=[];
+        // the racers are dressed in their skins now (applyNetworkState), and
+        // an animated skin registers its material; drop last round's with them
+        animatedMats=[];
         obstacles = data.obstacles; trackLength = data.trackLength;
         // THE SAME WORLD, NOT JUST THE SAME OBSTACLES. The script is what
         // setCoursePath turns into the transform every mesh, every racer and

@@ -37,7 +37,9 @@
       remotes.forEach(conn=>{
         const s=slots.length?slots.shift():{x:cx+rand(-200,200), y:-60};
         const prof=conn.peerProfile;
-        list.push(Object.assign(baseRacer(), {isPlayer:false, remoteId:conn.peer, name:(prof.name||'Friend').slice(0,12), color:prof.color||'#60a5fa', hat:prof.hat||'none', eyes:prof.eyes||'round', x:s.x, y:s.y, speed:1}));
+        // skinId/patternId from the joiner's hello (base.html), so the host
+        // draws them in what they chose rather than a flat colour
+        list.push(Object.assign(baseRacer(), {isPlayer:false, remoteId:conn.peer, name:(prof.name||'Friend').slice(0,12), color:prof.color||'#60a5fa', skinId:prof.skin||null, patternId:prof.pattern||null, hat:prof.hat||'none', eyes:prof.eyes||'round', x:s.x, y:s.y, speed:1}));
       });
       const botsNeeded=Math.max(0, n-remotes.length);
       const order=[...Array(BOT_NAMES.length).keys()].sort(()=>Math.random()-0.5);

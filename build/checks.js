@@ -5918,6 +5918,77 @@
              detail: (bad.length ? bad.join('; ')+' | ' : '') + 'sole minus drawn surface: '+notes.join('; ') };
   }
 
+  // ---------- omega: in a multiplayer race everyone wears their own skin ----------
+  // Remote racers were built from a profile with no skin in it: the joiner's
+  // hello carried a colour, a hat and eyes, so the host drew every friend as
+  // a flat bean; and the host's per-frame state carried no skin either, so a
+  // joiner drew EVERY racer -- bots, host and itself -- flat. This drives the
+  // real path end to end: joinRoom's hello (PeerJS stubbed), setupHostConn's
+  // handler, makeRacers and buildRacerMeshes on the host, then serializeRacer
+  // and applyNetworkState on a joiner.
+  function checkNetSkins(){
+    const bad = [], notes = [];
+    const sig = (m)=>m.type+'|'+!!m.map+'|'+(m.color ? m.color.getHexString() : '');
+    const was = { skin:custom.skin, pattern:custom.pattern };
+    const hadPeer = Object.prototype.hasOwnProperty.call(window, 'Peer'), RealPeer = window.Peer;
+    const SKIN = SKIN_BY_ID.frost ? 'frost' : Object.keys(SKIN_BY_ID).find(k=>k!=='pink');
+    const PAT = Object.keys(PATTERN_BY_ID).find(k=>k!=='none');
+    let hello = null;
+    try{
+      begin('sunny');
+      // ---- the joiner says who it is -------------------------------------
+      window.Peer = function(){
+        const me = this, h = {}; me.id = 'peerJoin'; me._h = h;
+        me.on = (ev, fn)=>{ h[ev] = fn; };
+        me.connect = ()=>{ const ch = {}; const c = { peer:'host', open:true, _ch:ch,
+          on:(ev, fn)=>{ ch[ev] = fn; }, send:(d)=>{ if(d && d.type==='hello') hello = d; }, close(){} };
+          me._c = c; return c; };
+        me.destroy = ()=>{};
+      };
+      custom.skin = SKIN; custom.pattern = PAT;
+      joinRoom('TEST');
+      if(mp.peer && mp.peer._h.open) mp.peer._h.open();
+      if(mp.peer && mp.peer._c && mp.peer._c._ch.open) mp.peer._c._ch.open();
+      if(!hello) bad.push('the joiner sent no hello');
+      else if(hello.skin !== SKIN || hello.pattern !== PAT)
+        bad.push('the joiner\'s hello does not say its skin and pattern (skin '+hello.skin+', pattern '+hello.pattern+')');
+      leaveMultiplayer();
+      // ---- the host builds the field with that joiner in it -----------------
+      const hh = {}, conn = { peer:'peerJoin', open:true, on:(ev, fn)=>{ hh[ev] = fn; }, send(){} };
+      setupHostConn(conn);
+      hh.data(hello || { type:'hello', name:'Friend', color:'#60a5fa', hat:'none', eyes:'round' });
+      mp.role = 'host'; mp.conns = [conn];
+      racers = makeRacers(); buildRacerMeshes();
+      const rem = racers.find(r=>r.remoteId==='peerJoin');
+      const ref = makeCharacter({ skin:skinOf(SKIN), pattern:patternOf(PAT) });
+      if(!rem) bad.push('the host built no racer for the joiner');
+      else if(sig(rem.mesh.bodyMat) !== sig(ref.bodyMat))
+        bad.push('the host draws the joiner as '+sig(rem.mesh.bodyMat)+', not in its '+SKIN+' skin ('+sig(ref.bodyMat)+')');
+      // ---- a joiner rebuilds the field from the host's state -----------------
+      const host = racers, sent = host.map(serializeRacer);
+      mp.role = 'client'; mp.peer = { id:'peerJoin', destroy(){} };
+      racers = [];
+      applyNetworkState(sent);
+      let skinned = 0, wrong = 0, eg = '';
+      for(const h of host){
+        if(!h.skinId) continue;
+        skinned++;
+        const c = racers.find(x=>x._netId === (h.remoteId || h._localId));
+        if(!c || sig(c.mesh.bodyMat) !== sig(h.mesh.bodyMat)){ wrong++; if(!eg) eg = (h.name||'?')+' '+h.skinId+': host '+sig(h.mesh.bodyMat)+', joiner '+(c ? sig(c.mesh.bodyMat) : 'none'); }
+      }
+      if(!skinned) bad.push('no skinned racer in the field, so the joiner side is unproven');
+      if(wrong) bad.push('a joiner draws '+wrong+' of '+skinned+' skinned racers in something else (e.g. '+eg+')');
+      notes.push('hello '+(hello ? hello.skin+'/'+hello.pattern : 'none')+'; host draws the joiner '+(rem ? sig(rem.mesh.bodyMat) : '-')+'; joiner matches '+(skinned-wrong)+'/'+skinned);
+    } finally {
+      custom.skin = was.skin; custom.pattern = was.pattern;
+      if(hadPeer) window.Peer = RealPeer; else delete window.Peer;
+      try{ leaveMultiplayer(); }catch(e){}
+      try{ $('lobby').classList.add('hidden'); }catch(e){}
+    }
+    return { name:'ω in a multiplayer race every racer wears its own skin', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8992,7 +9063,7 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
