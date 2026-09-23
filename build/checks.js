@@ -6745,6 +6745,70 @@
              pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join('; ') };
   }
 
+  // ---- [ε] the shop's buy dialog is on top, and can be left ----------------
+  // The confirm is one element shared by the locker and the shop, at
+  // z-index 24 -- and every .screen is 50. Over the shop it was painted
+  // UNDERNEATH: the cards covered BUY and CANCEL, the backdrop never showed,
+  // and clicking a card appeared to do nothing while a dialog sat live behind
+  // the page. The tab strip stayed clickable through it, leaving the shop left
+  // the dialog up on the next screen, and Esc -- which closes it in the locker
+  // -- did nothing in the shop.
+  function checkShopBuyBox(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const hits = (el)=>{ const r = el.getBoundingClientRect();
+      const h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2); return !!h && el.contains(h); };
+    const press = (key)=>document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles:true, cancelable:true }));
+    const open = ()=>{
+      openLobbyTab('shop');
+      // the first card that is sold for coins; the rest say how to unlock them
+      for(const c of document.querySelectorAll('#shop .shCard')){
+        c.click();
+        if(!$('buyBox').classList.contains('hidden')) return true;
+      }
+      return false;
+    };
+    try{
+      state = 'menu';
+      stats.owned = []; stats.patterns = []; stats.coins = 1e6;     // every card for sale, and affordable
+      if(!open()) bad.push('no shop card opened a buy dialog');
+      else{
+        for(const id of ['buyYes', 'buyNo']) if(!hits($(id))){
+          const r = $(id).getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+          bad.push('#' + id + ' is covered by ' + (h ? (h.id ? '#' + h.id : '.' + String(h.className).split(' ')[0]) : 'nothing'));
+        }
+        const pill = document.querySelector('.tabPill[data-lobby="play"]');
+        if(pill && hits(pill)) bad.push('the tab strip is still clickable through the open dialog');
+        // The preview is a <canvas>, and the game's own `canvas{position:absolute;
+        // inset:0}` rule lifted it out of the card and over the words. Hidden
+        // for as long as the whole dialog was under the shop.
+        const shot = $('buyShot').getBoundingClientRect();
+        for(const sel of ['.buyTitle', '#buyName', '#buyCost']){
+          const t = document.querySelector('#buyBox ' + sel), r = t && t.getBoundingClientRect();
+          if(r && r.width && shot.left < r.right - 1 && r.left < shot.right - 1 && shot.top < r.bottom - 1 && r.top < shot.bottom - 1)
+            bad.push('the item preview is drawn over ' + sel);
+        }
+        press('q');
+        if($('shop').classList.contains('hidden') || $('buyBox').classList.contains('hidden'))
+          bad.push('Q walked the tabs out from under the open dialog');
+        press('Escape');
+        if(!$('buyBox').classList.contains('hidden')) bad.push('Esc does not close the dialog in the shop');
+        if($('shop').classList.contains('hidden')) bad.push('Esc closed the shop along with the dialog');
+      }
+      if(open()){
+        openLobbyTab('play');
+        if(!$('buyBox').classList.contains('hidden')) bad.push('leaving the shop left its buy dialog up over the lobby');
+      }
+      notes.push('BUY and CANCEL on top, strip covered, Esc closes, leaving closes');
+    } finally {
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ closeBuy(); openLobbyTab('play'); refreshCoinChips(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ε shop: the buy dialog is on top, modal, and Esc or leaving closes it',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7708,7 +7772,7 @@
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
-      ['δ',checkMenuHotkeys],
+      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly

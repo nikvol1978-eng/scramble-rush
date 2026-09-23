@@ -576,11 +576,17 @@
   }
 
   /* ---- the buy confirm, shared by the locker and the shop ---------------- */
-  .buyBox{ position:absolute; inset:0; z-index:24; display:flex; align-items:center; justify-content:center;
+  /* A modal, so the modal layer: above the screens (50) AND the chrome row
+     (55). At z-index 24 it was painted under the shop -- the cards covered
+     BUY and CANCEL -- while the tab strip stayed clickable over it. */
+  .buyBox{ position:absolute; inset:0; z-index:var(--z-modal); display:flex; align-items:center; justify-content:center;
            background:rgba(21,12,46,0.62); }
   .buyCard{ padding:22px 26px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .buyTitle{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.1rem; color:var(--line); letter-spacing:1px; }
-  .buyShot{ width:132px; height:132px; }
+  /* In the card's flow. The game's bare `canvas{position:absolute; inset:0}`
+     rule otherwise lifts the preview out of the column and over the title,
+     the name and the price. */
+  .buyShot{ position:relative; inset:auto; width:132px; height:132px; flex:0 0 auto; }
   .buyName{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.25rem; color:var(--line); }
   .buyCost{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1rem; color:var(--line); opacity:0.8; }
   .buyWarn{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--red); min-height:1em; }
