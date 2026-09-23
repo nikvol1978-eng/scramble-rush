@@ -67,6 +67,32 @@
     _v21Tex[k] = t; return t;
   }
 
+  // PAINT ON THE FLOOR. The start and finish aprons are plates a hair over the
+  // ground, not slabs standing 3 proud of it that a racer stands in to the
+  // ankles. A hair is not something the depth buffer can see at a distance
+  // (the near plane is 0.1), so the plate is also pulled toward the lens in
+  // depth, and a stripe on a plate a step further, so each always wins over
+  // what it lies on instead of flickering against it.
+  const FLOOR_PAINT_TOP = 0.1;
+  function floorPaint(mat, rank){
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -(rank||1); mat.polygonOffsetUnits = -4*(rank||1);
+    return mat;
+  }
+  // placeAt, and pitched to the course's slope there. placeAt turns a mesh to
+  // the path's heading only, which is right for a hazard standing on the
+  // floor and wrong for a plate LYING on it: 150 long on a climb, one end is
+  // under the ground and the other over it.
+  function placeOnSlope(obj, simX, simY, h){
+    placeAt(obj, simX, simY, h);
+    if(coursePath){
+      const a = toWorld(simX, simY - 4, 0), b = toWorld(simX, simY + 4, 0);
+      obj.rotation.order = 'YXZ';
+      obj.rotation.x = -Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z));
+    }
+    return obj;
+  }
+
   let courseLook = null;
   function buildCourseMeshes(){
     clearGroup(courseGroup);
@@ -127,8 +153,11 @@
         }
         return;
       }
-      // swept along the path
-      const yTop = sunken ? vy : -6;
+      // swept along the path. THE TOP IS 0, where the simulation's floor is.
+      // It was -6 -- the CENTRE of the 12-tall box above, whose top is 0,
+      // carried over as though it were the top -- so on every course with a
+      // path, which is every race map, racers ran 4-5 units over the ground.
+      const yTop = sunken ? vy : 0;
       const surf = ribbonStrip(z0, z1,
         s=>[toWorld(x0,s,yTop), toWorld(x1,s,yTop)],
         sunken ? null : s=>[[x0/190, s/190],[x1/190, s/190]]);
@@ -138,7 +167,7 @@
       if(!sunken){
         // a skirt hanging under each edge, so the ribbon reads as solid ground
         [[x0,-1],[x1,1]].forEach(([xe])=>{
-          const side = ribbonStrip(z0, z1, s=>[toWorld(xe,s,-6), toWorld(xe,s,-52)]);
+          const side = ribbonStrip(z0, z1, s=>[toWorld(xe,s,0), toWorld(xe,s,-52)]);
           const sm = new THREE.Mesh(side, skirtMat); sm.material.side=THREE.DoubleSide;
           courseGroup.add(sm);
         });
@@ -183,14 +212,17 @@
         addGround(0,TRACK_W,o.yStart,o.yEnd,true);
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
         // the island: solid, still, and obviously not a platform
+        // Its TOP is the floor, 0, which is what the simulation stands you on:
+        // the slab used to rise 14 out of the pit, and a racer on the island
+        // stood in it up to the knees. The lip stays a rim just under the top.
         for(const is of (o.islands||[])){
           const slab = new THREE.Mesh(THREE.RoundedBox(is.w, 14, is.y1-is.y0),
             new FloorMat({color: accents[1]}));
           slab.receiveShadow = true;
-          placeAt(slab, is.x, (is.y0+is.y1)/2, 7); courseGroup.add(slab);
+          placeAt(slab, is.x, (is.y0+is.y1)/2, -7); courseGroup.add(slab);
           const lip = new THREE.Mesh(THREE.RoundedBox(is.w+10, 5, is.y1-is.y0+10),
             new THREE.MeshLambertMaterial({color:0xfff8ec}));
-          placeAt(lip, is.x, (is.y0+is.y1)/2, 1.5); courseGroup.add(lip);
+          placeAt(lip, is.x, (is.y0+is.y1)/2, -3.5); courseGroup.add(lip);
         }
         const platMat=new THREE.MeshPhongMaterial({color:0x23e6c9, shininess:30});
         o.platformMeshes=o.platforms.map(p=>{
@@ -229,30 +261,30 @@
     if(startSec){
       const padEnd = startSec.len, padStart = -220, padLen = padEnd - padStart;
       const chk = checkerTexture('#ffffff', currentMap.wallTop, 6);
-      const segs = Math.max(3, Math.round(padLen/150));
-      // One texture for the whole apron, not one per plate: every segment is
-      // the same size and so wants the same repeat, and a clone is a separate
-      // upload to the card for an identical image.
+      // SWEPT, like the ground it lies on, not a run of flat plates. A rigid
+      // plate 750 wide and 150 long cannot follow a ribbon that climbs and
+      // bends at once -- its corners stood up to six units off the floor on
+      // Super Slide -- and one strip is one draw call instead of ten. The
+      // checker keeps its old scale: four across, one square per 90 along.
       const padTex = chk.clone(); padTex.needsUpdate = true;
-      padTex.repeat.set(4, (padLen/segs)/90);
-      const padMat = new FloorMat({map:padTex});
-      for(let i=0;i<segs;i++){
-        const sy = padStart + padLen*(i+0.5)/segs;
-        const plate = new THREE.Mesh(THREE.RoundedBox(TRACK_W-14, 3, (padLen/segs)*0.99),
-          padMat);
-        plate.receiveShadow = true;
-        placeAt(plate, TRACK_W/2, sy, 1.5); courseGroup.add(plate);
-      }
+      const padMat = floorPaint(new FloorMat({map:padTex}), 1);
+      padMat.side = THREE.DoubleSide;
+      const apron = new THREE.Mesh(ribbonStrip(padStart, padEnd,
+        s=>[toWorld(7, s, FLOOR_PAINT_TOP), toWorld(TRACK_W-7, s, FLOOR_PAINT_TOP)],
+        s=>[[0, s/90], [4, s/90]]), padMat);
+      apron.receiveShadow = true; courseGroup.add(apron);
       // One lane stripe between each pair of columns, in the map's accent --
       // eight strips down the grid rather than a mark under every slot, which
       // at twenty-four slots would be twenty-four more draw calls for paint.
       const colW = (TRACK_W-140)/(START_COLS-1);
-      const bayMat = new THREE.MeshLambertMaterial({color:accents[0]});
+      // Painted on the apron, swept the same way, a step further forward.
+      const bayMat = floorPaint(new THREE.MeshLambertMaterial({color:accents[0], side:THREE.DoubleSide}), 2);
       for(let i=0;i<=START_COLS;i++){
         const bx = TRACK_W/2 + (i-START_COLS/2)*colW;
         if(bx < 20 || bx > TRACK_W-20) continue;
-        const bay = new THREE.Mesh(THREE.RoundedBox(4, 3, 200), bayMat);
-        placeAt(bay, bx, -105, 2.2); courseGroup.add(bay);
+        const top = FLOOR_PAINT_TOP + 0.1;
+        const bay = new THREE.Mesh(ribbonStrip(-205, -5, s=>[toWorld(bx-2, s, top), toWorld(bx+2, s, top)]), bayMat);
+        courseGroup.add(bay);
       }
     }
     // ---- the checkpoint flags. A post either side of the track with a
@@ -287,8 +319,8 @@
     }
 
     // start line
-    const sl=new THREE.Mesh(THREE.RoundedBox(TRACK_W,2,10), new THREE.MeshLambertMaterial({color:0xff4fa3}));
-    placeAt(sl, TRACK_W/2, 0, 0.6); courseGroup.add(sl);
+    const sl=new THREE.Mesh(THREE.RoundedBox(TRACK_W,2,10), floorPaint(new THREE.MeshLambertMaterial({color:0xff4fa3}), 2));
+    placeOnSlope(sl, TRACK_W/2, 0, FLOOR_PAINT_TOP + 0.3 - 1); courseGroup.add(sl);
 
     // Pillars only block, so they are soft; everything that swings, spins or
     // shoves is a saturated accent with a white-and-accent stripe on the face

@@ -5835,6 +5835,89 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // The lowest drawn point of a racer: the skinned body and trim, posed.
+  function _soleWorld(m){
+    scene.updateMatrixWorld();
+    const v = new THREE.Vector3(), lo = new THREE.Vector3(0, Infinity, 0);
+    for(const o of [m.body, m.trim]){
+      const n = o.geometry.attributes.position.count;
+      for(let i=0;i<n;i++){ o.getVertexPosition(i, v); v.applyMatrix4(o.matrixWorld); if(v.y < lo.y) lo.copy(v); }
+    }
+    return lo;
+  }
+  // The first rendered course surface straight down from over a world point
+  // (under the sole itself, so a slope does not count as a gap).
+  function _surfaceUnder(at){
+    const ray = new THREE.Raycaster(new THREE.Vector3(at.x, at.y + 40, at.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const hit = ray.intersectObject(courseGroup, true).find(h=>{
+      for(let o=h.object; o; o=o.parent) if(!o.visible) return false;
+      return true;
+    });
+    return hit ? hit.point.y : null;
+  }
+  // Is the first surface under this sim point the swept ground itself (a
+  // double-sided strip straight in the course group), not a pad or a prop?
+  function _groundUnder(x, y){
+    const w = toWorld(x, y, 0);
+    const ray = new THREE.Raycaster(new THREE.Vector3(w.x, w.y + 60, w.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const h = ray.intersectObject(courseGroup, true)[0];
+    return !!h && h.object.parent === courseGroup && h.object.geometry.type === 'BufferGeometry'
+           && h.object.material.side === THREE.DoubleSide;
+  }
+
+  // ---------- psi: feet on the floor that is drawn ----------
+  // The simulation's floor is 0. The swept ground ribbon was drawn with its
+  // top at -6 -- the CENTRE of the 12-tall box it replaced, carried over as
+  // if it were the top -- so on every course with a path, which is every
+  // race map, a standing racer's soles hung 4-5 over the drawn floor. The
+  // start and finish aprons stood 3 proud of the sim floor (feet sunk 4-7
+  // into them), and a pit's island, a floor of 0 in the sim, was drawn as a
+  // 14-tall block the racer stood inside.
+  function checkFeetOnDrawnFloor(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    // open ground: the first spot down the course with nothing laid on it
+    let gy = 1500;
+    while(gy < 4000 && !(_groundUnder(TRACK_W*0.35, gy) && !obstacles.some(o=>Math.abs((o.y!==undefined ? o.y : (o.yStart+o.yEnd)/2) - gy) < 200))) gy += 50;
+    // On the start apron, past the line: toWorld clamps the path at s=0, so
+    // behind the line every sim y draws at the line itself.
+    const startSec = (courseScript||[]).find(s=>s.type==='start');
+    const spots = [['ground', TRACK_W*0.35, gy], ['start pad', TRACK_W*0.35, Math.max(40, (startSec ? startSec.len : 80)/2)]];
+    const fin = (courseScript||[]).find(s=>s.type==='finish');
+    spots.push(['finish apron', TRACK_W/2, trackLength - Math.min(fin ? fin.len : 400, 520)/2]);
+    const pit = obstacles.find(o=>o.type==='pit' && o.islands && o.islands.length);
+    if(pit){ const is = pit.islands[0]; spots.push(['pit island', is.x, (is.y0 + is.y1)/2]); }
+    else bad.push('no pit island on this course, so it is unproven');
+    for(const [what, x, y] of spots){
+      window.__dbg.warp(y, x);
+      let sum = 0, n = 0, worst = 0, fell = false, floorOff = null;
+      for(let i=0;i<50;i++){
+        p.x = x; p.y = y; p.vx = 0; p.vy = 0;
+        window.__dbg.tick(1);
+        if(p.falling || p.finished){ fell = true; break; }
+        if(i < 20) continue;                       // stand still first
+        const sole = _soleWorld(p.mesh), surf = _surfaceUnder(sole);
+        if(surf === null) continue;
+        const gap = sole.y - surf;
+        sum += gap; n++; if(Math.abs(gap) > Math.abs(worst)) worst = gap;
+        // ...and, pose aside, the drawn surface against the sim's floor
+        const c = _surfaceUnder(p.mesh.group.getWorldPosition(new THREE.Vector3()));
+        if(c !== null) floorOff = c - toWorld(p.x, p.y, p.floorH||0).y;
+      }
+      if(fell){ bad.push(what+': the racer did not stay standing there'); continue; }
+      if(!n){ bad.push(what+': no drawn surface under the racer'); continue; }
+      const mean = sum/n;
+      if(Math.abs(mean) > 1.5) bad.push(what+': soles '+(mean > 0 ? 'float '+mean.toFixed(1)+' over' : 'sink '+(-mean).toFixed(1)+' into')+' the drawn surface');
+      if(floorOff !== null && Math.abs(floorOff) > 0.5) bad.push(what+': the drawn surface is '+floorOff.toFixed(1)+' off the simulation\'s floor');
+      notes.push(what+' '+mean.toFixed(2)+' (worst '+worst.toFixed(2)+', surface '+(floorOff===null ? '?' : floorOff.toFixed(2))+' off the sim floor)');
+    }
+    return { name:'ψ a standing racer\'s feet meet the floor that is drawn', pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ')+' | ' : '') + 'sole minus drawn surface: '+notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8909,7 +8992,7 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
