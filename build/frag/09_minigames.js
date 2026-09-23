@@ -731,23 +731,18 @@
       const fin = (courseScript||[]).find(s=>s.type==='finish');
       const runIn = fin ? Math.min(fin.len, 520) : 400;
       const chk = checkerTexture('#ffffff', '#1a1033', 6);
-      const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
-      const span = runIn + FINISH_ZONE;
-      // one texture and one material for the whole apron
+      // one texture and one material for the whole apron -- and one swept
+      // strip painted on the floor, like the start apron (18_coursemesh.js)
       const finTex = chk.clone(); finTex.needsUpdate = true;
-      finTex.repeat.set(4, (span/segs)/90);
-      const finMat = new THREE.MeshFloorMaterial({map:finTex});
-      for(let i=0;i<segs;i++){
-        const sy = z - runIn + span*(i+0.5)/segs;
-        const plate = new THREE.Mesh(THREE.RoundedBox(TRACK_W-14, 3, (span/segs)*0.99),
-          finMat);
-        plate.receiveShadow = true;
-        placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
-      }
+      const finMat = floorPaint(new THREE.MeshFloorMaterial({map:finTex, side:THREE.DoubleSide}), 1);
+      const apron = new THREE.Mesh(ribbonStrip(z - runIn, z + FINISH_ZONE,
+        s=>[toWorld(7, s, FLOOR_PAINT_TOP), toWorld(TRACK_W-7, s, FLOOR_PAINT_TOP)],
+        s=>[[0, s/90], [4, s/90]]), finMat);
+      apron.receiveShadow = true; courseGroup.add(apron);
     }
     const line=new THREE.Mesh(THREE.RoundedBox(TRACK_W,2.4,14),
-      new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
-    placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);
+      floorPaint(new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}), 2));
+    placeOnSlope(line, TRACK_W/2, z, FLOOR_PAINT_TOP + 0.3 - 1.2); courseGroup.add(line);
 
     const postMat=new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', (courseLook?courseLook.accents[0]:currentMap.accent))});
     const barMat =new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -1411,7 +1406,8 @@
         const sgn = sideOf(r, true, fk.cx, (y,h)=> h >= 44 || y < fk.wallFrom-RADIUS || y > fk.yEnd)
                  || (Math.sign(r.vx) || 1);
         r.x = fk.cx + sgn*minD;
-        if(sgn*r.vx < 0){ r.vx = 0; r.squash = Math.max(r.squash, 0.3); }
+        // squash on a real impact only: leaning on it re-armed this every frame
+        if(sgn*r.vx < 0){ if(-sgn*r.vx > 1.5) r.squash = Math.max(r.squash, 0.3); r.vx = 0; }
       }
     }
 
@@ -1425,7 +1421,7 @@
         const side = sideOf(r, false, gt.y, (x,h)=> h >= gt.h
                        || gt.xs.some(gx => Math.abs(x-gx) < gt.gapW/2 - RADIUS*0.35)) || -1;
         r.y = gt.y + side*(gt.d/2 + RADIUS);
-        if(side*r.vy < 0){ r.vy = 0; r.squash = Math.max(r.squash, 0.3); }
+        if(side*r.vy < 0){ if(-side*r.vy > 1.5) r.squash = Math.max(r.squash, 0.3); r.vy = 0; }
         // slide toward the nearer door rather than standing there pressing into it
         let best = gt.xs[0];
         for(const gx of gt.xs) if(Math.abs(gx-r.x) < Math.abs(best-r.x)) best = gx;
@@ -1533,7 +1529,9 @@
         // on nothing. Differencing the position itself cannot drift, because it
         // IS the position.
         if(ridden && !(r.tumbleT>0)){
-          const step = platX(ridden, t) - platX(ridden, t - frameK/60);
+          // t is the OBSTACLE clock, which a frenzy runs at eventSpeed(): step
+          // back by what it advanced this frame, or the deck outruns its rider
+          const step = platX(ridden, t) - platX(ridden, t - eventSpeed()*frameK/60);
           r.x += step;
           // ...and the same thing as a velocity, in the units r.vx is in, so
           // that doJump can hand it to the jump.

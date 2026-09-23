@@ -5542,6 +5542,504 @@
                : 'covered '+JSON.stringify(seen)+', peak fadeables '+maxFadeables };
   }
 
+  // ================= CAMERA AUDIT (tau..omega) =================
+  // Where the camera and the character are drawn, measured against where the
+  // simulation says they are. Each of these reproduced as a defect first.
+
+  // Where a racer's body is, relative to the lens: on screen, and in front.
+  function _racerOnScreen(r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const inFront = g.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+    const n = g.clone().project(camera);
+    return { ok: inFront && Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1, inFront, x:n.x, y:n.y };
+  }
+
+  // ---------- tau: a respawn is a cut, not a pan ----------
+  // respawnAfterFall puts a racer back as much as 2400 units down the course in
+  // one frame. The pivot follows at FOLLOW_XZ, so for eight to eleven frames
+  // after every section-back respawn the lens was still out where the fall
+  // happened -- with the player behind it, off screen, and on Super Slide
+  // under the course. A teleport is a cut: the frame after it must already
+  // show the racer, in front of the lens.
+  function checkRespawnCut(){
+    const bad = [], notes = [];
+    let far = 0, worstFrames = 0;
+    for(const key of ['slide','neon']){
+      withSeed(1, ()=>beginSeeded(key, 1));
+      const p = player();
+      for(const frac of [0.2, 0.35, 0.5, 0.65, 0.8]){
+        if(state !== 'racing' || p.finished || p.lavaOut) break;
+        window.__dbg.look(0, CAM.PITCH); window.__dbg.hold('w', true);
+        window.__dbg.warp(Math.round(trackLength*frac), TRACK_W/2);
+        window.__dbg.tick(40);
+        if(p.finished || p.lavaOut) break;
+        const y0 = p.y; p.x = -80;                         // off the left edge
+        let n = 0; while(!p.falling && n < 30){ window.__dbg.tick(1); n++; }
+        if(!p.falling) continue;
+        n = 0; while(p.falling && n < 200){ window.__dbg.tick(1); n++; }
+        if(p.falling) continue;
+        const back = y0 - p.y;
+        if(back < 600) continue;                           // not a section-back respawn
+        far++;
+        // Frame 0 is the tick the respawn happened on; one more is allowed.
+        let offFrames = 0;
+        for(let f=0; f<12; f++){
+          const s = _racerOnScreen(p);
+          if(!s.ok) offFrames++;
+          if(f === 1 && !s.ok)
+            bad.push(key+' @'+Math.round(y0)+': respawned '+Math.round(back)+' back and the racer is '
+                     +(s.inFront ? 'off screen' : 'behind the lens')+' a frame later (ndc '+s.x.toFixed(2)+','+s.y.toFixed(2)+')');
+          window.__dbg.tick(1);
+        }
+        worstFrames = Math.max(worstFrames, offFrames);
+        notes.push(key+'@'+Math.round(y0)+' back '+Math.round(back)+': off '+offFrames);
+      }
+      window.__dbg.hold('w', false);
+    }
+    if(!far) bad.push('no section-back respawn was exercised, so the cut is unproven');
+    if(worstFrames > 1) bad.push('racer off screen for up to '+worstFrames+' frames after a respawn');
+    return { name:'τ a respawn cuts the camera to the racer', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
+  // What each visible mesh of a racer actually draws at: a material that is
+  // not transparent draws opaque whatever its opacity number says.
+  function _racerOpacities(m){
+    const out = [];
+    m.group.traverse(o=>{
+      if(!o.isMesh || o === m.outline) return;
+      for(let v=o; v; v=v.parent) if(!v.visible) return;
+      const mt = o.material; if(!mt || mt.visible === false) return;
+      const what = o===m.body ? 'body' : o===m.trim ? 'trim' : o===m.arrow ? 'arrow'
+                 : (m.aura && m.aura.children.includes(o)) ? 'aura' : 'shell';
+      out.push({ what, op: mt.transparent ? mt.opacity : 1 });
+    });
+    return out;
+  }
+
+  // ---------- upsilon: a falling racer fades as one thing ----------
+  // syncRacers faded bodyMat and nothing else. The limbs, the hat and the eyes
+  // are one merged `trim` mesh on its own material, so a fall showed a body at
+  // 20% with a full-strength crown, mitts and eyes hanging in the air over the
+  // hole -- and the player's marker, and a special's aura, with them.
+  function checkFallFadeWhole(){
+    const bad = [], notes = [];
+    const was = { skin:custom.skin, hat:custom.hat };
+    try{
+      for(const [skin, hat] of [[was.skin, 'crown'], ['gold', 'prop'], ['toxic', 'halo']]){
+        custom.skin = skin; custom.hat = hat;
+        begin('sunny');
+        const p = player(), m = p.mesh;
+        window.__dbg.warp(2200, 260); window.__dbg.tick(20);
+        fallDown(p);
+        while(p.falling && p.fallT > 217) window.__dbg.tick(1);
+        const mid = _racerOpacities(m);
+        const body = mid.find(e=>e.what==='body');
+        if(!body || body.op > 0.5) bad.push(skin+': the body is not fading mid-fall ('+(body && body.op.toFixed(2))+')');
+        for(const e of mid){
+          if((e.what==='trim' || e.what==='arrow') && Math.abs(e.op - body.op) > 0.02)
+            bad.push(skin+': mid-fall the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+body.op.toFixed(2));
+          if(e.op > body.op + 0.02)
+            bad.push(skin+': a '+e.what+' mesh is more solid ('+e.op.toFixed(2)+') than the fading body');
+        }
+        // nobody else faded with them: no material is shared between racers
+        for(const o of racers){
+          if(o === p || o.falling || o.lavaOut || !o.mesh) continue;
+          for(const e of _racerOpacities(o.mesh))
+            if((e.what==='body' || e.what==='trim') && e.op < 0.999)
+              { bad.push(skin+': '+o.name+' faded with the player ('+e.what+' '+e.op.toFixed(2)+')'); break; }
+        }
+        notes.push(skin+' mid-fall '+[...new Set(mid.map(e=>e.what+' '+e.op.toFixed(2)))].join('/'));
+        // ...and all of it comes back after the respawn
+        let n = 0; while(p.falling && n++ < 120) window.__dbg.tick(1);
+        window.__dbg.tick(30);
+        for(const e of _racerOpacities(m)){
+          if((e.what==='body' || e.what==='trim' || e.what==='arrow') && e.op < 0.999)
+            bad.push(skin+': after the respawn the '+e.what+' is still at '+e.op.toFixed(2));
+          if(e.op < 0.05) bad.push(skin+': after the respawn a '+e.what+' mesh stayed faded out');
+        }
+      }
+      // knocked out stays faded, as one thing
+      custom.skin = was.skin; custom.hat = 'crown';
+      begin('sunny');
+      const q = player();
+      window.__dbg.warp(2200, 260); window.__dbg.tick(5);
+      q.lavaOut = true; window.__dbg.tick(1);
+      const ko = _racerOpacities(q.mesh), kb = ko.find(e=>e.what==='body');
+      for(const e of ko) if(e.op > kb.op + 0.02) bad.push('knocked out: the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+kb.op.toFixed(2));
+      q.lavaOut = false;
+    } finally { custom.skin = was.skin; custom.hat = was.hat; }
+    _checkPoseKeyframes(bad, notes);
+    return { name:'υ a racer\'s transient looks read true: a fall fades it whole, a landing bends once, a pressed wall does not squash', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
+  // Two keyframes that did not end when they should (folded into [υ]: the
+  // same question -- does a racer's transient look read true -- and the
+  // audit had six ids for seven items).
+  //   * A STANDING landing: the idle pose eases its joints from wherever they
+  //     were, and the landing adds its bend on top every frame, so each
+  //     frame's bend was eased from the last one's and they compounded -- the
+  //     knee peaked near 2 rad for fifteen frames against ~1 for five.
+  //   * PRESSING into a gate: the stop re-armed a 0.3 squash every frame the
+  //     racer leaned on it, so the bean stayed squashed for as long as you
+  //     held forward.
+  function _checkPoseKeyframes(bad, notes){
+    begin('sunny');
+    const p = player(), m = p.mesh;
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    window.__dbg.warp(2200, TRACK_W/2);
+    for(let i=0;i<60;i++){ p.x = TRACK_W/2; p.y = 2200; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    const rest = m.kneePivots[0].rotation.x;
+    window.__dbg.press('jump');
+    let n = 0; while(p.h > 0 || n < 2){ window.__dbg.tick(1); if(++n > 200) break; }
+    let peak = rest, bent = 0;
+    for(let i=0;i<40;i++){
+      const k = m.kneePivots[0].rotation.x;
+      peak = Math.max(peak, k); if(k > rest + 0.1) bent++;
+      window.__dbg.tick(1);
+    }
+    if(peak > rest + 0.95) bad.push('a standing landing bent the knee to '+peak.toFixed(2)+' (rest '+rest.toFixed(2)+')');
+    if(bent > 10) bad.push('a standing landing held the knee bent for '+bent+' frames');
+    notes.push('landing knee '+rest.toFixed(2)+' -> '+peak.toFixed(2)+' for '+bent+' frames');
+
+    const gt = obstacles.find(o=>o.type==='gate');
+    if(!gt){ bad.push('no gate on this course, so pressing into one is unproven'); return; }
+    // a wall section between the doors, well away from both
+    let wx = null, far = -1;
+    for(let x=40; x<=TRACK_W-40; x+=10){ const d = Math.min(...gt.xs.map(gx=>Math.abs(x-gx))); if(d > far){ far = d; wx = x; } }
+    window.__dbg.warp(gt.y - gt.d/2 - RADIUS - 30, wx);
+    for(let i=0;i<10;i++){ p.x = wx; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    window.__dbg.hold('w', true);
+    let worst = 0, pressed = 0;
+    for(let i=0;i<60;i++){
+      window.__dbg.tick(1);
+      const atFace = Math.abs(p.y - (gt.y - gt.d/2 - RADIUS)) < 1;
+      if(i >= 25 && atFace){ pressed++; worst = Math.max(worst, p.squash||0); }
+    }
+    window.__dbg.hold('w', false);
+    if(!pressed) bad.push('the racer never stood pressed against the gate, so it is unproven');
+    if(worst > 0.1) bad.push('pressing into a gate kept the racer squashed at '+worst.toFixed(2));
+    notes.push('pressed into a gate '+pressed+' frames, squash '+worst.toFixed(2));
+  }
+
+  // How many of `meshes` cut the line from the lens to the racer's body while
+  // drawing opaque (a faded one does not count: it is what a fade is for).
+  function _opaqueBetween(meshes, r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const dir = g.clone().sub(camera.position), len = dir.length();
+    const ray = new THREE.Raycaster(camera.position.clone(), dir.normalize(), 0, len);
+    return ray.intersectObjects(meshes, false).filter(h=>{
+      for(let v=h.object; v; v=v.parent) if(!v.visible) return false;
+      const mt = h.object.material;
+      return !mt.transparent || mt.opacity > 0.5;
+    }).length;
+  }
+
+  // ---------- phi: a floor above you does not hide you ----------
+  // Panel Drop and Last Rung are floors stacked over floors. Drop through one
+  // and the chase camera, which sits up and behind, looks down at you THROUGH
+  // the floor you fell out of: the tile a row back cuts the lens-to-body line.
+  // Measured at the default framing, 13% of frames on each map. Nothing faded
+  // them -- the occlusion fade only knew the course's registered fadeables.
+  function checkFieldLayersFade(){
+    const bad = [], notes = [];
+    for(const key of ['tiles','lastrung']){
+      begin(key);
+      const p = player();
+      const f = obstacles.find(o=>o.type==='tilefield' || o.type==='hexfield');
+      if(!f){ bad.push(key+': no tile or hex field on the course'); continue; }
+      for(const b of racers) if(!b.isPlayer) b.y = -3000;      // nobody else arms the floor
+      const cells = f.type==='tilefield' ? f.tiles : f.cells;
+      const meshes = [];
+      for(const c of cells){
+        c.gone = false; c.touched = false; c.fuse = -1; c.drop = 0; c.back = 0;
+        if(!c.mesh) continue;
+        // put back the way the game rebuilds one (09_minigames.js)
+        c.mesh.visible = true; c.mesh.position.y = c.baseY;
+        if(f.type==='tilefield') c.mesh.rotation.z = 0; else c.mesh.rotation.x = 0;
+        c.mesh.traverse(o=>{ if(o.isMesh) meshes.push(o); });
+      }
+      // a column well inside the field, with its top floor gone
+      const midY = f.yStart + (f.yEnd - f.yStart)*0.4;
+      let col = null, bd = 1e9;
+      // One floor down on Panel Drop (90 apart), two on Last Rung, whose rungs
+      // are only 42-46 apart: one rung down, the line still clears the one above.
+      const down = f.type==='tilefield' ? 1 : 2;
+      for(const c of f.columns){ const d = Math.hypot(c.x - TRACK_W/2, c.y - midY); if(c.tiers.length > down && d < bd){ bd = d; col = c; } }
+      for(let i=0;i<down;i++){ const t = col.tiers[i]; t.gone = true; t.drop = 1; t.back = Infinity; t.mesh.visible = false; }
+      const floor = col.tiers[down];
+      window.__dbg.hold('w', false);
+      window.__dbg.warp(col.y, col.x);
+      let blocked = 0, sampled = 0;
+      for(const yaw of [0, 0.5, -0.5]){
+        window.__dbg.look(yaw, CAM.PITCH);
+        for(let i=0;i<50;i++){
+          floor.touched = true; floor.fuse = 1e9;              // the floor you are on holds
+          p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0;
+          window.__dbg.tick(1);
+          if(i < 20) continue;                                 // the view settles
+          sampled++;
+          if(_opaqueBetween(meshes, p)) blocked++;
+        }
+      }
+      if(Math.abs((p.floorH||0) - floor.hy) > 0.5) bad.push(key+': the racer is not on the lower floor (floorH '+(p.floorH||0)+')');
+      if(blocked) bad.push(key+': an opaque floor above hid the racer on '+blocked+' of '+sampled+' frames');
+      notes.push(key+' on floor '+floor.hy+': blocked '+blocked+'/'+sampled);
+    }
+    return { name:'φ a tile or hex floor above the racer fades out of the shot', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // Is a world point inside a closed mesh? Parity: from inside, a ray along
+  // each axis crosses the surface an odd number of times (sides forced double
+  // so both faces count). Five of six, to forgive a ray down a seam.
+  function _insideMesh(m, w){
+    const g = m.geometry; if(!g) return false;
+    if(!g.boundingBox) g.computeBoundingBox();
+    const local = w.clone().applyMatrix4(new THREE.Matrix4().copy(m.matrixWorld).invert());
+    if(!g.boundingBox.containsPoint(local)) return false;
+    const side = m.material.side; m.material.side = THREE.DoubleSide;
+    let odd = 0;
+    try{
+      for(const d of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
+        const ray = new THREE.Raycaster(w, new THREE.Vector3(d[0], d[1], d[2]), 0, 1e5), hits = [];
+        m.raycast(ray, hits);
+        if(hits.length % 2 === 1) odd++;
+      }
+    } finally { m.material.side = side; }
+    return odd >= 5;
+  }
+
+  // ---------- chi: the boom and the fade test the racer, not a point over them ----------
+  // The boom was cast only toward the pivot, 26 over the racer's feet, and the
+  // fade tested only that line, shortened by 26. A 30-tall corridor wall cuts
+  // the line to the BODY while missing the line to the pivot, so a sideways
+  // look along a wall hid the racer behind an opaque wall (sunny 651,451 at
+  // yaw -1.5, pitch 0.12). The boom also stopped at the blocker nearest its
+  // FAR end, so with two in the way the lens could come to rest between them;
+  // and a lens inside a fadeable mesh never faded it, because a ray leaving
+  // a closed mesh meets only back faces.
+  function checkBoomSeesTheBody(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    const hold = (x, y, n)=>{ for(let i=0;i<n;i++){ p.x = x; p.y = y; p.vx = 0; p.vy = 0; window.__dbg.tick(1); } };
+    window.__dbg.hold('w', false);
+
+    // ---- a corridor wall across the line to the body ----------------------
+    window.__dbg.warp(651, 451); window.__dbg.look(-1.5, 0.12);
+    hold(451, 651, 90);
+    const wallHide = _opaqueBetween(camBlockers, p), anyHide = _opaqueBetween(fadeables, p);
+    if(wallHide) bad.push('looking along the wall, '+wallHide+' opaque wall face(s) stand between the lens and the racer');
+    else if(anyHide) bad.push('looking along the wall, '+anyHide+' opaque fadeable(s) stand between the lens and the racer');
+    notes.push('wall look: '+wallHide+' wall, '+anyHide+' fadeable in the way');
+
+    // ---- the lens inside a pillar -----------------------------------------
+    const pil = obstacles.find(o=>o.type==='pillars');
+    if(!pil) bad.push('no pillars on this course, so the lens-inside case is unproven');
+    else{
+      // Find where to stand for the lens to land inside the first pillar: the
+      // course bends, so the straight-line answer is only where to start.
+      const it = pil.items[0], body = pil.meshes && pil.meshes[0];
+      const back = CAM.DIST*settings.camDist*Math.cos(CAM.PITCH_MIN);
+      window.__dbg.look(0, CAM.PITCH_MIN);
+      let at = null;
+      for(let dy=-40; dy<=40 && !at; dy+=8) for(let dx=-40; dx<=40 && !at; dx+=8){
+        window.__dbg.warp(pil.y + back + dy, it.x + dx);
+        if(body && _insideMesh(body, camera.position)) at = { x: it.x + dx, y: pil.y + back + dy };
+      }
+      if(at) hold(at.x, at.y, 30);
+      const lens = camera.position.clone();
+      const inside = fadeables.filter(m=>_insideMesh(m, lens));
+      if(!inside.length) bad.push('the lens did not land inside the pillar, so the case is unproven');
+      const solid = inside.filter(m=>!m.material.transparent || m.material.opacity > 0.5);
+      if(solid.length) bad.push('the lens sits inside '+solid.length+' fadeable mesh(es) still drawn solid');
+      const hide = _opaqueBetween(fadeables, p);
+      if(hide) bad.push('from inside the pillar, '+hide+' opaque fadeable(s) hide the racer');
+      notes.push('lens inside '+inside.length+' pillar mesh(es), '+solid.length+' solid, '+hide+' in the way');
+    }
+
+    // ---- two blockers on the boom: stop at the one nearest the racer --------
+    window.__dbg.warp(2200, TRACK_W/2); window.__dbg.look(0, CAM.PITCH);
+    hold(TRACK_W/2, 2200, 30);
+    const piv = new THREE.Vector3(camPos.x, camPos.y, camPos.z);
+    const out = camera.position.clone().sub(piv).normalize();
+    const walls = [100, 180].map(d=>{
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+      w.position.copy(piv).addScaledVector(out, d); w.lookAt(piv); scene.add(w); w.updateMatrixWorld(true);
+      camBlockers.push(w); return w;
+    });
+    try{
+      hold(TRACK_W/2, 2200, 40);
+      const reach = camera.position.distanceTo(new THREE.Vector3(camPos.x, camPos.y, camPos.z));
+      if(reach > 100) bad.push('with blockers at 100 and 180 on the boom the lens stopped at '+reach.toFixed(0)+', beyond the nearer one');
+      notes.push('two blockers: lens at '+reach.toFixed(0));
+    } finally {
+      for(const w of walls){ scene.remove(w); camBlockers.splice(camBlockers.indexOf(w), 1); w.geometry.dispose(); w.material.dispose(); }
+    }
+    return { name:'χ the boom and the fade keep the racer\'s body in sight', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // The lowest drawn point of a racer: the skinned body and trim, posed.
+  function _soleWorld(m){
+    scene.updateMatrixWorld();
+    const v = new THREE.Vector3(), lo = new THREE.Vector3(0, Infinity, 0);
+    for(const o of [m.body, m.trim]){
+      const n = o.geometry.attributes.position.count;
+      for(let i=0;i<n;i++){ o.getVertexPosition(i, v); v.applyMatrix4(o.matrixWorld); if(v.y < lo.y) lo.copy(v); }
+    }
+    return lo;
+  }
+  // The first rendered course surface straight down from over a world point
+  // (under the sole itself, so a slope does not count as a gap).
+  function _surfaceUnder(at){
+    const ray = new THREE.Raycaster(new THREE.Vector3(at.x, at.y + 40, at.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const hit = ray.intersectObject(courseGroup, true).find(h=>{
+      for(let o=h.object; o; o=o.parent) if(!o.visible) return false;
+      return true;
+    });
+    return hit ? hit.point.y : null;
+  }
+  // Is the first surface under this sim point the swept ground itself (a
+  // double-sided strip straight in the course group), not a pad or a prop?
+  function _groundUnder(x, y){
+    const w = toWorld(x, y, 0);
+    const ray = new THREE.Raycaster(new THREE.Vector3(w.x, w.y + 60, w.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const h = ray.intersectObject(courseGroup, true)[0];
+    return !!h && h.object.parent === courseGroup && h.object.geometry.type === 'BufferGeometry'
+           && h.object.material.side === THREE.DoubleSide;
+  }
+
+  // ---------- psi: feet on the floor that is drawn ----------
+  // The simulation's floor is 0. The swept ground ribbon was drawn with its
+  // top at -6 -- the CENTRE of the 12-tall box it replaced, carried over as
+  // if it were the top -- so on every course with a path, which is every
+  // race map, a standing racer's soles hung 4-5 over the drawn floor. The
+  // start and finish aprons stood 3 proud of the sim floor (feet sunk 4-7
+  // into them), and a pit's island, a floor of 0 in the sim, was drawn as a
+  // 14-tall block the racer stood inside.
+  function checkFeetOnDrawnFloor(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    // open ground: the first spot down the course with nothing laid on it
+    let gy = 1500;
+    while(gy < 4000 && !(_groundUnder(TRACK_W*0.35, gy) && !obstacles.some(o=>Math.abs((o.y!==undefined ? o.y : (o.yStart+o.yEnd)/2) - gy) < 200))) gy += 50;
+    // On the start apron, past the line: toWorld clamps the path at s=0, so
+    // behind the line every sim y draws at the line itself.
+    const startSec = (courseScript||[]).find(s=>s.type==='start');
+    const spots = [['ground', TRACK_W*0.35, gy], ['start pad', TRACK_W*0.35, Math.max(40, (startSec ? startSec.len : 80)/2)]];
+    const fin = (courseScript||[]).find(s=>s.type==='finish');
+    spots.push(['finish apron', TRACK_W/2, trackLength - Math.min(fin ? fin.len : 400, 520)/2]);
+    const pit = obstacles.find(o=>o.type==='pit' && o.islands && o.islands.length);
+    if(pit){ const is = pit.islands[0]; spots.push(['pit island', is.x, (is.y0 + is.y1)/2]); }
+    else bad.push('no pit island on this course, so it is unproven');
+    for(const [what, x, y] of spots){
+      window.__dbg.warp(y, x);
+      let sum = 0, n = 0, worst = 0, fell = false, floorOff = null;
+      for(let i=0;i<50;i++){
+        p.x = x; p.y = y; p.vx = 0; p.vy = 0;
+        window.__dbg.tick(1);
+        if(p.falling || p.finished){ fell = true; break; }
+        if(i < 20) continue;                       // stand still first
+        const sole = _soleWorld(p.mesh), surf = _surfaceUnder(sole);
+        if(surf === null) continue;
+        const gap = sole.y - surf;
+        sum += gap; n++; if(Math.abs(gap) > Math.abs(worst)) worst = gap;
+        // ...and, pose aside, the drawn surface against the sim's floor
+        const c = _surfaceUnder(p.mesh.group.getWorldPosition(new THREE.Vector3()));
+        if(c !== null) floorOff = c - toWorld(p.x, p.y, p.floorH||0).y;
+      }
+      if(fell){ bad.push(what+': the racer did not stay standing there'); continue; }
+      if(!n){ bad.push(what+': no drawn surface under the racer'); continue; }
+      const mean = sum/n;
+      if(Math.abs(mean) > 1.5) bad.push(what+': soles '+(mean > 0 ? 'float '+mean.toFixed(1)+' over' : 'sink '+(-mean).toFixed(1)+' into')+' the drawn surface');
+      if(floorOff !== null && Math.abs(floorOff) > 0.5) bad.push(what+': the drawn surface is '+floorOff.toFixed(1)+' off the simulation\'s floor');
+      notes.push(what+' '+mean.toFixed(2)+' (worst '+worst.toFixed(2)+', surface '+(floorOff===null ? '?' : floorOff.toFixed(2))+' off the sim floor)');
+    }
+    return { name:'ψ a standing racer\'s feet meet the floor that is drawn', pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ')+' | ' : '') + 'sole minus drawn surface: '+notes.join('; ') };
+  }
+
+  // ---------- omega: in a multiplayer race everyone wears their own skin ----------
+  // Remote racers were built from a profile with no skin in it: the joiner's
+  // hello carried a colour, a hat and eyes, so the host drew every friend as
+  // a flat bean; and the host's per-frame state carried no skin either, so a
+  // joiner drew EVERY racer -- bots, host and itself -- flat. This drives the
+  // real path end to end: joinRoom's hello (PeerJS stubbed), setupHostConn's
+  // handler, makeRacers and buildRacerMeshes on the host, then serializeRacer
+  // and applyNetworkState on a joiner.
+  function checkNetSkins(){
+    const bad = [], notes = [];
+    const sig = (m)=>m.type+'|'+!!m.map+'|'+(m.color ? m.color.getHexString() : '');
+    const was = { skin:custom.skin, pattern:custom.pattern };
+    const hadPeer = Object.prototype.hasOwnProperty.call(window, 'Peer'), RealPeer = window.Peer;
+    const SKIN = SKIN_BY_ID.frost ? 'frost' : Object.keys(SKIN_BY_ID).find(k=>k!=='pink');
+    const PAT = Object.keys(PATTERN_BY_ID).find(k=>k!=='none');
+    let hello = null;
+    try{
+      begin('sunny');
+      // ---- the joiner says who it is -------------------------------------
+      window.Peer = function(){
+        const me = this, h = {}; me.id = 'peerJoin'; me._h = h;
+        me.on = (ev, fn)=>{ h[ev] = fn; };
+        me.connect = ()=>{ const ch = {}; const c = { peer:'host', open:true, _ch:ch,
+          on:(ev, fn)=>{ ch[ev] = fn; }, send:(d)=>{ if(d && d.type==='hello') hello = d; }, close(){} };
+          me._c = c; return c; };
+        me.destroy = ()=>{};
+      };
+      custom.skin = SKIN; custom.pattern = PAT;
+      joinRoom('TEST');
+      if(mp.peer && mp.peer._h.open) mp.peer._h.open();
+      if(mp.peer && mp.peer._c && mp.peer._c._ch.open) mp.peer._c._ch.open();
+      if(!hello) bad.push('the joiner sent no hello');
+      else if(hello.skin !== SKIN || hello.pattern !== PAT)
+        bad.push('the joiner\'s hello does not say its skin and pattern (skin '+hello.skin+', pattern '+hello.pattern+')');
+      leaveMultiplayer();
+      // ---- the host builds the field with that joiner in it -----------------
+      const hh = {}, conn = { peer:'peerJoin', open:true, on:(ev, fn)=>{ hh[ev] = fn; }, send(){} };
+      setupHostConn(conn);
+      hh.data(hello || { type:'hello', name:'Friend', color:'#60a5fa', hat:'none', eyes:'round' });
+      mp.role = 'host'; mp.conns = [conn];
+      racers = makeRacers(); buildRacerMeshes();
+      const rem = racers.find(r=>r.remoteId==='peerJoin');
+      const ref = makeCharacter({ skin:skinOf(SKIN), pattern:patternOf(PAT) });
+      if(!rem) bad.push('the host built no racer for the joiner');
+      else if(sig(rem.mesh.bodyMat) !== sig(ref.bodyMat))
+        bad.push('the host draws the joiner as '+sig(rem.mesh.bodyMat)+', not in its '+SKIN+' skin ('+sig(ref.bodyMat)+')');
+      // ---- a joiner rebuilds the field from the host's state -----------------
+      const host = racers, sent = host.map(serializeRacer);
+      mp.role = 'client'; mp.peer = { id:'peerJoin', destroy(){} };
+      racers = [];
+      applyNetworkState(sent);
+      let skinned = 0, wrong = 0, eg = '';
+      for(const h of host){
+        if(!h.skinId) continue;
+        skinned++;
+        const c = racers.find(x=>x._netId === (h.remoteId || h._localId));
+        if(!c || sig(c.mesh.bodyMat) !== sig(h.mesh.bodyMat)){ wrong++; if(!eg) eg = (h.name||'?')+' '+h.skinId+': host '+sig(h.mesh.bodyMat)+', joiner '+(c ? sig(c.mesh.bodyMat) : 'none'); }
+      }
+      if(!skinned) bad.push('no skinned racer in the field, so the joiner side is unproven');
+      if(wrong) bad.push('a joiner draws '+wrong+' of '+skinned+' skinned racers in something else (e.g. '+eg+')');
+      notes.push('hello '+(hello ? hello.skin+'/'+hello.pattern : 'none')+'; host draws the joiner '+(rem ? sig(rem.mesh.bodyMat) : '-')+'; joiner matches '+(skinned-wrong)+'/'+skinned);
+    } finally {
+      custom.skin = was.skin; custom.pattern = was.pattern;
+      if(hadPeer) window.Peer = RealPeer; else delete window.Peer;
+      try{ leaveMultiplayer(); }catch(e){}
+      try{ $('lobby').classList.add('hidden'); }catch(e){}
+    }
+    return { name:'ω in a multiplayer race every racer wears its own skin', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -9325,7 +9823,9 @@
       ['|',checkPrematchHiddenTab],
       // ...and the other half of the same feature: the JOINER's path, which
       // until now nothing in this suite had ever run.
-      ['{',checkJoinerPrepares],['}',checkJoinerFrames]
+      ['{',checkJoinerPrepares],['}',checkJoinerFrames],
+      // the camera and visual audit
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

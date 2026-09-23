@@ -130,6 +130,8 @@
     }
     r.y=Math.max(-20, ry); r.x=clamp(rx, 60, TRACK_W-60); r.vx=0; r.vy=0.5;
     r.stumbleT=250; r.invuln=1400; r.aiObs=null; r.aiPlat=null;
+    // a teleport, so the camera on this racer cuts rather than pans (06_camera.js)
+    cutCameraTo(r);
     // A bot put back where it started will make the same choice again and fall
     // in the same place. Reroll the lane it fancies; and once it has failed
     // here twice, stop letting it pick -- send it down the middle of whatever
