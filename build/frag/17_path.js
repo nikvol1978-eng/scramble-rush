@@ -275,6 +275,7 @@
       if(settled) _fieldFaded.delete(g);
     }
   }
+  const _occSph = new THREE.Vector3(), _occLocal = new THREE.Vector3(), _occInv = new THREE.Matrix4();
   function updateOcclusion(target, subject){
     fadeFieldAbove(subject);
     if(!fadeables.length) return;
@@ -285,6 +286,33 @@
     _occRay.set(camera.position, _occDir);
     _occRay.far = Math.max(1, dist - 26);        // do not fade what is behind them
     const hit = new Set(_occRay.intersectObjects(fadeables, false).map(h=>h.object));
+    // ...and the line to the racer's BODY. The pivot floats 26 over their
+    // feet, so a 30-tall corridor wall seen along its length cut the line to
+    // the body and missed the line to the pivot: an opaque wall where the
+    // racer should be. Stopped a little inside the body, for the same reason.
+    if(subject && subject.mesh){
+      subject.mesh.group.getWorldPosition(_fieldBody);
+      _occDir.subVectors(_fieldBody, camera.position);
+      const bd = _occDir.length();
+      if(bd > 1){
+        _occRay.set(camera.position, _occDir.normalize());
+        _occRay.far = Math.max(1, bd - 12);
+        for(const h of _occRay.intersectObjects(fadeables, false)) hit.add(h.object);
+      }
+    }
+    // ...and whatever the lens is INSIDE. A ray leaving a closed mesh meets
+    // only its back faces, so neither line above ever reported the pillar the
+    // lens was standing in. Bounding sphere first, then the mesh's own box.
+    for(const m of fadeables){
+      const g = m.geometry; if(!g) continue;
+      if(!g.boundingSphere) g.computeBoundingSphere();
+      const rad = g.boundingSphere.radius * m.matrixWorld.getMaxScaleOnAxis();
+      _occSph.copy(g.boundingSphere.center).applyMatrix4(m.matrixWorld);
+      if(_occSph.distanceToSquared(camera.position) > rad*rad) continue;
+      if(!g.boundingBox) g.computeBoundingBox();
+      _occLocal.copy(camera.position).applyMatrix4(_occInv.copy(m.matrixWorld).invert());
+      if(g.boundingBox.containsPoint(_occLocal)) hit.add(m);
+    }
     for(const m of fadeables){
       const want = hit.has(m) ? 0.20 : 1;
       m.material.opacity += (want - m.material.opacity)*0.22;

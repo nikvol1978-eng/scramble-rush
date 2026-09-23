@@ -5743,6 +5743,98 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // Is a world point inside a closed mesh? Parity: from inside, a ray along
+  // each axis crosses the surface an odd number of times (sides forced double
+  // so both faces count). Five of six, to forgive a ray down a seam.
+  function _insideMesh(m, w){
+    const g = m.geometry; if(!g) return false;
+    if(!g.boundingBox) g.computeBoundingBox();
+    const local = w.clone().applyMatrix4(new THREE.Matrix4().copy(m.matrixWorld).invert());
+    if(!g.boundingBox.containsPoint(local)) return false;
+    const side = m.material.side; m.material.side = THREE.DoubleSide;
+    let odd = 0;
+    try{
+      for(const d of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
+        const ray = new THREE.Raycaster(w, new THREE.Vector3(d[0], d[1], d[2]), 0, 1e5), hits = [];
+        m.raycast(ray, hits);
+        if(hits.length % 2 === 1) odd++;
+      }
+    } finally { m.material.side = side; }
+    return odd >= 5;
+  }
+
+  // ---------- chi: the boom and the fade test the racer, not a point over them ----------
+  // The boom was cast only toward the pivot, 26 over the racer's feet, and the
+  // fade tested only that line, shortened by 26. A 30-tall corridor wall cuts
+  // the line to the BODY while missing the line to the pivot, so a sideways
+  // look along a wall hid the racer behind an opaque wall (sunny 651,451 at
+  // yaw -1.5, pitch 0.12). The boom also stopped at the blocker nearest its
+  // FAR end, so with two in the way the lens could come to rest between them;
+  // and a lens inside a fadeable mesh never faded it, because a ray leaving
+  // a closed mesh meets only back faces.
+  function checkBoomSeesTheBody(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    const hold = (x, y, n)=>{ for(let i=0;i<n;i++){ p.x = x; p.y = y; p.vx = 0; p.vy = 0; window.__dbg.tick(1); } };
+    window.__dbg.hold('w', false);
+
+    // ---- a corridor wall across the line to the body ----------------------
+    window.__dbg.warp(651, 451); window.__dbg.look(-1.5, 0.12);
+    hold(451, 651, 90);
+    const wallHide = _opaqueBetween(camBlockers, p), anyHide = _opaqueBetween(fadeables, p);
+    if(wallHide) bad.push('looking along the wall, '+wallHide+' opaque wall face(s) stand between the lens and the racer');
+    else if(anyHide) bad.push('looking along the wall, '+anyHide+' opaque fadeable(s) stand between the lens and the racer');
+    notes.push('wall look: '+wallHide+' wall, '+anyHide+' fadeable in the way');
+
+    // ---- the lens inside a pillar -----------------------------------------
+    const pil = obstacles.find(o=>o.type==='pillars');
+    if(!pil) bad.push('no pillars on this course, so the lens-inside case is unproven');
+    else{
+      // Find where to stand for the lens to land inside the first pillar: the
+      // course bends, so the straight-line answer is only where to start.
+      const it = pil.items[0], body = pil.meshes && pil.meshes[0];
+      const back = CAM.DIST*settings.camDist*Math.cos(CAM.PITCH_MIN);
+      window.__dbg.look(0, CAM.PITCH_MIN);
+      let at = null;
+      for(let dy=-40; dy<=40 && !at; dy+=8) for(let dx=-40; dx<=40 && !at; dx+=8){
+        window.__dbg.warp(pil.y + back + dy, it.x + dx);
+        if(body && _insideMesh(body, camera.position)) at = { x: it.x + dx, y: pil.y + back + dy };
+      }
+      if(at) hold(at.x, at.y, 30);
+      const lens = camera.position.clone();
+      const inside = fadeables.filter(m=>_insideMesh(m, lens));
+      if(!inside.length) bad.push('the lens did not land inside the pillar, so the case is unproven');
+      const solid = inside.filter(m=>!m.material.transparent || m.material.opacity > 0.5);
+      if(solid.length) bad.push('the lens sits inside '+solid.length+' fadeable mesh(es) still drawn solid');
+      const hide = _opaqueBetween(fadeables, p);
+      if(hide) bad.push('from inside the pillar, '+hide+' opaque fadeable(s) hide the racer');
+      notes.push('lens inside '+inside.length+' pillar mesh(es), '+solid.length+' solid, '+hide+' in the way');
+    }
+
+    // ---- two blockers on the boom: stop at the one nearest the racer --------
+    window.__dbg.warp(2200, TRACK_W/2); window.__dbg.look(0, CAM.PITCH);
+    hold(TRACK_W/2, 2200, 30);
+    const piv = new THREE.Vector3(camPos.x, camPos.y, camPos.z);
+    const out = camera.position.clone().sub(piv).normalize();
+    const walls = [100, 180].map(d=>{
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+      w.position.copy(piv).addScaledVector(out, d); w.lookAt(piv); scene.add(w); w.updateMatrixWorld(true);
+      camBlockers.push(w); return w;
+    });
+    try{
+      hold(TRACK_W/2, 2200, 40);
+      const reach = camera.position.distanceTo(new THREE.Vector3(camPos.x, camPos.y, camPos.z));
+      if(reach > 100) bad.push('with blockers at 100 and 180 on the boom the lens stopped at '+reach.toFixed(0)+', beyond the nearer one');
+      notes.push('two blockers: lens at '+reach.toFixed(0));
+    } finally {
+      for(const w of walls){ scene.remove(w); camBlockers.splice(camBlockers.indexOf(w), 1); w.geometry.dispose(); w.material.dispose(); }
+    }
+    return { name:'χ the boom and the fade keep the racer\'s body in sight', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8817,7 +8909,7 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

@@ -338,7 +338,10 @@
       _camRay.set(_camFrom, _camBack);
       _camRay.far = radius;
       const hitList = _camRay.intersectObjects(camBlockers, false);
-      if(hitList.length) reach = clamp(radius - hitList[0].distance - CAM.BLOCK_PAD, CAM.BLOCK_MIN, radius);
+      // The LAST hit, the one nearest the pivot. hitList[0] is the one nearest
+      // the far end, and with two walls on the boom stopping short of that one
+      // left the lens between them, looking at the back of the inner one.
+      if(hitList.length) reach = clamp(radius - hitList[hitList.length-1].distance - CAM.BLOCK_PAD, CAM.BLOCK_MIN, radius);
     }
     if(camReach === 0 || snap) camReach = reach;
     else camReach += (reach - camReach) * (1 - Math.exp(-(reach < camReach ? CAM.BLOCK_IN : CAM.BLOCK_OUT)*dt));
