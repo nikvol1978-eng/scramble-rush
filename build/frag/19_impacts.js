@@ -5,7 +5,12 @@
     // A bot waiting at a pit edge for its platform is not a body in the way:
     // sixteen beans through one gap with three of them standing still was a
     // wall, and the pack behind it stalled, escaped, and fell in.
-    const active=racers.filter(r=>!r.finished&&!r.falling&&!r.knockedOut&&!(r.pitWait&&!r.pitWait.committed));
+    // Nor is anyone already knocked out of the round. This read r.knockedOut,
+    // which nothing has ever set -- the knocked-out flag is lavaOut -- so a
+    // racer drawn seventy below the floor at fifteen per cent opacity went on
+    // shoving the live ones: a player running into where one lay on Tile Trap
+    // made 97 units in forty frames against 156 with nobody there.
+    const active=racers.filter(r=>!r.finished&&!r.falling&&!r.lavaOut&&!(r.pitWait&&!r.pitWait.committed));
     for(let i=0;i<active.length;i++){
       for(let j=i+1;j<active.length;j++){
         const a=active[i], b=active[j];
@@ -84,9 +89,11 @@
     for(const r of racers) if(!r.falling && !r.lavaOut && r.y > lead) lead = r.y;
     for(const r of racers){
       r.draft = 0;
-      if(r.finished||r.falling||r.knockedOut) continue;
+      // lavaOut, for the reason racerCollisions gives: an eliminated racer
+      // neither draws a tow nor gives one.
+      if(r.finished||r.falling||r.lavaOut) continue;
       for(const o of racers){
-        if(o===r || o.falling || o.finished || o.knockedOut) continue;
+        if(o===r || o.falling || o.finished || o.lavaOut) continue;
         const ahead = o.y - r.y;
         if(ahead < DRAFT_NEAR || ahead > DRAFT_FAR) continue;
         if(Math.abs(o.x - r.x) > DRAFT_WIDE) continue;

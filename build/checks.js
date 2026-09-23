@@ -7758,6 +7758,48 @@
              rep };
   }
 
+  // ---------- π: an eliminated racer is not a body in anybody's way ----------
+  // racerCollisions filtered on r.knockedOut, a field nothing has ever set, so a
+  // racer knocked out of a survival round -- drawn seventy below the floor at
+  // fifteen per cent -- went on shoving the live ones: measured on Tile Trap, a
+  // player running into where one lay was held to 97 units in forty frames
+  // against 156 with nobody there. The slipstream had the same filter, so the
+  // same ghost towed whoever ran up behind it.
+  function checkEliminatedNotSolid(){
+    const bad = [], rep = {};
+    begin('sunny');
+    const p = player();
+    const bots = racers.filter(r=>!r.isPlayer), body = bots[0];
+    // somewhere with nothing else in reach
+    let y0 = 260;
+    while(y0 < trackLength-800 && obstacles.some(o=>o.y0!==undefined && o.y1!==undefined
+            && o.y1+60 > y0-60 && o.y0-60 < y0+320)) y0 += 40;
+    const go = (lavaOut)=>{
+      for(const r of bots) if(r!==body){ r.x = TRACK_W/2; r.y = -9000; r.vx = 0; r.vy = 0; r.respawnFreeze = 1e9; }
+      Object.assign(body, { x:TRACK_W/2, y:y0+70, h:0, vh:0, vx:0, vy:0, falling:false, finished:false,
+                            respawnFreeze:1e9, lavaOut, lavaCatchY:y0+70 });
+      Object.assign(p, { x:TRACK_W/2, y:y0, h:0, vh:0, vx:0, vy:0, floorH:0, falling:false, finished:false,
+                         stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0, lavaOut:false });
+      timeLimit = raceTime + 900;
+      window.__dbg.hold('w', true);
+      let draft = 0;
+      for(let i=0;i<50;i++){ window.__dbg.tick(1); draft = Math.max(draft, p.draft||0); }
+      window.__dbg.hold('w', false);
+      return { gained: p.y - y0, draft, bodyMoved: Math.hypot(body.x-TRACK_W/2, body.y-(y0+70)) };
+    };
+    const out = go(true), live = go(false);
+    body.lavaOut = false; body.respawnFreeze = 0;
+    rep.eliminated = 'player gained '+out.gained.toFixed(0)+', body moved '+out.bodyMoved.toFixed(1)+', draft '+out.draft.toFixed(3);
+    rep.live = 'player gained '+live.gained.toFixed(0)+', body moved '+live.bodyMoved.toFixed(1);
+    if(out.bodyMoved > 0.01) bad.push('the eliminated racer was shoved '+out.bodyMoved.toFixed(1));
+    if(out.gained < 70 + RADIUS*2) bad.push('the player was held up behind an eliminated racer ('+out.gained.toFixed(0)+' gained)');
+    if(out.draft > 0) bad.push('an eliminated racer towed the player (draft '+out.draft.toFixed(3)+')');
+    // the control: the same racer, still in the round, is in the way
+    if(!(live.bodyMoved > 1 || live.gained < out.gained - 10)) bad.push('a live racer in the same spot was not in the way either, so this measured nothing');
+    return { name:'π an eliminated racer is not solid and does not tow',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7771,8 +7813,8 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
-      // Solids stay solid.
-      ['ο',checkSolidsStaySolid],
+      // Solids stay solid, and the eliminated are not bodies.
+      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],
       // These two used to be pinned to the end of the registry as a WORKAROUND:
       // the suite shared one Math.random stream and one accumulating clock, [~]
       // steps ninety simulated seconds of lobby into that clock, and putting it
