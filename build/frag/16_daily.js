@@ -147,6 +147,38 @@
     spinning = false;
   }
 
+  // THE RESULT WAITS FOR THE WHEEL. The landing used to follow a fixed 4250ms
+  // timer from the press, but the 4.1s transition starts on the next frame --
+  // 140-250ms after the press on an idle machine, later on a busy one -- and
+  // runs on the document timeline, which a loaded page advances late. So the
+  // prize card and the winning wedge's glow could arrive on a wheel still
+  // turning, with the name under the pointer not yet the prize.
+  //
+  // Now the landing waits for the turn's own end. Behind it stands a
+  // wall-clock ceiling -- the turn's length plus 1.5s -- so a stalled or
+  // hidden tab can never hang a spin; and when the ceiling is what fires,
+  // the turn is finished on the spot, so even then the result never shows on
+  // a moving wheel. A turn that is cancelled (the screen closed under it)
+  // ends the wait at once. Where no turn can be found the old fixed wait
+  // stands, and reduced motion, with nothing to wait for, keeps its short beat.
+  function rotorTurn(rotor){
+    if(typeof rotor.getAnimations !== 'function') return null;
+    void getComputedStyle(rotor).transform;       // the style change that starts it
+    return rotor.getAnimations().find(a => a.transitionProperty === 'transform') || null;
+  }
+  function wheelStopped(turn, still){
+    if(still || !turn) return new Promise(r => setTimeout(r, still ? 200 : 4250));
+    let cap = 5600;
+    try{ const end = turn.effect.getComputedTiming().endTime;
+         if(isFinite(end)) cap = end + 1500; }catch(e){ /* keep the default */ }
+    return new Promise(resolve => {
+      let done = false;
+      const land = ()=>{ if(done) return; done = true; clearTimeout(ceiling); resolve(); };
+      const ceiling = setTimeout(()=>{ try{ turn.finish(); }catch(e){ /* cancelled already */ } land(); }, cap);
+      turn.finished.then(land, land);
+    });
+  }
+
   async function doSpin(){
     if(spinning || !spinReady()) return;
     spinning = true;
@@ -175,6 +207,10 @@
     const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     rotor.style.transition = still ? 'none' : 'transform 4.1s cubic-bezier(0.333,0.667,0.667,1)';
     rotor.style.transform = `rotate(${target}deg)`;
+    // Create the transition now, so the landing below can wait on THIS turn:
+    // the style change that starts it would otherwise happen at the next
+    // frame, and there would be nothing to ask for yet.
+    const turn = still ? null : rotorTurn(rotor);
     SFX.click();
 
     // bank the spin immediately, so a reload mid-animation cannot re-roll it --
@@ -186,7 +222,7 @@
     else stats.coins = (stats.coins||0) + prize.coins;
     await saveProfile();
 
-    await new Promise(r => setTimeout(r, still ? 200 : 4250));
+    await wheelStopped(turn, still);
 
     // The landing: light the wedge it stopped on. It lives on the rotor, so
     // it is on that wedge by construction. A short pulse that settles to a

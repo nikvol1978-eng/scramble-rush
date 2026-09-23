@@ -6534,12 +6534,14 @@
       const deadline = performance.now() + 9000;
       while(spinning && performance.now() < deadline) await wait(50);
       if(spinning) bad.push('the spin never settled');
-      // doSpin's 4250ms timer is not the wheel's clock. The 4.1s transition
-      // runs on the document timeline, which starts late and advances late on
-      // a loaded machine, so 60ms after the timer the wedges could still be a
-      // few degrees short of where they stop -- and the landing below judged a
-      // wheel that was still turning. Wait for the wheel itself, however long
-      // that takes up to a ceiling, and fail if it never stops.
+      // doSpin settling is not the wheel stopping. It used to settle on a
+      // fixed 4250ms timer while the 4.1s transition ran on the document
+      // timeline, which starts late and advances late on a loaded machine, so
+      // 60ms later the wedges could still be a few degrees short of where
+      // they stop -- and the landing below judged a wheel still turning. doSpin
+      // now waits for the turn itself ([ς] holds it to that), but this check
+      // asks the wheel rather than trusting doSpin: wait for the wheel,
+      // however long that takes up to a ceiling, and fail if it never stops.
       const stillAt = await wheelStops(10000);
       if(!stillAt) bad.push('the wheel was still turning ' + ((performance.now() - t0)/1000).toFixed(1)
                             + 's after the press');
@@ -6663,6 +6665,134 @@
     }
     bad.push(...geo);
     return { name:'γ daily spin: one wheel -- the names turn with their wedges, pointer and hub stay put',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ς] the prize waits for the wheel to stop ---------------------------
+  // The defect: doSpin showed the prize card and lit the winning wedge after
+  // a fixed 4250ms timer, but the wheel's 4.1s transition starts on the next
+  // frame -- 140-250ms after the press on an idle machine, later on a busy
+  // one -- and runs on the document timeline, which a loaded page advances
+  // late. So the result could land on a wheel still turning, the name under
+  // the pointer not yet the prize. [γ] could not see it: it judges the wheel
+  // after it has stopped, which is exactly when the two agree.
+  //
+  // This makes the lateness deterministic instead of waiting for a slow
+  // machine: an !important stylesheet rule delays every transition in the
+  // wheel by 600ms -- it outranks doSpin's inline `transition` without
+  // touching doSpin -- and then presses the real SPIN button. At the instant
+  // #spinResult first gets content, and the instant the landing glow goes
+  // on, it asks: is any transform transition still running in the wheel,
+  // and is the rotor at the angle doSpin sent it to? It also confirms the
+  // spin was banked while the wheel was still turning, as it must be (a
+  // reload mid-spin cannot re-roll it), and that the delay really reached
+  // the wheel, so a pass can never be a measurement of nothing.
+  async function checkPrizeAfterStop(){
+    const bad = [], notes = [];
+    const DELAY = 600;
+    const wasLastSpin = stats.lastSpin, wasOwned = (stats.owned || []).slice(), wasCoins = stats.coins;
+    const snap = uiSnap();
+    const wait = (ms)=> new Promise(r => setTimeout(r, ms));
+    const norm = (d)=> ((d % 360) + 540) % 360 - 180;
+    const angOf = (t)=>{ if(!t || t === 'none') return 0;
+      const m = new DOMMatrixReadOnly(t); return Math.atan2(m.b, m.a) * 180 / Math.PI; };
+    const W = ()=> document.querySelector('#daily .wheelWrap');
+    const turning = ()=> W().getAnimations({ subtree:true }).filter(a =>
+      a.transitionProperty === 'transform' && a.playState !== 'finished');
+    const style = document.createElement('style');
+    const obs = [];
+    let t0 = 0;
+    const seen = {};
+    // what the wheel is doing right now, in the terms a player would see
+    const probe = (what)=>{
+      const rotor = $('wheelRotor');
+      const run = turning();
+      const target = rotor.style.transform;
+      const off = Math.abs(norm(angOf(getComputedStyle(rotor).transform) - angOf(target)));
+      let prog = '';
+      if(run.length){ const ct = run[0].effect.getComputedTiming();
+        prog = ', ' + Math.round((ct.progress || 0) * 100) + '% through it'; }
+      return { what, at: Math.round(performance.now() - t0), running: run.length, off, prog };
+    };
+    try{
+      state = 'menu';
+      stats.owned = [];                        // every spin is a skin, never the coin fallback
+      stats.lastSpin = 0;                      // a spin is due
+      $('dailyBtn').click();
+      await wait(60);
+      if(!W() || !$('wheelRotor') || !$('spinResult') || !$('wheelWin')){
+        bad.push('the daily screen has no wheel, rotor, result slot or landing glow to watch');
+        throw new Error('no wheel');
+      }
+      if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        bad.push('the page prefers reduced motion, so there is no turn to be early for');
+
+      // the first moment each thing happens, measured as it happens
+      const result = new MutationObserver(()=>{
+        if(!seen.result && $('spinResult').textContent.trim()) seen.result = probe('the prize card');
+      });
+      result.observe($('spinResult'), { childList:true, subtree:true, characterData:true });
+      const glow = new MutationObserver(()=>{
+        if(!seen.glow && $('wheelWin').classList.contains('on')) seen.glow = probe('the landing glow');
+      });
+      glow.observe($('wheelWin'), { attributes:true, attributeFilter:['class'] });
+      obs.push(result, glow);
+
+      style.textContent = '#daily .wheelWrap, #daily .wheelWrap *{ transition-delay:' + DELAY + 'ms !important; }';
+      document.head.appendChild(style);
+
+      const owned0 = stats.owned.slice();
+      t0 = performance.now();
+      $('spinBtn').click();                    // the button a player presses; it calls doSpin()
+
+      // the delay reached the wheel, and the spin is banked while it turns
+      await wait(150);
+      const early = turning();
+      const delays = early.map(a => a.effect.getTiming().delay);
+      if(!early.length) bad.push('150ms after the press no transform transition was running in the wheel');
+      else if(!delays.some(d => d >= DELAY))
+        bad.push('the ' + DELAY + 'ms delay never reached the wheel (delays ' + delays.join('/')
+                 + '), so this measured nothing');
+      if(!stats.lastSpin) bad.push('150ms after the press the spin was not banked (lastSpin still 0)');
+      const got = (stats.owned || []).filter(id => owned0.indexOf(id) < 0);
+      if(got.length !== 1) bad.push('150ms after the press the prize was not banked (' + got.length + ' new skins)');
+      if($('spinResult').textContent.trim()) bad.push('the prize card was up 150ms after the press');
+
+      const deadline = performance.now() + 15000;
+      while((spinning || !seen.result || !seen.glow) && performance.now() < deadline) await wait(50);
+      if(spinning) bad.push('the spin had not settled 15s after the press');
+      if(!seen.result) bad.push('the prize card never appeared');
+      if(!seen.glow) bad.push('the landing glow never went on');
+      for(const s of [seen.result, seen.glow]){
+        if(!s) continue;
+        if(s.running) bad.push(s.what + ' appeared ' + s.at + 'ms after the press with the wheel still turning'
+                               + s.prog + ', the rotor ' + s.off.toFixed(1) + ' deg (mod 360) off its resting angle');
+        else if(s.off > 0.5) bad.push(s.what + ' appeared ' + s.at + 'ms after the press with the rotor '
+                                      + s.off.toFixed(1) + ' deg from where doSpin sent it');
+      }
+      if(seen.result && seen.glow && !bad.length)
+        notes.push('with every wheel transition ' + DELAY + 'ms late: prize card at ' + seen.result.at
+                   + 'ms, glow at ' + seen.glow.at + 'ms, both on a stopped wheel at its final angle');
+      if(!$('spinBtn').disabled) bad.push('a spent spin is still offered');
+      if($('spinBtn').textContent !== 'SPIN') bad.push('after the spin the button reads "' + $('spinBtn').textContent + '"');
+      if(!/next spin in/i.test($('spinStatus').textContent))
+        bad.push('after the spin the status reads "' + $('spinStatus').textContent + '"');
+    } catch(e){
+      if(e && e.message !== 'no wheel') bad.push('threw: ' + (e && e.message));
+    } finally {
+      obs.forEach(o => o.disconnect());
+      style.remove();
+      { const until = performance.now() + 9000;
+        while(spinning && performance.now() < until) await wait(50); }
+      stats.lastSpin = wasLastSpin; stats.owned = wasOwned; stats.coins = wasCoins;
+      uiRestore(snap);
+      $('spinResult').innerHTML = '';
+      try{ buildWheel(); }catch(_){ /* best effort */ }
+      try{ closeDaily(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ς daily spin: the prize and the glow wait for the wheel to stop',
              pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
   }
 
@@ -9184,6 +9314,8 @@
       // the inventory and economy audit: every item, the pills, the spin's
       // prize as data, and a save the catalogue has moved on from
       ['λ',checkInventoryAudit],['μ',checkRarityShown],['ν',checkSpinPrizeData],['ξ',checkOrphanCounts],
+      // the spin's result waits for the wheel it is the result of
+      ['ς',checkPrizeAfterStop],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
