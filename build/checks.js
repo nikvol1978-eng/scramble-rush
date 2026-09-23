@@ -5542,6 +5542,504 @@
                : 'covered '+JSON.stringify(seen)+', peak fadeables '+maxFadeables };
   }
 
+  // ================= CAMERA AUDIT (tau..omega) =================
+  // Where the camera and the character are drawn, measured against where the
+  // simulation says they are. Each of these reproduced as a defect first.
+
+  // Where a racer's body is, relative to the lens: on screen, and in front.
+  function _racerOnScreen(r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const inFront = g.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+    const n = g.clone().project(camera);
+    return { ok: inFront && Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1, inFront, x:n.x, y:n.y };
+  }
+
+  // ---------- tau: a respawn is a cut, not a pan ----------
+  // respawnAfterFall puts a racer back as much as 2400 units down the course in
+  // one frame. The pivot follows at FOLLOW_XZ, so for eight to eleven frames
+  // after every section-back respawn the lens was still out where the fall
+  // happened -- with the player behind it, off screen, and on Super Slide
+  // under the course. A teleport is a cut: the frame after it must already
+  // show the racer, in front of the lens.
+  function checkRespawnCut(){
+    const bad = [], notes = [];
+    let far = 0, worstFrames = 0;
+    for(const key of ['slide','neon']){
+      withSeed(1, ()=>beginSeeded(key, 1));
+      const p = player();
+      for(const frac of [0.2, 0.35, 0.5, 0.65, 0.8]){
+        if(state !== 'racing' || p.finished || p.lavaOut) break;
+        window.__dbg.look(0, CAM.PITCH); window.__dbg.hold('w', true);
+        window.__dbg.warp(Math.round(trackLength*frac), TRACK_W/2);
+        window.__dbg.tick(40);
+        if(p.finished || p.lavaOut) break;
+        const y0 = p.y; p.x = -80;                         // off the left edge
+        let n = 0; while(!p.falling && n < 30){ window.__dbg.tick(1); n++; }
+        if(!p.falling) continue;
+        n = 0; while(p.falling && n < 200){ window.__dbg.tick(1); n++; }
+        if(p.falling) continue;
+        const back = y0 - p.y;
+        if(back < 600) continue;                           // not a section-back respawn
+        far++;
+        // Frame 0 is the tick the respawn happened on; one more is allowed.
+        let offFrames = 0;
+        for(let f=0; f<12; f++){
+          const s = _racerOnScreen(p);
+          if(!s.ok) offFrames++;
+          if(f === 1 && !s.ok)
+            bad.push(key+' @'+Math.round(y0)+': respawned '+Math.round(back)+' back and the racer is '
+                     +(s.inFront ? 'off screen' : 'behind the lens')+' a frame later (ndc '+s.x.toFixed(2)+','+s.y.toFixed(2)+')');
+          window.__dbg.tick(1);
+        }
+        worstFrames = Math.max(worstFrames, offFrames);
+        notes.push(key+'@'+Math.round(y0)+' back '+Math.round(back)+': off '+offFrames);
+      }
+      window.__dbg.hold('w', false);
+    }
+    if(!far) bad.push('no section-back respawn was exercised, so the cut is unproven');
+    if(worstFrames > 1) bad.push('racer off screen for up to '+worstFrames+' frames after a respawn');
+    return { name:'τ a respawn cuts the camera to the racer', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
+  // What each visible mesh of a racer actually draws at: a material that is
+  // not transparent draws opaque whatever its opacity number says.
+  function _racerOpacities(m){
+    const out = [];
+    m.group.traverse(o=>{
+      if(!o.isMesh || o === m.outline) return;
+      for(let v=o; v; v=v.parent) if(!v.visible) return;
+      const mt = o.material; if(!mt || mt.visible === false) return;
+      const what = o===m.body ? 'body' : o===m.trim ? 'trim' : o===m.arrow ? 'arrow'
+                 : (m.aura && m.aura.children.includes(o)) ? 'aura' : 'shell';
+      out.push({ what, op: mt.transparent ? mt.opacity : 1 });
+    });
+    return out;
+  }
+
+  // ---------- upsilon: a falling racer fades as one thing ----------
+  // syncRacers faded bodyMat and nothing else. The limbs, the hat and the eyes
+  // are one merged `trim` mesh on its own material, so a fall showed a body at
+  // 20% with a full-strength crown, mitts and eyes hanging in the air over the
+  // hole -- and the player's marker, and a special's aura, with them.
+  function checkFallFadeWhole(){
+    const bad = [], notes = [];
+    const was = { skin:custom.skin, hat:custom.hat };
+    try{
+      for(const [skin, hat] of [[was.skin, 'crown'], ['gold', 'prop'], ['toxic', 'halo']]){
+        custom.skin = skin; custom.hat = hat;
+        begin('sunny');
+        const p = player(), m = p.mesh;
+        window.__dbg.warp(2200, 260); window.__dbg.tick(20);
+        fallDown(p);
+        while(p.falling && p.fallT > 217) window.__dbg.tick(1);
+        const mid = _racerOpacities(m);
+        const body = mid.find(e=>e.what==='body');
+        if(!body || body.op > 0.5) bad.push(skin+': the body is not fading mid-fall ('+(body && body.op.toFixed(2))+')');
+        for(const e of mid){
+          if((e.what==='trim' || e.what==='arrow') && Math.abs(e.op - body.op) > 0.02)
+            bad.push(skin+': mid-fall the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+body.op.toFixed(2));
+          if(e.op > body.op + 0.02)
+            bad.push(skin+': a '+e.what+' mesh is more solid ('+e.op.toFixed(2)+') than the fading body');
+        }
+        // nobody else faded with them: no material is shared between racers
+        for(const o of racers){
+          if(o === p || o.falling || o.lavaOut || !o.mesh) continue;
+          for(const e of _racerOpacities(o.mesh))
+            if((e.what==='body' || e.what==='trim') && e.op < 0.999)
+              { bad.push(skin+': '+o.name+' faded with the player ('+e.what+' '+e.op.toFixed(2)+')'); break; }
+        }
+        notes.push(skin+' mid-fall '+[...new Set(mid.map(e=>e.what+' '+e.op.toFixed(2)))].join('/'));
+        // ...and all of it comes back after the respawn
+        let n = 0; while(p.falling && n++ < 120) window.__dbg.tick(1);
+        window.__dbg.tick(30);
+        for(const e of _racerOpacities(m)){
+          if((e.what==='body' || e.what==='trim' || e.what==='arrow') && e.op < 0.999)
+            bad.push(skin+': after the respawn the '+e.what+' is still at '+e.op.toFixed(2));
+          if(e.op < 0.05) bad.push(skin+': after the respawn a '+e.what+' mesh stayed faded out');
+        }
+      }
+      // knocked out stays faded, as one thing
+      custom.skin = was.skin; custom.hat = 'crown';
+      begin('sunny');
+      const q = player();
+      window.__dbg.warp(2200, 260); window.__dbg.tick(5);
+      q.lavaOut = true; window.__dbg.tick(1);
+      const ko = _racerOpacities(q.mesh), kb = ko.find(e=>e.what==='body');
+      for(const e of ko) if(e.op > kb.op + 0.02) bad.push('knocked out: the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+kb.op.toFixed(2));
+      q.lavaOut = false;
+    } finally { custom.skin = was.skin; custom.hat = was.hat; }
+    _checkPoseKeyframes(bad, notes);
+    return { name:'υ a racer\'s transient looks read true: a fall fades it whole, a landing bends once, a pressed wall does not squash', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
+  // Two keyframes that did not end when they should (folded into [υ]: the
+  // same question -- does a racer's transient look read true -- and the
+  // audit had six ids for seven items).
+  //   * A STANDING landing: the idle pose eases its joints from wherever they
+  //     were, and the landing adds its bend on top every frame, so each
+  //     frame's bend was eased from the last one's and they compounded -- the
+  //     knee peaked near 2 rad for fifteen frames against ~1 for five.
+  //   * PRESSING into a gate: the stop re-armed a 0.3 squash every frame the
+  //     racer leaned on it, so the bean stayed squashed for as long as you
+  //     held forward.
+  function _checkPoseKeyframes(bad, notes){
+    begin('sunny');
+    const p = player(), m = p.mesh;
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    window.__dbg.warp(2200, TRACK_W/2);
+    for(let i=0;i<60;i++){ p.x = TRACK_W/2; p.y = 2200; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    const rest = m.kneePivots[0].rotation.x;
+    window.__dbg.press('jump');
+    let n = 0; while(p.h > 0 || n < 2){ window.__dbg.tick(1); if(++n > 200) break; }
+    let peak = rest, bent = 0;
+    for(let i=0;i<40;i++){
+      const k = m.kneePivots[0].rotation.x;
+      peak = Math.max(peak, k); if(k > rest + 0.1) bent++;
+      window.__dbg.tick(1);
+    }
+    if(peak > rest + 0.95) bad.push('a standing landing bent the knee to '+peak.toFixed(2)+' (rest '+rest.toFixed(2)+')');
+    if(bent > 10) bad.push('a standing landing held the knee bent for '+bent+' frames');
+    notes.push('landing knee '+rest.toFixed(2)+' -> '+peak.toFixed(2)+' for '+bent+' frames');
+
+    const gt = obstacles.find(o=>o.type==='gate');
+    if(!gt){ bad.push('no gate on this course, so pressing into one is unproven'); return; }
+    // a wall section between the doors, well away from both
+    let wx = null, far = -1;
+    for(let x=40; x<=TRACK_W-40; x+=10){ const d = Math.min(...gt.xs.map(gx=>Math.abs(x-gx))); if(d > far){ far = d; wx = x; } }
+    window.__dbg.warp(gt.y - gt.d/2 - RADIUS - 30, wx);
+    for(let i=0;i<10;i++){ p.x = wx; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    window.__dbg.hold('w', true);
+    let worst = 0, pressed = 0;
+    for(let i=0;i<60;i++){
+      window.__dbg.tick(1);
+      const atFace = Math.abs(p.y - (gt.y - gt.d/2 - RADIUS)) < 1;
+      if(i >= 25 && atFace){ pressed++; worst = Math.max(worst, p.squash||0); }
+    }
+    window.__dbg.hold('w', false);
+    if(!pressed) bad.push('the racer never stood pressed against the gate, so it is unproven');
+    if(worst > 0.1) bad.push('pressing into a gate kept the racer squashed at '+worst.toFixed(2));
+    notes.push('pressed into a gate '+pressed+' frames, squash '+worst.toFixed(2));
+  }
+
+  // How many of `meshes` cut the line from the lens to the racer's body while
+  // drawing opaque (a faded one does not count: it is what a fade is for).
+  function _opaqueBetween(meshes, r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const dir = g.clone().sub(camera.position), len = dir.length();
+    const ray = new THREE.Raycaster(camera.position.clone(), dir.normalize(), 0, len);
+    return ray.intersectObjects(meshes, false).filter(h=>{
+      for(let v=h.object; v; v=v.parent) if(!v.visible) return false;
+      const mt = h.object.material;
+      return !mt.transparent || mt.opacity > 0.5;
+    }).length;
+  }
+
+  // ---------- phi: a floor above you does not hide you ----------
+  // Panel Drop and Last Rung are floors stacked over floors. Drop through one
+  // and the chase camera, which sits up and behind, looks down at you THROUGH
+  // the floor you fell out of: the tile a row back cuts the lens-to-body line.
+  // Measured at the default framing, 13% of frames on each map. Nothing faded
+  // them -- the occlusion fade only knew the course's registered fadeables.
+  function checkFieldLayersFade(){
+    const bad = [], notes = [];
+    for(const key of ['tiles','lastrung']){
+      begin(key);
+      const p = player();
+      const f = obstacles.find(o=>o.type==='tilefield' || o.type==='hexfield');
+      if(!f){ bad.push(key+': no tile or hex field on the course'); continue; }
+      for(const b of racers) if(!b.isPlayer) b.y = -3000;      // nobody else arms the floor
+      const cells = f.type==='tilefield' ? f.tiles : f.cells;
+      const meshes = [];
+      for(const c of cells){
+        c.gone = false; c.touched = false; c.fuse = -1; c.drop = 0; c.back = 0;
+        if(!c.mesh) continue;
+        // put back the way the game rebuilds one (09_minigames.js)
+        c.mesh.visible = true; c.mesh.position.y = c.baseY;
+        if(f.type==='tilefield') c.mesh.rotation.z = 0; else c.mesh.rotation.x = 0;
+        c.mesh.traverse(o=>{ if(o.isMesh) meshes.push(o); });
+      }
+      // a column well inside the field, with its top floor gone
+      const midY = f.yStart + (f.yEnd - f.yStart)*0.4;
+      let col = null, bd = 1e9;
+      // One floor down on Panel Drop (90 apart), two on Last Rung, whose rungs
+      // are only 42-46 apart: one rung down, the line still clears the one above.
+      const down = f.type==='tilefield' ? 1 : 2;
+      for(const c of f.columns){ const d = Math.hypot(c.x - TRACK_W/2, c.y - midY); if(c.tiers.length > down && d < bd){ bd = d; col = c; } }
+      for(let i=0;i<down;i++){ const t = col.tiers[i]; t.gone = true; t.drop = 1; t.back = Infinity; t.mesh.visible = false; }
+      const floor = col.tiers[down];
+      window.__dbg.hold('w', false);
+      window.__dbg.warp(col.y, col.x);
+      let blocked = 0, sampled = 0;
+      for(const yaw of [0, 0.5, -0.5]){
+        window.__dbg.look(yaw, CAM.PITCH);
+        for(let i=0;i<50;i++){
+          floor.touched = true; floor.fuse = 1e9;              // the floor you are on holds
+          p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0;
+          window.__dbg.tick(1);
+          if(i < 20) continue;                                 // the view settles
+          sampled++;
+          if(_opaqueBetween(meshes, p)) blocked++;
+        }
+      }
+      if(Math.abs((p.floorH||0) - floor.hy) > 0.5) bad.push(key+': the racer is not on the lower floor (floorH '+(p.floorH||0)+')');
+      if(blocked) bad.push(key+': an opaque floor above hid the racer on '+blocked+' of '+sampled+' frames');
+      notes.push(key+' on floor '+floor.hy+': blocked '+blocked+'/'+sampled);
+    }
+    return { name:'φ a tile or hex floor above the racer fades out of the shot', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // Is a world point inside a closed mesh? Parity: from inside, a ray along
+  // each axis crosses the surface an odd number of times (sides forced double
+  // so both faces count). Five of six, to forgive a ray down a seam.
+  function _insideMesh(m, w){
+    const g = m.geometry; if(!g) return false;
+    if(!g.boundingBox) g.computeBoundingBox();
+    const local = w.clone().applyMatrix4(new THREE.Matrix4().copy(m.matrixWorld).invert());
+    if(!g.boundingBox.containsPoint(local)) return false;
+    const side = m.material.side; m.material.side = THREE.DoubleSide;
+    let odd = 0;
+    try{
+      for(const d of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
+        const ray = new THREE.Raycaster(w, new THREE.Vector3(d[0], d[1], d[2]), 0, 1e5), hits = [];
+        m.raycast(ray, hits);
+        if(hits.length % 2 === 1) odd++;
+      }
+    } finally { m.material.side = side; }
+    return odd >= 5;
+  }
+
+  // ---------- chi: the boom and the fade test the racer, not a point over them ----------
+  // The boom was cast only toward the pivot, 26 over the racer's feet, and the
+  // fade tested only that line, shortened by 26. A 30-tall corridor wall cuts
+  // the line to the BODY while missing the line to the pivot, so a sideways
+  // look along a wall hid the racer behind an opaque wall (sunny 651,451 at
+  // yaw -1.5, pitch 0.12). The boom also stopped at the blocker nearest its
+  // FAR end, so with two in the way the lens could come to rest between them;
+  // and a lens inside a fadeable mesh never faded it, because a ray leaving
+  // a closed mesh meets only back faces.
+  function checkBoomSeesTheBody(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    const hold = (x, y, n)=>{ for(let i=0;i<n;i++){ p.x = x; p.y = y; p.vx = 0; p.vy = 0; window.__dbg.tick(1); } };
+    window.__dbg.hold('w', false);
+
+    // ---- a corridor wall across the line to the body ----------------------
+    window.__dbg.warp(651, 451); window.__dbg.look(-1.5, 0.12);
+    hold(451, 651, 90);
+    const wallHide = _opaqueBetween(camBlockers, p), anyHide = _opaqueBetween(fadeables, p);
+    if(wallHide) bad.push('looking along the wall, '+wallHide+' opaque wall face(s) stand between the lens and the racer');
+    else if(anyHide) bad.push('looking along the wall, '+anyHide+' opaque fadeable(s) stand between the lens and the racer');
+    notes.push('wall look: '+wallHide+' wall, '+anyHide+' fadeable in the way');
+
+    // ---- the lens inside a pillar -----------------------------------------
+    const pil = obstacles.find(o=>o.type==='pillars');
+    if(!pil) bad.push('no pillars on this course, so the lens-inside case is unproven');
+    else{
+      // Find where to stand for the lens to land inside the first pillar: the
+      // course bends, so the straight-line answer is only where to start.
+      const it = pil.items[0], body = pil.meshes && pil.meshes[0];
+      const back = CAM.DIST*settings.camDist*Math.cos(CAM.PITCH_MIN);
+      window.__dbg.look(0, CAM.PITCH_MIN);
+      let at = null;
+      for(let dy=-40; dy<=40 && !at; dy+=8) for(let dx=-40; dx<=40 && !at; dx+=8){
+        window.__dbg.warp(pil.y + back + dy, it.x + dx);
+        if(body && _insideMesh(body, camera.position)) at = { x: it.x + dx, y: pil.y + back + dy };
+      }
+      if(at) hold(at.x, at.y, 30);
+      const lens = camera.position.clone();
+      const inside = fadeables.filter(m=>_insideMesh(m, lens));
+      if(!inside.length) bad.push('the lens did not land inside the pillar, so the case is unproven');
+      const solid = inside.filter(m=>!m.material.transparent || m.material.opacity > 0.5);
+      if(solid.length) bad.push('the lens sits inside '+solid.length+' fadeable mesh(es) still drawn solid');
+      const hide = _opaqueBetween(fadeables, p);
+      if(hide) bad.push('from inside the pillar, '+hide+' opaque fadeable(s) hide the racer');
+      notes.push('lens inside '+inside.length+' pillar mesh(es), '+solid.length+' solid, '+hide+' in the way');
+    }
+
+    // ---- two blockers on the boom: stop at the one nearest the racer --------
+    window.__dbg.warp(2200, TRACK_W/2); window.__dbg.look(0, CAM.PITCH);
+    hold(TRACK_W/2, 2200, 30);
+    const piv = new THREE.Vector3(camPos.x, camPos.y, camPos.z);
+    const out = camera.position.clone().sub(piv).normalize();
+    const walls = [100, 180].map(d=>{
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+      w.position.copy(piv).addScaledVector(out, d); w.lookAt(piv); scene.add(w); w.updateMatrixWorld(true);
+      camBlockers.push(w); return w;
+    });
+    try{
+      hold(TRACK_W/2, 2200, 40);
+      const reach = camera.position.distanceTo(new THREE.Vector3(camPos.x, camPos.y, camPos.z));
+      if(reach > 100) bad.push('with blockers at 100 and 180 on the boom the lens stopped at '+reach.toFixed(0)+', beyond the nearer one');
+      notes.push('two blockers: lens at '+reach.toFixed(0));
+    } finally {
+      for(const w of walls){ scene.remove(w); camBlockers.splice(camBlockers.indexOf(w), 1); w.geometry.dispose(); w.material.dispose(); }
+    }
+    return { name:'χ the boom and the fade keep the racer\'s body in sight', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // The lowest drawn point of a racer: the skinned body and trim, posed.
+  function _soleWorld(m){
+    scene.updateMatrixWorld();
+    const v = new THREE.Vector3(), lo = new THREE.Vector3(0, Infinity, 0);
+    for(const o of [m.body, m.trim]){
+      const n = o.geometry.attributes.position.count;
+      for(let i=0;i<n;i++){ o.getVertexPosition(i, v); v.applyMatrix4(o.matrixWorld); if(v.y < lo.y) lo.copy(v); }
+    }
+    return lo;
+  }
+  // The first rendered course surface straight down from over a world point
+  // (under the sole itself, so a slope does not count as a gap).
+  function _surfaceUnder(at){
+    const ray = new THREE.Raycaster(new THREE.Vector3(at.x, at.y + 40, at.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const hit = ray.intersectObject(courseGroup, true).find(h=>{
+      for(let o=h.object; o; o=o.parent) if(!o.visible) return false;
+      return true;
+    });
+    return hit ? hit.point.y : null;
+  }
+  // Is the first surface under this sim point the swept ground itself (a
+  // double-sided strip straight in the course group), not a pad or a prop?
+  function _groundUnder(x, y){
+    const w = toWorld(x, y, 0);
+    const ray = new THREE.Raycaster(new THREE.Vector3(w.x, w.y + 60, w.z), new THREE.Vector3(0,-1,0), 0, 400);
+    const h = ray.intersectObject(courseGroup, true)[0];
+    return !!h && h.object.parent === courseGroup && h.object.geometry.type === 'BufferGeometry'
+           && h.object.material.side === THREE.DoubleSide;
+  }
+
+  // ---------- psi: feet on the floor that is drawn ----------
+  // The simulation's floor is 0. The swept ground ribbon was drawn with its
+  // top at -6 -- the CENTRE of the 12-tall box it replaced, carried over as
+  // if it were the top -- so on every course with a path, which is every
+  // race map, a standing racer's soles hung 4-5 over the drawn floor. The
+  // start and finish aprons stood 3 proud of the sim floor (feet sunk 4-7
+  // into them), and a pit's island, a floor of 0 in the sim, was drawn as a
+  // 14-tall block the racer stood inside.
+  function checkFeetOnDrawnFloor(){
+    const bad = [], notes = [];
+    withSeed(1, ()=>beginSeeded('sunny', 1));
+    const p = player();
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    // open ground: the first spot down the course with nothing laid on it
+    let gy = 1500;
+    while(gy < 4000 && !(_groundUnder(TRACK_W*0.35, gy) && !obstacles.some(o=>Math.abs((o.y!==undefined ? o.y : (o.yStart+o.yEnd)/2) - gy) < 200))) gy += 50;
+    // On the start apron, past the line: toWorld clamps the path at s=0, so
+    // behind the line every sim y draws at the line itself.
+    const startSec = (courseScript||[]).find(s=>s.type==='start');
+    const spots = [['ground', TRACK_W*0.35, gy], ['start pad', TRACK_W*0.35, Math.max(40, (startSec ? startSec.len : 80)/2)]];
+    const fin = (courseScript||[]).find(s=>s.type==='finish');
+    spots.push(['finish apron', TRACK_W/2, trackLength - Math.min(fin ? fin.len : 400, 520)/2]);
+    const pit = obstacles.find(o=>o.type==='pit' && o.islands && o.islands.length);
+    if(pit){ const is = pit.islands[0]; spots.push(['pit island', is.x, (is.y0 + is.y1)/2]); }
+    else bad.push('no pit island on this course, so it is unproven');
+    for(const [what, x, y] of spots){
+      window.__dbg.warp(y, x);
+      let sum = 0, n = 0, worst = 0, fell = false, floorOff = null;
+      for(let i=0;i<50;i++){
+        p.x = x; p.y = y; p.vx = 0; p.vy = 0;
+        window.__dbg.tick(1);
+        if(p.falling || p.finished){ fell = true; break; }
+        if(i < 20) continue;                       // stand still first
+        const sole = _soleWorld(p.mesh), surf = _surfaceUnder(sole);
+        if(surf === null) continue;
+        const gap = sole.y - surf;
+        sum += gap; n++; if(Math.abs(gap) > Math.abs(worst)) worst = gap;
+        // ...and, pose aside, the drawn surface against the sim's floor
+        const c = _surfaceUnder(p.mesh.group.getWorldPosition(new THREE.Vector3()));
+        if(c !== null) floorOff = c - toWorld(p.x, p.y, p.floorH||0).y;
+      }
+      if(fell){ bad.push(what+': the racer did not stay standing there'); continue; }
+      if(!n){ bad.push(what+': no drawn surface under the racer'); continue; }
+      const mean = sum/n;
+      if(Math.abs(mean) > 1.5) bad.push(what+': soles '+(mean > 0 ? 'float '+mean.toFixed(1)+' over' : 'sink '+(-mean).toFixed(1)+' into')+' the drawn surface');
+      if(floorOff !== null && Math.abs(floorOff) > 0.5) bad.push(what+': the drawn surface is '+floorOff.toFixed(1)+' off the simulation\'s floor');
+      notes.push(what+' '+mean.toFixed(2)+' (worst '+worst.toFixed(2)+', surface '+(floorOff===null ? '?' : floorOff.toFixed(2))+' off the sim floor)');
+    }
+    return { name:'ψ a standing racer\'s feet meet the floor that is drawn', pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ')+' | ' : '') + 'sole minus drawn surface: '+notes.join('; ') };
+  }
+
+  // ---------- omega: in a multiplayer race everyone wears their own skin ----------
+  // Remote racers were built from a profile with no skin in it: the joiner's
+  // hello carried a colour, a hat and eyes, so the host drew every friend as
+  // a flat bean; and the host's per-frame state carried no skin either, so a
+  // joiner drew EVERY racer -- bots, host and itself -- flat. This drives the
+  // real path end to end: joinRoom's hello (PeerJS stubbed), setupHostConn's
+  // handler, makeRacers and buildRacerMeshes on the host, then serializeRacer
+  // and applyNetworkState on a joiner.
+  function checkNetSkins(){
+    const bad = [], notes = [];
+    const sig = (m)=>m.type+'|'+!!m.map+'|'+(m.color ? m.color.getHexString() : '');
+    const was = { skin:custom.skin, pattern:custom.pattern };
+    const hadPeer = Object.prototype.hasOwnProperty.call(window, 'Peer'), RealPeer = window.Peer;
+    const SKIN = SKIN_BY_ID.frost ? 'frost' : Object.keys(SKIN_BY_ID).find(k=>k!=='pink');
+    const PAT = Object.keys(PATTERN_BY_ID).find(k=>k!=='none');
+    let hello = null;
+    try{
+      begin('sunny');
+      // ---- the joiner says who it is -------------------------------------
+      window.Peer = function(){
+        const me = this, h = {}; me.id = 'peerJoin'; me._h = h;
+        me.on = (ev, fn)=>{ h[ev] = fn; };
+        me.connect = ()=>{ const ch = {}; const c = { peer:'host', open:true, _ch:ch,
+          on:(ev, fn)=>{ ch[ev] = fn; }, send:(d)=>{ if(d && d.type==='hello') hello = d; }, close(){} };
+          me._c = c; return c; };
+        me.destroy = ()=>{};
+      };
+      custom.skin = SKIN; custom.pattern = PAT;
+      joinRoom('TEST');
+      if(mp.peer && mp.peer._h.open) mp.peer._h.open();
+      if(mp.peer && mp.peer._c && mp.peer._c._ch.open) mp.peer._c._ch.open();
+      if(!hello) bad.push('the joiner sent no hello');
+      else if(hello.skin !== SKIN || hello.pattern !== PAT)
+        bad.push('the joiner\'s hello does not say its skin and pattern (skin '+hello.skin+', pattern '+hello.pattern+')');
+      leaveMultiplayer();
+      // ---- the host builds the field with that joiner in it -----------------
+      const hh = {}, conn = { peer:'peerJoin', open:true, on:(ev, fn)=>{ hh[ev] = fn; }, send(){} };
+      setupHostConn(conn);
+      hh.data(hello || { type:'hello', name:'Friend', color:'#60a5fa', hat:'none', eyes:'round' });
+      mp.role = 'host'; mp.conns = [conn];
+      racers = makeRacers(); buildRacerMeshes();
+      const rem = racers.find(r=>r.remoteId==='peerJoin');
+      const ref = makeCharacter({ skin:skinOf(SKIN), pattern:patternOf(PAT) });
+      if(!rem) bad.push('the host built no racer for the joiner');
+      else if(sig(rem.mesh.bodyMat) !== sig(ref.bodyMat))
+        bad.push('the host draws the joiner as '+sig(rem.mesh.bodyMat)+', not in its '+SKIN+' skin ('+sig(ref.bodyMat)+')');
+      // ---- a joiner rebuilds the field from the host's state -----------------
+      const host = racers, sent = host.map(serializeRacer);
+      mp.role = 'client'; mp.peer = { id:'peerJoin', destroy(){} };
+      racers = [];
+      applyNetworkState(sent);
+      let skinned = 0, wrong = 0, eg = '';
+      for(const h of host){
+        if(!h.skinId) continue;
+        skinned++;
+        const c = racers.find(x=>x._netId === (h.remoteId || h._localId));
+        if(!c || sig(c.mesh.bodyMat) !== sig(h.mesh.bodyMat)){ wrong++; if(!eg) eg = (h.name||'?')+' '+h.skinId+': host '+sig(h.mesh.bodyMat)+', joiner '+(c ? sig(c.mesh.bodyMat) : 'none'); }
+      }
+      if(!skinned) bad.push('no skinned racer in the field, so the joiner side is unproven');
+      if(wrong) bad.push('a joiner draws '+wrong+' of '+skinned+' skinned racers in something else (e.g. '+eg+')');
+      notes.push('hello '+(hello ? hello.skin+'/'+hello.pattern : 'none')+'; host draws the joiner '+(rem ? sig(rem.mesh.bodyMat) : '-')+'; joiner matches '+(skinned-wrong)+'/'+skinned);
+    } finally {
+      custom.skin = was.skin; custom.pattern = was.pattern;
+      if(hadPeer) window.Peer = RealPeer; else delete window.Peer;
+      try{ leaveMultiplayer(); }catch(e){}
+      try{ $('lobby').classList.add('hidden'); }catch(e){}
+    }
+    return { name:'ω in a multiplayer race every racer wears its own skin', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -5881,10 +6379,17 @@
 
       // 5. ONE CATEGORY AT A TIME. Choosing PATTERN must leave no colourway
       //    tile behind it.
+      //    Every tile must be one of the owned patterns, by name, and there
+      //    must be exactly as many tiles as owned patterns. (This filtered on
+      //    a tile property nothing ever set, so it could not fail.)
       openLocker('pattern');
-      const stray = [...document.querySelectorAll('#lkGrid .uiCard')]
-        .filter(c => c.__lkKind && c.__lkKind !== 'pattern');
+      const want = lkInventory().map(it => it.name), wantSet = new Set(want);
+      const tiles = [...document.querySelectorAll('#lkGrid .uiCard')];
+      const stray = tiles.filter(c => { const n = c.querySelector('.uiCardName');
+        return !n || !wantSet.has(n.textContent.trim()); });
       if(stray.length) bad.push(stray.length + ' tiles from another category are still in the grid');
+      if(tiles.length !== want.length)
+        bad.push('the PATTERN grid holds ' + tiles.length + ' tiles for ' + want.length + ' owned patterns');
       const tabs = [...document.querySelectorAll('.lkTab.sel')].map(b=>b.dataset.lk);
       if(tabs.length !== 1) bad.push('the category tabs show ' + tabs.length + ' selected, not 1');
       else if(tabs[0] !== 'pattern') bad.push('PATTERN was opened but ' + tabs[0] + ' is the selected tab');
@@ -5894,6 +6399,132 @@
     }
     return { name:'< locker: inventory only, hover never equips, EQUIP does',
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // ---- [α] every locker card shows its name, however full the wardrobe -----
+  // A player saw the COLOUR grid with renders, rarity pills and the equipped
+  // tick -- and not one name. The name was in the DOM the whole time. The grid
+  // is a fixed-height scroller with implicit `auto` rows, and a card that clips
+  // its overflow has an automatic minimum height of ZERO: once the cards'
+  // total height outgrew the panel, the grid shrank every row towards zero
+  // instead of scrolling, and each card cut its own name footer off. [<] never
+  // saw it because a fresh profile owns six colours, which fit.
+  //
+  // So this check owns EVERYTHING first, and then measures what is painted
+  // rather than what exists: every card, all four tabs.
+  function checkLockerNames(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const overlap = (a, b)=> a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+    try{
+      state = 'menu';
+      stats.owned = SKINS.map(s => s.id);
+      stats.patterns = PATTERNS.map(p => p.id);
+      openLobbyTab('locker');
+      for(const tab of ['skin','pattern','hat','eyes']){
+        openLocker(tab);
+        void document.body.offsetWidth;
+        const grid = $('lkGrid');
+        const cards = [...grid.querySelectorAll('.uiCard')];
+        if(!cards.length){ bad.push(tab + ': no cards'); continue; }
+        const fails = {};
+        const fail = (k, name)=>{ (fails[k] = fails[k] || []).push(name); };
+        const rects = cards.map(c => c.getBoundingClientRect());
+        let truncated = 0;
+        cards.forEach((card, i)=>{
+          const cr = rects[i];
+          const nm = card.querySelector('.uiCardName');
+          if(!nm){ fail('no name element', '#' + i); return; }
+          const text = nm.textContent.trim();
+          const label = text || ('#' + i);
+          if(!text) fail('empty name', label);
+          // The card itself must not be squeezed: nothing it holds may be
+          // hidden by its own clipping.
+          if(card.scrollHeight > card.clientHeight + 1) fail('card clips its own content', label);
+          const nr = nm.getBoundingClientRect();
+          if(nr.width < 1 || nr.height < 1) fail('name has no painted size', label);
+          if(nr.top < cr.top - 0.5 || nr.bottom > cr.bottom + 0.5 || nr.left < cr.left - 0.5 || nr.right > cr.right + 0.5)
+            fail('name outside its card', label);
+          const media = card.querySelector('.uiCardMedia');
+          if(media && nr.top < media.getBoundingClientRect().bottom - 0.5) fail('name behind the preview', label);
+          const pill = card.querySelector('.rarityPill');
+          if(pill && overlap(nr, pill.getBoundingClientRect())) fail('name under the rarity pill', label);
+          const cs = getComputedStyle(nm);
+          const rgba = (cs.color.match(/rgba?\(([^)]+)\)/) || [null, '0,0,0,1'])[1].split(',').map(Number);
+          const alpha = rgba.length > 3 ? rgba[3] : 1;
+          if(cs.visibility !== 'visible' || Number(cs.opacity) === 0 || alpha === 0) fail('name painted invisible', label);
+          if(nm.scrollWidth > nm.clientWidth + 1) truncated++;
+          // Nothing else may sit on top of it once it is scrolled into view.
+          if(i === 0 || i === cards.length - 1){
+            card.scrollIntoView({ block:'nearest' });
+            const r = nm.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+            if(!hit || !nm.contains(hit)) fail('name covered by ' + (hit ? (hit.className || hit.tagName) : 'nothing'), label);
+          }
+        });
+        for(let i = 0; i < rects.length; i++){
+          for(let j = i + 1; j < rects.length; j++){
+            if(overlap(rects[i], rects[j])){ fail('cards overlap', i + '/' + j); break; }
+          }
+        }
+        // At a desktop width the ordinary names fit whole. Narrower than that,
+        // an ellipsis is a legitimate answer and is not counted against it.
+        if(window.innerWidth >= 1280 && truncated) fail('names ellipsised at ' + window.innerWidth + 'px', truncated + ' card(s)');
+        for(const [k, v] of Object.entries(fails)) bad.push(tab + ': ' + k + ' x' + v.length + ' (' + v.slice(0, 3).join(', ') + ')');
+        notes.push(tab + ' ' + cards.length);
+      }
+    } finally {
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ openLobbyTab('play'); }catch(_){ /* leaving tidy is best-effort */ }
+    }
+    return { name:'α locker: every card paints its name, with the whole catalogue owned',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join(', ') + ' cards, every name visible' };
+  }
+
+  // ---- [β] no responsive override is dead on arrival ------------------------
+  // The locker's phone rules shrank the card name and footer padding inside
+  // @media (max-width:760px) -- and the card component's own rules were
+  // written LATER in the same stylesheet with the same selectors. Same
+  // specificity, later wins: at 360px the names stayed at the desktop size and
+  // 47 of 79 ellipsised. Nothing looked wrong at 1280px, which is where every
+  // check and review ran.
+  //
+  // This finds the whole class from the CSSOM, with no false positives by
+  // construction: a declaration inside a media block is dead when a LATER,
+  // unconditional rule with the IDENTICAL selector sets the same property and
+  // is not outranked by !important. Such a declaration can never apply at any
+  // viewport, whatever the author meant.
+  function checkDeadMediaRules(){
+    const flat = [];
+    let order = 0;
+    const walk = (rules, media)=>{
+      for(const r of rules){
+        if(r.type === CSSRule.MEDIA_RULE) walk(r.cssRules, r.media.mediaText);
+        else if(r.type === CSSRule.STYLE_RULE){
+          const props = [...r.style].map(p => ({ p, imp: r.style.getPropertyPriority(p) === 'important' }));
+          for(const sel of r.selectorText.split(',').map(s => s.trim()))
+            flat.push({ sel, props, media, order: order++ });
+        }
+      }
+    };
+    let sheets = 0;
+    for(const sh of document.styleSheets){
+      try{ walk(sh.cssRules, null); sheets++; }catch(_){ /* cross-origin sheet: nothing of ours */ }
+    }
+    const dead = [];
+    for(const m of flat){
+      if(!m.media) continue;
+      for(const { p, imp } of m.props){
+        const later = flat.find(f => !f.media && f.order > m.order && f.sel === m.sel
+          && f.props.some(q => q.p === p && (q.imp || !imp)));
+        if(later) dead.push('@media ' + m.media + ' { ' + m.sel + ' { ' + p + ' } }');
+      }
+    }
+    return { name:'β css: no media-query override is shadowed by a later rule with the same selector',
+             pass: dead.length === 0,
+             detail: dead.length ? dead.length + ' dead: ' + dead.slice(0, 6).join('; ')
+                                 : flat.filter(f => f.media).length + ' media-scoped selectors across ' + sheets + ' sheet(s), none shadowed' };
   }
 
   // ---- [>] the shop ------------------------------------------------------
@@ -6177,6 +6808,867 @@
   }
 
 
+  // ---- [γ] one physical wheel: the words turn WITH the wedges -----------
+  // The defect: the coloured wedges spun and the rarity names did not. The
+  // names lived in #wheelLabels, a SIBLING of #wheel, and only #wheel was
+  // given the rotate transform -- so for 4.1 seconds "LEGENDARY" sat still
+  // while grey, green and gold slid underneath it, and the wheel landed with
+  // every word over the wrong colour. Neither [;] nor [,] could see it: [;]
+  // measures the controls around the wheel and [,] spins with reduced motion,
+  // where there is no "during" at all.
+  //
+  // So this one spins the REAL wheel for real -- the SPIN button, the real
+  // doSpin(), the real 4.1s transition, real time awaited -- and photographs
+  // the geometry while it turns. It asks the questions a player would:
+  //   - is there ONE rotating body, carrying the wedges and their names both?
+  //     (Two elements animated with copied timings would pass a single
+  //     sample and drift apart on a slow frame; one parent cannot.)
+  //   - does every name stay on its own wedge at every moment of the spin?
+  //   - do the pointer and the hub stay put, because they are not on it?
+  //   - does each name sit INSIDE its wedge, clear of the hub and the rim?
+  //   - when it stops, is the wedge under the pointer the tier you were
+  //     actually given, and is the name nearest the pointer that tier's name?
+  //   - and the same again with reduced motion, where it lands at once.
+  // Everything is measured from rendered boxes about the wheel's centre, so
+  // it holds whatever the markup is called; nothing here trusts a class name
+  // to mean "rotates" or "does not".
+  async function checkWheelOneBody(){
+    // geo: where the names sit on the wheel. Reported after the spin's own
+    // findings, so a layout nit can never crowd the headline out of the
+    // eight-line detail.
+    const bad = [], notes = [], geo = [];
+    const wasLastSpin = stats.lastSpin, wasOwned = (stats.owned || []).slice();
+    const snap = uiSnap();
+    const realMM = window.matchMedia;
+    const wait = (ms)=> new Promise(r => setTimeout(r, ms));
+    const seg = 360 / WHEEL.length;
+    let inflight = null;
+    const W = ()=> document.querySelector('#daily .wheelWrap');
+    const centre = ()=>{ const r = W().getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; };
+    // clockwise from 12 o'clock, which is the convention doSpin and the
+    // conic-gradient both use
+    const ang = (x, y, c)=> Math.atan2(x - c[0], c[1] - y) * 180 / Math.PI;
+    const norm = (d)=> ((d % 360) + 540) % 360 - 180;                 // (-180, 180]
+    const rotOf = (el)=>{ const t = getComputedStyle(el).transform;
+      if(!t || t === 'none') return 0;
+      const m = new DOMMatrixReadOnly(t); return Math.atan2(m.b, m.a) * 180 / Math.PI; };
+    // The wedges' effective rotation: every rotation between the disc and
+    // the fixed frame, composed. Structure-agnostic on purpose.
+    const discRot = ()=>{ let a = 0; const w = W();
+      for(let e = $('wheel'); e && e !== w; e = e.parentElement) a += rotOf(e);
+      return a; };
+    const labels = ()=> [...W().querySelectorAll('.wlab')];
+    const mid = (el)=>{ const r = el.getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; };
+    const live = ()=> [...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null).map(e => e.id);
+    const nameOf = (r)=> RARITY[r].name.toLowerCase();
+    const textOf = (el)=> el.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+    // Anything in #daily other than #spinStatus that is carrying the state.
+    const strayState = ()=>{ const d = $('daily').cloneNode(true);
+      const s = d.querySelector('#spinStatus'); if(s) s.remove();
+      const m = d.textContent.match(/spinning|next spin|back in/i); return m ? m[0] : ''; };
+    // The four corners of an element's border box, transformed, in client
+    // space: a zero-size marker at each corner rides every transform the
+    // element and its ancestors carry, which getBoundingClientRect alone
+    // (an axis-aligned box around a rotated one) does not report.
+    const corners = (el)=> [[0,0],[1,0],[1,1],[0,1]].map(([x,y])=>{
+      const m = document.createElement('i');
+      m.style.cssText = 'position:absolute;display:block;width:0;height:0;margin:0;padding:0;border:0;'
+                      + 'left:' + (x*100) + '%;top:' + (y*100) + '%';
+      el.appendChild(m); const r = m.getBoundingClientRect(); m.remove();
+      return [r.left, r.top]; });
+    const fixedParts = ()=> ['.wheelPin', '.wheelHub'].map(q => W().querySelector(q));
+    // Resolves once the wheel has stopped: no transform transition running
+    // anywhere inside the wrap, AND every element's computed transform
+    // unchanged over three polls in a row -- the first catches a timeline
+    // that stalled mid-transition, the second anything that turns without a
+    // transition. Gives { turned: ms a transition was still running for,
+    // ms: ms until the pose held }, or null if the wheel is still moving at
+    // the ceiling. Structure-agnostic like everything else here: it asks the
+    // whole wrap, not an element it expects to be the rotor.
+    const wheelStops = async (ms)=>{
+      const start = performance.now(), end = start + ms;
+      const turning = ()=> W().getAnimations({ subtree:true }).filter(a =>
+        a.transitionProperty === 'transform' && a.playState !== 'finished');
+      const pose = ()=> [...W().querySelectorAll('*')].map(e => getComputedStyle(e).transform).join('|');
+      let last = null, same = 0, turned = 0;
+      while(performance.now() < end){
+        const run = turning();
+        if(run.length){
+          await Promise.race([Promise.all(run.map(a => a.finished.catch(()=>{}))),
+                              wait(Math.max(0, end - performance.now()))]);
+          turned = performance.now() - start;
+          last = null; same = 0; continue;
+        }
+        const p = pose();
+        if(p === last){ if(++same >= 3) return { turned, ms: performance.now() - start }; }
+        else { last = p; same = 0; }
+        await wait(50);
+      }
+      return null;
+    };
+    const sample = (when)=>{
+      const c = centre();
+      return { when, c, disc: discRot(),
+               labs: labels().map(l => { const p = mid(l); return ang(p[0], p[1], c); }),
+               tf: [...W().querySelectorAll('*')].map(e => getComputedStyle(e).transform),
+               fixed: fixedParts().map(e => { if(!e) return 'missing';
+                 const r = e.getBoundingClientRect();
+                 return [r.left, r.top, r.width, r.height].map(v => Math.round(v*2)/2).join(',')
+                        + ' ' + getComputedStyle(e).transform; }),
+               btn: $('spinBtn').textContent, status: $('spinStatus').textContent,
+               stray: strayState() };
+    };
+    // Where it stopped: the rotor-frame angle under the pointer gives the
+    // wedge, and so the tier, a player sees the pointer on.
+    const landing = (s)=>{
+      const pin = W().querySelector('.wheelPin');
+      const pinA = pin ? ang(mid(pin)[0], mid(pin)[1], s.c) : 0;
+      const at = ((pinA - s.disc) % 360 + 360) % 360;
+      const w = Math.floor(at / seg) % WHEEL.length;
+      const edge = Math.min(at - w*seg, (w+1)*seg - at);
+      // the label a player reads at the pointer
+      let near = -1, best = 1e9;
+      s.labs.forEach((a, i) => { const d = Math.abs(norm(a - pinA)); if(d < best){ best = d; near = i; } });
+      return { w, edge, near, pinA };
+    };
+    // The tier actually awarded, read from what the player now owns rather
+    // than from anything doSpin says about itself.
+    const awarded = (before)=>{
+      const got = (stats.owned || []).filter(id => before.indexOf(id) < 0);
+      if(got.length !== 1) return null;
+      const sk = SKINS.find(s => s.id === got[0]); return sk ? sk.rarity : null;
+    };
+    const judgeLanding = (tag, s, owned0)=>{
+      const tier = awarded(owned0);
+      if(!tier){ bad.push(tag + ': the spin awarded no single skin to compare against'); return; }
+      const L = landing(s);
+      if(Math.abs(norm(L.pinA)) > 1.5)
+        bad.push(tag + ': the pointer is at ' + L.pinA.toFixed(1) + ' deg, not straight up');
+      if(WHEEL[L.w] !== tier)
+        bad.push(tag + ': awarded ' + tier + ' but the pointer is on wedge ' + L.w + ' (' + WHEEL[L.w] + ')');
+      // doSpin's jitter keeps the pointer within 0.32 of a wedge's half-width
+      // of its middle; a stop on a boundary is a stop nobody can read
+      if(L.edge < seg * 0.15)
+        bad.push(tag + ': stopped ' + L.edge.toFixed(1) + ' deg from a wedge boundary');
+      const lab = labels()[L.near];
+      if(!lab || textOf(lab) !== nameOf(tier))
+        bad.push(tag + ': the name nearest the pointer reads "' + (lab ? lab.textContent : 'nothing')
+                 + '", the prize is ' + RARITY[tier].name);
+      const pill = $('spinResult').querySelector('.rlab');
+      if(pill && textOf(pill) !== nameOf(tier))
+        bad.push(tag + ': the prize card says ' + pill.textContent + ' for a ' + tier);
+      return { tier, L };
+    };
+    try{
+      state = 'menu';
+      stats.owned = [];                          // so every spin is a skin, never the 600-coin fallback
+
+      // ---- (6) the way in and out, from every tab ------------------------
+      for(const tab of ['play', 'locker', 'badges', 'shop', 'pass', 'settings']){
+        openLobbyTab(tab);
+        $('dailyBtn').click();
+        let up = live();
+        if(up.length !== 1 || up[0] !== 'daily')
+          bad.push('DAILY from ' + tab + ' left [' + up.join(', ') + '] live');
+        $('dailyBackBtn').click();
+        up = live();
+        if(up.length !== 1 || up[0] !== 'home')
+          bad.push('BACK from the wheel (opened from ' + tab + ') left [' + up.join(', ') + '] live');
+      }
+
+      // ---- the wheel at rest ------------------------------------------
+      stats.lastSpin = 0;                        // a spin is due
+      $('dailyBtn').click();
+      await wait(60);                            // a frame, as a player's click would have
+      const w0 = W();
+      if(!w0){ bad.push('no .wheelWrap on the daily screen'); throw new Error('no wheel'); }
+      const labs0 = labels();
+      if(labs0.length !== WHEEL.length)
+        bad.push(labs0.length + ' labels for ' + WHEEL.length + ' wedges');
+      const rest = sample('rest');
+      if(Math.abs(norm(rest.disc)) > 0.5) bad.push('at rest the wedges are turned ' + rest.disc.toFixed(1) + ' deg');
+      if(rest.btn !== 'SPIN') bad.push('at rest the button reads "' + rest.btn + '"');
+      const pin = w0.querySelector('.wheelPin'), hub = w0.querySelector('.wheelHub');
+      if(!pin) bad.push('no .wheelPin'); if(!hub) bad.push('no .wheelHub');
+      const hubR = hub ? hub.getBoundingClientRect().width / 2 : 0;
+      const rimR = $('wheel').clientWidth / 2;   // inside the disc's border
+      if(hub){ const h = mid(hub);
+        if(Math.hypot(h[0] - rest.c[0], h[1] - rest.c[1]) > 1) bad.push('the hub is off the centre of the wheel'); }
+
+      // ---- (3) every name inside its own wedge, clear of hub and rim ------
+      let worstIn = 1e9, worstOut = 1e9, worstAng = 1e9;
+      labs0.forEach((l, i) => {
+        const tier = WHEEL[i];
+        if(!tier) return;
+        if(textOf(l) !== nameOf(tier)) geo.push('label ' + i + ' reads "' + l.textContent + '" on a ' + tier + ' wedge');
+        const mid0 = i*seg + seg/2;
+        if(Math.abs(norm(rest.labs[i] - mid0)) > seg/2)
+          geo.push(RARITY[tier].name + ' (label ' + i + ') is centred at ' + rest.labs[i].toFixed(1)
+                   + ' deg, outside its wedge ' + (i*seg) + '..' + ((i+1)*seg));
+        if(l.scrollWidth > l.clientWidth + 1 || l.scrollHeight > l.clientHeight + 1)
+          geo.push(RARITY[tier].name + ' overflows its own box');
+        for(const [x, y] of corners(l)){
+          const r = Math.hypot(x - rest.c[0], y - rest.c[1]);
+          const off = Math.abs(norm(ang(x, y, rest.c) - mid0));
+          worstIn = Math.min(worstIn, r - hubR); worstOut = Math.min(worstOut, rimR - r);
+          worstAng = Math.min(worstAng, seg/2 - off);
+          if(r < hubR + 2){ geo.push(RARITY[tier].name + ' runs under the hub'); break; }
+          if(r > rimR - 2){ geo.push(RARITY[tier].name + ' runs into the rim'); break; }
+          if(off > seg/2 - 1){ geo.push(RARITY[tier].name + ' (label ' + i + ') crosses into the next wedge by '
+                                         + (off - seg/2 + 1).toFixed(1) + ' deg'); break; }
+        }
+      });
+
+      // ---- (1)(2)(7) the real spin, watched while it turns ---------------
+      const owned0 = stats.owned.slice();
+      const t0 = performance.now();
+      $('spinBtn').click();                      // the button a player presses; it calls doSpin()
+      const samples = [rest];
+      for(const at of [120, 450, 900, 1500, 2200, 3000, 3800]){
+        await wait(Math.max(0, at - (performance.now() - t0)));
+        samples.push(sample('t+' + Math.round(performance.now() - t0) + 'ms'));
+      }
+      const deadline = performance.now() + 9000;
+      while(spinning && performance.now() < deadline) await wait(50);
+      if(spinning) bad.push('the spin never settled');
+      // doSpin settling is not the wheel stopping. It used to settle on a
+      // fixed 4250ms timer while the 4.1s transition ran on the document
+      // timeline, which starts late and advances late on a loaded machine, so
+      // 60ms later the wedges could still be a few degrees short of where
+      // they stop -- and the landing below judged a wheel still turning. doSpin
+      // now waits for the turn itself ([ς] holds it to that), but this check
+      // asks the wheel rather than trusting doSpin: wait for the wheel,
+      // however long that takes up to a ceiling, and fail if it never stops.
+      const stillAt = await wheelStops(10000);
+      if(!stillAt) bad.push('the wheel was still turning ' + ((performance.now() - t0)/1000).toFixed(1)
+                            + 's after the press');
+      const fin = sample('landed');
+      samples.push(fin);
+      const during = samples.slice(1, -1);
+
+      // it has to have actually turned, or everything below is vacuous
+      const distinct = new Set(during.map(s => Math.round(norm(s.disc)))).size;
+      if(distinct < 4) bad.push('the wheel barely turned during the spin (' + distinct + ' distinct angles in '
+                                + during.length + ' samples)');
+
+      // (1) every name holds its rest angle in the wedges' frame, every sample
+      let drift = 0, driftAt = '';
+      for(const s of samples){
+        s.labs.forEach((a, i) => { const d = Math.abs(norm(a - s.disc - rest.labs[i]));
+          if(d > drift){ drift = d; driftAt = RARITY[WHEEL[i]].name + ' at ' + s.when; } });
+      }
+      if(drift > 1.5) bad.push('the names do not turn with the wedges: ' + driftAt + ' was '
+                               + drift.toFixed(1) + ' deg off its wedge');
+
+      // ONE rotating body, carrying the disc and every name, and not the
+      // pointer or the hub
+      const els = [...W().querySelectorAll('*')];
+      const movers = els.filter((e, k) => samples.some(s => s.tf[k] !== rest.tf[k]));
+      const desc = (e)=> e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + e.className;
+      if(movers.length !== 1){
+        bad.push(movers.length + ' elements rotate [' + movers.map(desc).join(', ') + '], wanted exactly one');
+      }
+      const rotor = movers[0];
+      if(rotor){
+        if(!rotor.contains($('wheel'))) bad.push(desc(rotor) + ' rotates but does not carry the wedges');
+        const orphans = labels().filter(l => !rotor.contains(l));
+        if(orphans.length) bad.push(orphans.length + ' of ' + labels().length + ' names are not on the rotating '
+                                    + desc(rotor) + ' (e.g. ' + orphans[0].textContent + ')');
+        for(const f of fixedParts()) if(f && rotor.contains(f)) bad.push(desc(f) + ' is ON the rotating ' + desc(rotor));
+      }
+
+      // (2) the pointer and the hub never moved
+      for(const s of samples){
+        s.fixed.forEach((f, k) => { if(f !== rest.fixed[k])
+          bad.push(['pointer', 'hub'][k] + ' moved at ' + s.when + ': ' + rest.fixed[k] + ' -> ' + f); });
+      }
+
+      // (7) the button says SPIN throughout; the state lives in #spinStatus
+      for(const s of samples){
+        if(s.btn !== 'SPIN') bad.push('the button read "' + s.btn + '" at ' + s.when);
+        if(s.stray) bad.push('"' + s.stray + '" appeared outside #spinStatus at ' + s.when);
+      }
+      if(!/spinning/i.test(during[0].status)) bad.push('mid spin the status reads "' + during[0].status + '"');
+      if(!/next spin in/i.test(fin.status)) bad.push('after the spin the status reads "' + fin.status + '"');
+      if(!$('spinBtn').disabled) bad.push('a spent spin is still offered');
+
+      // (4) it landed on what it gave you
+      const got = judgeLanding('animated', fin, owned0);
+      if(got) notes.push('animated: ' + got.tier + ' on wedge ' + got.L.w + ', ' + got.L.edge.toFixed(1)
+                         + ' deg in from its edge');
+      notes.push(during.length + ' samples, ' + distinct + ' angles, names within ' + drift.toFixed(2) + ' deg'
+                 + (stillAt ? ', still turning ' + Math.round(stillAt.turned) + 'ms after doSpin returned, at rest by '
+                              + Math.round(stillAt.ms) + 'ms' : ''));
+      notes.push('clearances: hub ' + worstIn.toFixed(1) + 'px, rim ' + worstOut.toFixed(1) + 'px, wedge '
+                 + worstAng.toFixed(1) + ' deg');
+
+      // ---- (5) reduced motion: lands at once, and just as right ----------
+      window.matchMedia = (q)=> /prefers-reduced-motion/.test(String(q))
+        ? { matches:true, media:String(q), onchange:null, addListener(){}, removeListener(){},
+            addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } }
+        : realMM.call(window, q);
+      // EVERY TIER, not whichever the seed rolls. Nothing is stubbed to do
+      // it: owning every skin OUTSIDE tier T leaves pickSpinPrize nothing to
+      // give but a T skin, whatever it rolls -- its own "slide to a tier that
+      // still has something" rule -- so the real doSpin has to find a T wedge
+      // for it. That walks the landing maths onto every rarity, including
+      // the one-wedge tiers.
+      const tiers = new Set(), skipped = [];
+      for(const T of RARITY_ORDER){
+        const n = T;
+        stats.lastSpin = 0;
+        stats.owned = SKINS.filter(s => s.rarity !== T).map(s => s.id);
+        if(!SKINS.some(s => s.rarity === T && !ownedSkins().has(s.id))){ skipped.push(T); continue; }
+        openDaily();
+        await wait(30);
+        const r0 = sample('rm rest');
+        const o0 = stats.owned.slice();
+        inflight = doSpin();
+        const now = sample('rm at once');
+        await inflight; inflight = null;
+        const end = sample('rm landed');
+        if(Math.abs(norm(now.disc - end.disc)) > 0.5)
+          bad.push('reduced motion, ' + n + ': still turning after the press (' + now.disc.toFixed(1) + ' -> '
+                   + end.disc.toFixed(1) + ' deg)');
+        for(const s of [now, end]) s.labs.forEach((a, i) => {
+          const d = Math.abs(norm(a - s.disc - r0.labs[i]));
+          if(d > 1.5) bad.push('reduced motion, ' + n + ': ' + RARITY[WHEEL[i]].name + ' is ' + d.toFixed(1)
+                               + ' deg off its wedge');
+        });
+        if(end.btn !== 'SPIN') bad.push('reduced motion, ' + n + ': the button reads "' + end.btn + '"');
+        if(end.stray) bad.push('reduced motion, ' + n + ': "' + end.stray + '" outside #spinStatus');
+        const g = judgeLanding('reduced motion, ' + n, end, o0);
+        if(g && g.tier !== T) bad.push('reduced motion, ' + n + ': forced ' + T + ' but was awarded ' + g.tier);
+        if(g) tiers.add(g.tier);
+      }
+      if(tiers.size + skipped.length !== RARITY_ORDER.length)
+        bad.push('reduced motion landed only on ' + [...tiers].join('/'));
+      notes.push('reduced motion: instant landings on ' + [...tiers].join('/')
+                 + (skipped.length ? ' (no unowned skin to force: ' + skipped.join('/') + ')' : ''));
+    } catch(e){
+      if(e && e.message !== 'no wheel') bad.push('threw: ' + (e && e.message));
+    } finally {
+      try{ if(inflight) await inflight; }catch(_){ /* already reported */ }
+      { const until = performance.now() + 9000;
+        while(spinning && performance.now() < until) await wait(50); }
+      window.matchMedia = realMM;
+      stats.lastSpin = wasLastSpin; stats.owned = wasOwned;
+      uiRestore(snap);
+      $('spinResult').innerHTML = '';
+      try{ buildWheel(); }catch(_){ /* best effort */ }
+      try{ closeDaily(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    bad.push(...geo);
+    return { name:'γ daily spin: one wheel -- the names turn with their wedges, pointer and hub stay put',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ς] the prize waits for the wheel to stop ---------------------------
+  // The defect: doSpin showed the prize card and lit the winning wedge after
+  // a fixed 4250ms timer, but the wheel's 4.1s transition starts on the next
+  // frame -- 140-250ms after the press on an idle machine, later on a busy
+  // one -- and runs on the document timeline, which a loaded page advances
+  // late. So the result could land on a wheel still turning, the name under
+  // the pointer not yet the prize. [γ] could not see it: it judges the wheel
+  // after it has stopped, which is exactly when the two agree.
+  //
+  // This makes the lateness deterministic instead of waiting for a slow
+  // machine: an !important stylesheet rule delays every transition in the
+  // wheel by 600ms -- it outranks doSpin's inline `transition` without
+  // touching doSpin -- and then presses the real SPIN button. At the instant
+  // #spinResult first gets content, and the instant the landing glow goes
+  // on, it asks: is any transform transition still running in the wheel,
+  // and is the rotor at the angle doSpin sent it to? It also confirms the
+  // spin was banked while the wheel was still turning, as it must be (a
+  // reload mid-spin cannot re-roll it), and that the delay really reached
+  // the wheel, so a pass can never be a measurement of nothing.
+  async function checkPrizeAfterStop(){
+    const bad = [], notes = [];
+    const DELAY = 600;
+    const wasLastSpin = stats.lastSpin, wasOwned = (stats.owned || []).slice(), wasCoins = stats.coins;
+    const snap = uiSnap();
+    const wait = (ms)=> new Promise(r => setTimeout(r, ms));
+    const norm = (d)=> ((d % 360) + 540) % 360 - 180;
+    const angOf = (t)=>{ if(!t || t === 'none') return 0;
+      const m = new DOMMatrixReadOnly(t); return Math.atan2(m.b, m.a) * 180 / Math.PI; };
+    const W = ()=> document.querySelector('#daily .wheelWrap');
+    const turning = ()=> W().getAnimations({ subtree:true }).filter(a =>
+      a.transitionProperty === 'transform' && a.playState !== 'finished');
+    const style = document.createElement('style');
+    const obs = [];
+    let t0 = 0;
+    const seen = {};
+    // what the wheel is doing right now, in the terms a player would see
+    const probe = (what)=>{
+      const rotor = $('wheelRotor');
+      const run = turning();
+      const target = rotor.style.transform;
+      const off = Math.abs(norm(angOf(getComputedStyle(rotor).transform) - angOf(target)));
+      let prog = '';
+      if(run.length){ const ct = run[0].effect.getComputedTiming();
+        prog = ', ' + Math.round((ct.progress || 0) * 100) + '% through it'; }
+      return { what, at: Math.round(performance.now() - t0), running: run.length, off, prog };
+    };
+    try{
+      state = 'menu';
+      stats.owned = [];                        // every spin is a skin, never the coin fallback
+      stats.lastSpin = 0;                      // a spin is due
+      $('dailyBtn').click();
+      await wait(60);
+      if(!W() || !$('wheelRotor') || !$('spinResult') || !$('wheelWin')){
+        bad.push('the daily screen has no wheel, rotor, result slot or landing glow to watch');
+        throw new Error('no wheel');
+      }
+      if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        bad.push('the page prefers reduced motion, so there is no turn to be early for');
+
+      // the first moment each thing happens, measured as it happens
+      const result = new MutationObserver(()=>{
+        if(!seen.result && $('spinResult').textContent.trim()) seen.result = probe('the prize card');
+      });
+      result.observe($('spinResult'), { childList:true, subtree:true, characterData:true });
+      const glow = new MutationObserver(()=>{
+        if(!seen.glow && $('wheelWin').classList.contains('on')) seen.glow = probe('the landing glow');
+      });
+      glow.observe($('wheelWin'), { attributes:true, attributeFilter:['class'] });
+      obs.push(result, glow);
+
+      style.textContent = '#daily .wheelWrap, #daily .wheelWrap *{ transition-delay:' + DELAY + 'ms !important; }';
+      document.head.appendChild(style);
+
+      const owned0 = stats.owned.slice();
+      t0 = performance.now();
+      $('spinBtn').click();                    // the button a player presses; it calls doSpin()
+
+      // the delay reached the wheel, and the spin is banked while it turns
+      await wait(150);
+      const early = turning();
+      const delays = early.map(a => a.effect.getTiming().delay);
+      if(!early.length) bad.push('150ms after the press no transform transition was running in the wheel');
+      else if(!delays.some(d => d >= DELAY))
+        bad.push('the ' + DELAY + 'ms delay never reached the wheel (delays ' + delays.join('/')
+                 + '), so this measured nothing');
+      if(!stats.lastSpin) bad.push('150ms after the press the spin was not banked (lastSpin still 0)');
+      const got = (stats.owned || []).filter(id => owned0.indexOf(id) < 0);
+      if(got.length !== 1) bad.push('150ms after the press the prize was not banked (' + got.length + ' new skins)');
+      if($('spinResult').textContent.trim()) bad.push('the prize card was up 150ms after the press');
+
+      const deadline = performance.now() + 15000;
+      while((spinning || !seen.result || !seen.glow) && performance.now() < deadline) await wait(50);
+      if(spinning) bad.push('the spin had not settled 15s after the press');
+      if(!seen.result) bad.push('the prize card never appeared');
+      if(!seen.glow) bad.push('the landing glow never went on');
+      for(const s of [seen.result, seen.glow]){
+        if(!s) continue;
+        if(s.running) bad.push(s.what + ' appeared ' + s.at + 'ms after the press with the wheel still turning'
+                               + s.prog + ', the rotor ' + s.off.toFixed(1) + ' deg (mod 360) off its resting angle');
+        else if(s.off > 0.5) bad.push(s.what + ' appeared ' + s.at + 'ms after the press with the rotor '
+                                      + s.off.toFixed(1) + ' deg from where doSpin sent it');
+      }
+      if(seen.result && seen.glow && !bad.length)
+        notes.push('with every wheel transition ' + DELAY + 'ms late: prize card at ' + seen.result.at
+                   + 'ms, glow at ' + seen.glow.at + 'ms, both on a stopped wheel at its final angle');
+      if(!$('spinBtn').disabled) bad.push('a spent spin is still offered');
+      if($('spinBtn').textContent !== 'SPIN') bad.push('after the spin the button reads "' + $('spinBtn').textContent + '"');
+      if(!/next spin in/i.test($('spinStatus').textContent))
+        bad.push('after the spin the status reads "' + $('spinStatus').textContent + '"');
+    } catch(e){
+      if(e && e.message !== 'no wheel') bad.push('threw: ' + (e && e.message));
+    } finally {
+      obs.forEach(o => o.disconnect());
+      style.remove();
+      { const until = performance.now() + 9000;
+        while(spinning && performance.now() < until) await wait(50); }
+      stats.lastSpin = wasLastSpin; stats.owned = wasOwned; stats.coins = wasCoins;
+      uiRestore(snap);
+      $('spinResult').innerHTML = '';
+      try{ buildWheel(); }catch(_){ /* best effort */ }
+      try{ closeDaily(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ς daily spin: the prize and the glow wait for the wheel to stop',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+  }
+
+
+  // ---- [δ] a menu hotkey acts on the screen it is printed on ---------------
+  // ENTER and F are the two prompts printed on the lobby's PLAY and INVITE
+  // buttons, and the lobby's keydown listener fired them from EVERY menu
+  // screen. Enter in the locker equipped and then threw you into Mode Select;
+  // Enter in the shop opened the buy dialog and then Mode Select on top of it;
+  // Enter on the FRIENDS card of Mode Select opened the room screen and at once
+  // re-opened Mode Select, so that card could not be taken by keyboard at all;
+  // F stacked the invite screen over whatever was open. The same listener
+  // turned the key you were binding in SETTINGS into a tab change, took keys
+  // typed into the support form's <select>, and walked the tabs while no menu
+  // screen was up at all -- under the boot loader and over the room screen.
+  //
+  // Real keydown events through the real listeners, from the real screens.
+  function checkMenuHotkeys(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const keys0 = Object.assign({}, settings.keys);
+    const shown = (id)=>{ const e = $(id); return !!e && !e.classList.contains('hidden'); };
+    const live = ()=>[...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden')).map(e => e.id).sort().join('+') || 'nothing';
+    const press = (key, target)=>{
+      (target || document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles:true, cancelable:true }));
+    };
+    const mp = $('mpBtn'), mode0 = modeIndex; let invites = 0;
+    try{
+      // From the lobby, reached the way a player reaches it. A check that ran
+      // a race before this one can leave its results screen up -- [o] does,
+      // and the 25-shard CI layout runs it right before this -- and
+      // openLobbyTab never closes that, because no lobby tab is on it. So
+      // every press below was judged with a race's results still live.
+      goHome();
+      // F would really open the invite screen and fetch PeerJS; counting the
+      // press is all this needs, so the button's click is shadowed for the run.
+      mp.click = ()=>{ invites++; };
+
+      // 0. THE STRIP'S OWN KEYS STILL WALK IT FROM ANY MENU SCREEN.
+      openLobbyTab('locker');
+      press('e');
+      if(live() !== 'badges') bad.push('E on LOCKER did not step to BADGES (live: ' + live() + ')');
+      press('q');
+      if(live() !== 'locker') bad.push('Q on BADGES did not step back to LOCKER (live: ' + live() + ')');
+
+      // 1. ON THE LOBBY BOTH PROMPTS STILL WORK -- this is the half that must
+      //    not be lost while fixing the other.
+      openLobbyTab('play');
+      press('Enter');
+      if(!shown('modeSelect')) bad.push('Enter on the lobby did not open Mode Select (live: ' + live() + ')');
+      openLobbyTab('play');
+      press('f');
+      if(invites !== 1) bad.push('F on the lobby pressed INVITE ' + invites + ' times, not once');
+
+      // 2. EVERY OTHER MENU SCREEN KEEPS ITS OWN ENTER AND IGNORES F.
+      const opens = {
+        locker:()=>openLobbyTab('locker'), shop:()=>openLobbyTab('shop'), pass:()=>openLobbyTab('pass'),
+        badges:()=>openLobbyTab('badges'), settings:()=>openLobbyTab('settings'), daily:()=>openDaily(),
+      };
+      for(const [id, open] of Object.entries(opens)){
+        open();
+        for(const key of ['Enter', 'f']){
+          closeBuy();                     // the shop's own Enter opens its dialog; F is asked of the screen
+          invites = 0;
+          press(key);
+          const now = live();
+          if(now !== id) bad.push(key + ' on ' + id.toUpperCase() + ' left ' + now + ' live');
+          if(invites) bad.push(key + ' on ' + id.toUpperCase() + ' pressed INVITE');
+          if(now !== id) open();
+        }
+      }
+      closeBuy();
+
+      // 3. THE FRIENDS CARD CAN BE TAKEN BY KEYBOARD.
+      openModeSelect();
+      const cards = [...document.querySelectorAll('#modeGrid .modeCard')];
+      if(cards.length < 2) bad.push('Mode Select has ' + cards.length + ' cards');
+      else{
+        cards[cards.length - 1].click();
+        press('Enter');
+        if(live() !== 'mpHome') bad.push('Enter on the friends card left ' + live() + ' live, not the invite screen');
+      }
+
+      // 4. A KEY BEING BOUND IS BOUND, AND DOES NOTHING ELSE.
+      openLobbyTab('settings');
+      const kb = document.querySelector('#settings .keybtn');
+      if(!kb) bad.push('no key-binding button in settings');
+      else{
+        kb.click();
+        press('e');
+        if(live() !== 'settings') bad.push('binding a key to E also walked the tabs: ' + live() + ' live');
+        if(!Object.values(settings.keys).includes('e')) bad.push('the key being bound was not bound');
+      }
+      Object.assign(settings.keys, keys0);
+
+      // 5. A FORM CONTROL IN THE SUPPORT DIALOG OWNS ITS KEYS.
+      openLobbyTab('settings');
+      openSupport();
+      const sel = $('supCategory');
+      for(const key of ['e', 'Enter', 'f', ']']){
+        invites = 0;
+        press(key, sel);
+        if(!shown('support') || live() !== 'settings' || invites)
+          bad.push(key + ' in the support form\'s <select> left ' + live() + (shown('support') ? '' : ', support closed') + (invites ? ', INVITE pressed' : ''));
+      }
+      closeSupport();
+
+      // 6. NO MENU SCREEN UP -- the boot loader's state, and the room's -- NO KEYS.
+      openLobbyTab('play');
+      hideMenuScreens(); syncMenuChrome();
+      $('lobby').classList.remove('hidden');
+      for(const key of ['e', ']', 'Enter']){
+        invites = 0;
+        press(key);
+        if(live() !== 'lobby' || invites) bad.push(key + ' with no menu screen up opened ' + live());
+      }
+      $('lobby').classList.add('hidden');
+      notes.push('Enter/F on the lobby only; 6 screens x 2 keys; friends card; key binding; support <select>; no-screen state');
+    } finally {
+      delete mp.click;
+      modeIndex = mode0;
+      Object.assign(settings.keys, keys0);
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ closeSupport(); closeBuy(); $('lobby').classList.add('hidden'); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshPreview(); }catch(_){ /* best effort */ }
+    }
+    return { name:'δ menu hotkeys: Enter and F belong to the lobby, and nothing fires through a screen, a form or a binding',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ε] the shop's buy dialog is on top, and can be left ----------------
+  // The confirm is one element shared by the locker and the shop, at
+  // z-index 24 -- and every .screen is 50. Over the shop it was painted
+  // UNDERNEATH: the cards covered BUY and CANCEL, the backdrop never showed,
+  // and clicking a card appeared to do nothing while a dialog sat live behind
+  // the page. The tab strip stayed clickable through it, leaving the shop left
+  // the dialog up on the next screen, and Esc -- which closes it in the locker
+  // -- did nothing in the shop.
+  function checkShopBuyBox(){
+    const bad = [], notes = [], snap = uiSnap();
+    const owned0 = (stats.owned||[]).slice(), pats0 = (stats.patterns||[]).slice();
+    const hits = (el)=>{ const r = el.getBoundingClientRect();
+      const h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2); return !!h && el.contains(h); };
+    const press = (key)=>document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles:true, cancelable:true }));
+    const open = ()=>{
+      openLobbyTab('shop');
+      // the first card that is sold for coins; the rest say how to unlock them
+      for(const c of document.querySelectorAll('#shop .shCard')){
+        c.click();
+        if(!$('buyBox').classList.contains('hidden')) return true;
+      }
+      return false;
+    };
+    try{
+      state = 'menu';
+      stats.owned = []; stats.patterns = []; stats.coins = 1e6;     // every card for sale, and affordable
+      if(!open()) bad.push('no shop card opened a buy dialog');
+      else{
+        for(const id of ['buyYes', 'buyNo']) if(!hits($(id))){
+          const r = $(id).getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+          bad.push('#' + id + ' is covered by ' + (h ? (h.id ? '#' + h.id : '.' + String(h.className).split(' ')[0]) : 'nothing'));
+        }
+        const pill = document.querySelector('.tabPill[data-lobby="play"]');
+        if(pill && hits(pill)) bad.push('the tab strip is still clickable through the open dialog');
+        // The preview is a <canvas>, and the game's own `canvas{position:absolute;
+        // inset:0}` rule lifted it out of the card and over the words. Hidden
+        // for as long as the whole dialog was under the shop.
+        const shot = $('buyShot').getBoundingClientRect();
+        for(const sel of ['.buyTitle', '#buyName', '#buyCost']){
+          const t = document.querySelector('#buyBox ' + sel), r = t && t.getBoundingClientRect();
+          if(r && r.width && shot.left < r.right - 1 && r.left < shot.right - 1 && shot.top < r.bottom - 1 && r.top < shot.bottom - 1)
+            bad.push('the item preview is drawn over ' + sel);
+        }
+        press('q');
+        if($('shop').classList.contains('hidden') || $('buyBox').classList.contains('hidden'))
+          bad.push('Q walked the tabs out from under the open dialog');
+        press('Escape');
+        if(!$('buyBox').classList.contains('hidden')) bad.push('Esc does not close the dialog in the shop');
+        if($('shop').classList.contains('hidden')) bad.push('Esc closed the shop along with the dialog');
+      }
+      if(open()){
+        openLobbyTab('play');
+        if(!$('buyBox').classList.contains('hidden')) bad.push('leaving the shop left its buy dialog up over the lobby');
+      }
+      notes.push('BUY and CANCEL on top, strip covered, Esc closes, leaving closes');
+    } finally {
+      stats.owned = owned0; stats.patterns = pats0;
+      uiRestore(snap);
+      try{ closeBuy(); openLobbyTab('play'); refreshCoinChips(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ε shop: the buy dialog is on top, modal, and Esc or leaving closes it',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ζ] the page itself never scrolls sideways ---------------------------
+  // #menuRings is the slow turning background, absolutely positioned at
+  // inset:-30% and rotated -- so it hung 30% past the right edge and made the
+  // document 1700px wide at 1280. overflow:hidden stops a wheel, not a
+  // scrollTo, a scrollIntoView or a focus(): window.scrollTo(99999,0) moved
+  // the whole page 420px sideways with no way back for the player.
+  function checkNoSideScroll(){
+    const bad = [], seen = [];
+    try{
+      state = 'menu';
+      for(const tab of ['play', 'locker', 'shop', 'pass']){
+        openLobbyTab(tab);
+        window.scrollTo(99999, 0);
+        const x = window.scrollX, sl = document.scrollingElement.scrollLeft;
+        window.scrollTo(0, 0);
+        seen.push(tab + ' ' + x);
+        if(x || sl) bad.push(tab + ': the page scrolled ' + Math.max(x, sl) + 'px sideways (document ' + document.documentElement.scrollWidth + 'px wide in a ' + innerWidth + 'px window)');
+      }
+    } finally {
+      window.scrollTo(0, 0);
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'ζ layout: the page cannot be scrolled sideways on any menu screen',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'scrollX ' + seen.join(', ') };
+  }
+
+  // ---- [η] the chrome row fits the window at every width --------------------
+  // On a phone the row is centred flex -- NIKCADE, six pills, the crown and
+  // coin chips -- and it is wider than a 360px or 390px window. Centred
+  // overflow spills off BOTH edges: NIKCADE started 11px off the left (24px
+  // with a five-figure balance) and squeezed to 26px, and the coin chip was
+  // cut at the right. At 768 and up the daily pip hung 1px above the window.
+  //
+  // The suite runs in one 1280px window, and media queries answer to the
+  // window, so this lays the REAL row out, with the REAL stylesheets, in
+  // frames of each width. Nothing is re-implemented; the frame only chooses the
+  // width and holds a long-time player's numbers in the chips.
+  async function checkChromeFits(){
+    const bad = [], notes = [];
+    const WIDTHS = [360, 375, 390, 414, 430, 431, 480, 520, 521, 600, 760, 761, 768, 800, 1024, 1151, 1180, 1201, 1280, 1920];
+    const css = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+    const row = $('menuChrome').cloneNode(true);
+    row.classList.remove('hidden');
+    row.querySelectorAll('.hidden').forEach(e => { if(e.id === 'dailyPip' || e.id === 'shopPip') e.classList.remove('hidden'); });
+    row.querySelectorAll('.coinNum').forEach(e => { e.textContent = fmtNum(999999); });
+    row.querySelectorAll('.crownNum').forEach(e => { e.textContent = '999'; });
+    const frames = [];
+    try{
+      for(const w of WIDTHS){
+        const f = document.createElement('iframe');
+        f.style.cssText = 'position:fixed;left:-20000px;top:0;height:700px;border:0;visibility:hidden;width:' + w + 'px';
+        frames.push(f);
+        await new Promise(ok => { f.onload = ok; f.srcdoc = '<!doctype html><html><head><style>' + css + '</style></head><body>' + row.outerHTML + '</body></html>'; document.body.appendChild(f); });
+        const d = f.contentDocument;
+        try{ await d.fonts.ready; }catch(_){ /* measured with whatever loaded */ }
+        const out = [];
+        const parts = [...d.querySelectorAll('#homeBtn, .tabPill, #dailyBtn, #dailyPip, .crownChip, .coinChip')]
+          .filter(e => e.getClientRects().length);
+        for(const e of parts){
+          const r = e.getBoundingClientRect(), nm = e.id || String(e.className).split(' ')[0];
+          if(r.left < -0.5 || r.right > w + 0.5 || r.top < -0.5) out.push(nm + ' at ' + Math.round(r.left) + '..' + Math.round(r.right) + ' y' + Math.round(r.top));
+        }
+        const hb = d.getElementById('homeBtn');
+        if(hb && hb.getClientRects().length){
+          const want = parseFloat(d.defaultView.getComputedStyle(hb).width), got = hb.getBoundingClientRect().width;
+          if(got < want - 1) out.push('NIKCADE squeezed to ' + Math.round(got) + 'px of ' + Math.round(want));
+          const first = d.querySelector('.lobbyTabs'), r1 = hb.getBoundingClientRect(), r2 = first && first.getBoundingClientRect();
+          if(r2 && r1.right > r2.left + 0.5 && r1.left < r2.right) out.push('NIKCADE overlaps the tab strip');
+        }
+        const tabs = d.querySelector('.lobbyTabs'), cur = d.querySelector('.lobbyCurrency');
+        if(tabs && cur){ const a = tabs.getBoundingClientRect(), b = cur.getBoundingClientRect();
+          if(a.right > b.left + 0.5 && a.left < b.right && a.bottom > b.top && a.top < b.bottom) out.push('the tab strip overlaps the chips'); }
+        if(out.length) bad.push(w + 'px: ' + out.join(', '));
+        notes.push(w);
+      }
+    } finally {
+      for(const f of frames) f.remove();
+    }
+    return { name:'η chrome: the NIKCADE button, pills, pip and chips fit the window at every width',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 6).join('; ') : 'fits at ' + notes.join(', ') + 'px with 999,999 coins and 999 crowns' };
+  }
+
+  // ---- [θ] a spin that is ready says so ------------------------------------
+  // refreshDailyChip() puts .ready on #dailyBtn and the stylesheet has a nudge
+  // for it -- written against .dailyBtn, which is the class of a button that no
+  // longer exists. The chip is .dailyBadge, so the rule never matched and the
+  // "spin ready" wiggle never played.
+  function checkDailyNudge(){
+    const bad = [];
+    const was = stats.lastSpin;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try{
+      state = 'menu';
+      openLobbyTab('play');
+      stats.lastSpin = 0; refreshDailyChip();
+      const b = $('dailyBtn'), on = getComputedStyle(b).animationName;
+      if(!b.classList.contains('ready')) bad.push('a due spin did not mark the chip ready');
+      if(!reduce && on !== 'dailyNudge') bad.push('the chip is marked ready and does not move (animation: ' + on + ')');
+      stats.lastSpin = Date.now(); refreshDailyChip();
+      const off = getComputedStyle(b).animationName;
+      if(off !== 'none') bad.push('a spent spin still nudges (' + off + ')');
+    } finally {
+      stats.lastSpin = was;
+      try{ refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'θ daily chip: a ready spin nudges, a spent one does not',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'ready nudges' + (reduce ? ' (reduced motion: still)' : '') + ', spent is still' };
+  }
+
+  // ---- [ι] the all-owned daily prize is banked with the spin ---------------
+  // The spin is saved the moment it starts, so a reload cannot re-roll it. The
+  // 600-coin prize for owning every colourway was paid AFTER the 4.25 s
+  // animation -- so a reload, a closed tab or a crash in that window kept the
+  // spent spin and lost the coins. It has to be saved in the same write.
+  async function checkSpinBanksCoins(){
+    const bad = [], notes = [];
+    const was = { lastSpin:stats.lastSpin, owned:(stats.owned||[]).slice(), coins:stats.coins };
+    let raw0 = null; try{ raw0 = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    const realMM = window.matchMedia, pops0 = coinPops.length;
+    let spun = null;
+    try{
+      state = 'menu';
+      window.matchMedia = (q)=> /prefers-reduced-motion/.test(String(q))
+        ? { matches:true, media:String(q), onchange:null, addListener(){}, removeListener(){},
+            addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } }
+        : realMM.call(window, q);
+      stats.owned = SKINS.map(s => s.id); stats.lastSpin = 0; stats.coins = 100;
+      openDaily();
+      spun = doSpin();
+      // What a reload at this instant would load.
+      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}').stats || {};
+      if(!(saved.lastSpin > 0)) bad.push('the spin was not saved as spent');
+      if(saved.coins !== 700) bad.push('mid-spin the save holds ' + saved.coins + ' coins -- a reload now spends the spin and loses the 600');
+      if(coinPops.slice(pops0).some(p => /daily/i.test(p.why))) bad.push('the coin pop shows before the wheel has landed');
+      await spun; spun = null;
+      if(stats.coins !== 700) bad.push('after the spin the balance is ' + stats.coins + ', not 100 + 600');
+      if(!coinPops.slice(pops0).some(p => p.n === 600 && /daily/i.test(p.why))) bad.push('no +600 pop once the wheel landed');
+      notes.push('saved mid-spin: ' + saved.coins + ' coins; after: ' + stats.coins);
+    } finally {
+      try{ if(spun) await spun; }catch(_){ /* reported */ }
+      window.matchMedia = realMM;
+      stats.lastSpin = was.lastSpin; stats.owned = was.owned; stats.coins = was.coins;
+      coinPops.length = Math.min(coinPops.length, pops0);
+      try{ if(raw0 === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, raw0); }catch(_){ /* none */ }
+      $('spinResult').innerHTML = '';
+      try{ closeDaily(); openLobbyTab('play'); refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ι daily spin: the all-owned coin prize is saved with the spin, not 4 s later',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
+  // ---- [κ] a saved look the game does not know falls back on load ----------
+  // loadProfile validated the skin and the pattern and nothing else. A saved
+  // hat or eyes id that is not in HATS / EYES -- a renamed item, an edited
+  // save -- loaded as-is: the character wore nothing, and the locker's HAT and
+  // EYES tabs showed no tile equipped at all.
+  async function checkOrphanLook(){
+    const bad = [], snap = uiSnap();
+    let raw0 = null; try{ raw0 = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    try{
+      state = 'menu';
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ custom:Object.assign({}, custom, { hat:'nonexistent', eyes:'bogus' }), stats }));
+      await loadProfile();
+      if(!HATS.some(h => h[0] === custom.hat)) bad.push('loaded hat "' + custom.hat + '" is not a hat');
+      if(!EYES.some(e => e[0] === custom.eyes)) bad.push('loaded eyes "' + custom.eyes + '" are not eyes');
+      openLobbyTab('locker');
+      for(const tab of ['hat', 'eyes']){
+        openLocker(tab);
+        const n = document.querySelectorAll('#lkGrid .lkTile.equipped').length;
+        if(n !== 1) bad.push(tab.toUpperCase() + ' tab shows ' + n + ' equipped tiles');
+      }
+    } finally {
+      try{ if(raw0 === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, raw0); }catch(_){ /* none */ }
+      uiRestore(snap);
+      try{ openLobbyTab('play'); refreshPreview(); }catch(_){ /* best effort */ }
+    }
+    return { name:'κ profile: an unknown saved hat or eyes id falls back to the default on load',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'hat and eyes fell back; one tile equipped in each tab' };
+  }
+
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -6409,6 +7901,658 @@
 
     return { name:"' catalogue: unique ids, real unlocks, prices in band",
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join(', ') };
+  }
+
+
+  // ---- [λ μ ν ξ] the inventory and the economy, audited as data -----------
+  // ['] asserts what must be true of each catalogue ROW. These four assert
+  // what must be true of each ITEM as the player meets it -- in the locker,
+  // the shop, the pass, the badges screen and the daily spin -- enumerated
+  // from the live registries every time, never from a count written here.
+  //
+  // They move far more of the profile than uiSnap() covers (ownership,
+  // badges, wins, level, XP, the save itself), so they snapshot the whole of
+  // `stats` -- keys and all -- and put it back whole.
+  function invSnap(){
+    let raw = null; try{ raw = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    return { stats: JSON.parse(JSON.stringify(stats)), custom: Object.assign({}, custom), raw };
+  }
+  function invStats(o){
+    for(const k of Object.keys(stats)) if(!(k in o)) delete stats[k];
+    Object.assign(stats, JSON.parse(JSON.stringify(o)));
+  }
+  function invRestore(s){
+    invStats(s.stats);
+    Object.assign(custom, s.custom);
+    lkTryOn = null; psTryOn = null;
+    try{ bgSetPane('badges'); }catch(_){ /* best effort */ }
+    // Leaving a screen saves the profile, so the screen is left FIRST -- with
+    // the real profile back in place -- and the saved bytes go back after.
+    try{ setPreview(null, null); openLobbyTab('play'); }catch(_){ /* best effort */ }
+    try{ if(s.raw === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, s.raw); }catch(_){ /* none */ }
+    try{ syncCustomColor(); refreshPreview(); refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+  }
+  // A profile that has done nothing: every counter zero, every list empty.
+  // Derived from the live stats object, so a counter added later is zeroed too.
+  function invBlank(){
+    const b = {};
+    for(const [k, v] of Object.entries(stats)) b[k] = Array.isArray(v) ? [] : (typeof v === 'number' ? 0 : v);
+    b.level = 1; b.passClaimed = [];
+    return b;
+  }
+  // Every cosmetic, per kind, straight from the registries. The kind names
+  // are the locker's tab ids and the fields of `custom`.
+  function invKinds(){
+    return {
+      skin:    SKINS.map(s => ({ id:s.id, name:s.name, rarity:s.rarity, unlock:s.unlock })),
+      pattern: PATTERNS.map(p => ({ id:p.id, name:p.name, rarity:p.rarity, unlock:p.unlock })),
+      hat:     HATS.map(h => ({ id:h[0], name:h[1] })),
+      eyes:    EYES.map(e => ({ id:e[0], name:e[1] }))
+    };
+  }
+  function invOwnAll(){ stats.owned = SKINS.map(s => s.id); stats.patterns = PATTERNS.map(p => p.id); }
+  function invOpaque(data){ let n = 0; for(let i = 3; i < data.length; i += 4) if(data[i] > 0) n++; return n; }
+  function invHash(data){ let h = 0x811c9dc5; for(let i = 0; i < data.length; i++){ h ^= data[i]; h = Math.imul(h, 0x01000193); } return h >>> 0; }
+
+  // ---- [λ] every item, as the player meets it ------------------------------
+  // For every skin, pattern, hat, eyes, badge, pass tier, shop entry and spin
+  // tier: an id nobody else has and a name to show, a rarity the game knows,
+  // an unlock that the ownership code actually honours, a preview drawn by
+  // the same tile path the locker and the shop use (and not a blank, and not
+  // a copy of another item's), and -- owned -- a locker tile of its own that
+  // the EQUIP button can put on and mark.
+  function checkInventoryAudit(){
+    const bad = [], notes = [], snap = invSnap();
+    const fail = (m)=> bad.push(m);
+    const MIN_OPAQUE = Math.round(TILE_PX * TILE_PX * 0.05);
+    const KINDS = invKinds(), byId = {};
+    const badgeIds = new Set(ACHIEVEMENTS.map(a => a.id));
+    const realNow = Date.now;
+    try{
+      state = 'menu';
+
+      // ---- 1. identity -------------------------------------------------
+      if(RARITY_ORDER.length !== Object.keys(RARITY).length || RARITY_ORDER.some(r => !RARITY[r]))
+        fail('RARITY_ORDER [' + RARITY_ORDER.join(',') + '] and RARITY {' + Object.keys(RARITY).join(',') + '} disagree');
+      for(const r of RARITY_ORDER){ const R = RARITY[r] || {};
+        if(!R.name || !R.label || !R.text) fail('rarity ' + r + ' is missing its name or its colours'); }
+      const UNLOCKS = ['default', 'coins', 'badge', 'wins'];
+      for(const [kind, list] of Object.entries(KINDS)){
+        const names = new Map();
+        byId[kind] = new Map();
+        if(!list.length) fail('there is no ' + kind + ' at all');
+        for(const it of list){
+          if(typeof it.id !== 'string' || !it.id.trim()){ fail('a ' + kind + ' has no id'); continue; }
+          if(byId[kind].has(it.id)) fail(kind + ' id "' + it.id + '" appears twice');
+          byId[kind].set(it.id, it);
+          if(typeof it.name !== 'string' || !it.name.trim()) fail(kind + ' ' + it.id + ' has no display name');
+          else if(names.has(it.name)) fail(kind + 's ' + names.get(it.name) + ' and ' + it.id + ' are both called "' + it.name + '"');
+          else names.set(it.name, it.id);
+          if(kind !== 'skin' && kind !== 'pattern') continue;
+          if(!RARITY[it.rarity]) fail(kind + ' ' + it.id + ' has rarity "' + it.rarity + '"');
+          const u = it.unlock || {};
+          if(UNLOCKS.indexOf(u.kind) < 0) fail(kind + ' ' + it.id + ' unlocks by "' + u.kind + '", which nothing grants');
+          if(u.kind === 'coins' && !(Number.isInteger(u.cost) && u.cost > 0)) fail(kind + ' ' + it.id + ' costs ' + u.cost);
+          if(u.kind === 'wins' && !(Number.isInteger(u.count) && u.count > 0)) fail(kind + ' ' + it.id + ' needs ' + u.count + ' wins');
+          if(u.kind === 'badge' && !badgeIds.has(u.badge)) fail(kind + ' ' + it.id + ' unlocks from missing badge "' + u.badge + '"');
+        }
+      }
+      // What an unknown id falls back to must itself be real.
+      try{ if(!byId.skin.has(skinOf('\u0000').id)) fail('skinOf falls back to a skin that is not in SKINS'); }
+      catch(e){ fail('skinOf of an unknown id threw: ' + e.message); }
+      try{ if(!byId.pattern.has(patternOf('\u0000').id)) fail('patternOf falls back to a pattern that is not in PATTERNS'); }
+      catch(e){ fail('patternOf of an unknown id threw: ' + e.message); }
+      // The pack wears the wardrobe too.
+      for(const id of BOT_SKIN_POOL)    if(!byId.skin.has(id))    fail('bots wear skin "' + id + '", which is not a skin');
+      for(const id of BOT_PATTERN_POOL) if(!byId.pattern.has(id)) fail('bots wear pattern "' + id + '", which is not a pattern');
+      for(const id of BOT_HATS)         if(!byId.hat.has(id))     fail('bots wear hat "' + id + '", which is not a hat');
+
+      // ---- 2. every unlock route grants what it says ----------------------
+      const blank = invBlank();
+      for(const [kind, owns, list] of [['skin', ownedSkins, 'owned'], ['pattern', ownedPatterns, 'patterns']]){
+        for(const it of KINDS[kind]){
+          invStats(blank);
+          const u = it.unlock || {}, free = owns().has(it.id);
+          if(u.kind === 'default'){ if(!free) fail(kind + ' ' + it.id + ' is a starter that a new profile does not own'); continue; }
+          if(free){ fail(kind + ' ' + it.id + ' is owned by a profile that has done nothing'); continue; }
+          if(u.kind === 'coins')      stats[list] = [it.id];          // what every purchase path pushes
+          else if(u.kind === 'badge') stats.badges = [u.badge];
+          else if(u.kind === 'wins')  stats.wins = u.count;
+          if(!owns().has(it.id)) fail(kind + ' ' + it.id + ': its ' + u.kind + ' unlock does not make it owned');
+        }
+      }
+      // Badges: none free, every one reachable, each with something to show.
+      invStats(blank);
+      const free = ACHIEVEMENTS.filter(a => { try{ return !!a.check(stats); }
+                                             catch(e){ fail('badge ' + a.id + ' threw: ' + e.message); return false; } });
+      if(free.length) fail('a new profile already has ' + free.map(a => a.id).join(', '));
+      const maxed = invBlank();
+      for(const k of Object.keys(maxed)) if(typeof maxed[k] === 'number') maxed[k] = 1e6;
+      invStats(maxed); invOwnAll();
+      const never = ACHIEVEMENTS.filter(a => { try{ return !a.check(stats); }catch(_){ return true; } });
+      if(never.length) fail('no profile can ever earn ' + never.map(a => a.id).join(', '));
+      for(const a of ACHIEVEMENTS){
+        if(typeof a.icon !== 'string' || !a.icon.trim()) fail('badge ' + a.id + ' has no icon');
+        if(!(Number.isInteger(a.coins) && a.coins > 0)) fail('badge ' + a.id + ' pays ' + a.coins + ' coins');
+        if(a.xp !== undefined && !(Number.isInteger(a.xp) && a.xp > 0)) fail('badge ' + a.id + ' pays ' + a.xp + ' XP');
+      }
+
+      // ---- 3. every preview, through the real tile path -------------------
+      // Re-rendered rather than read from the cache, so it is this build's
+      // renderer that is judged. A tile identical to another of its kind is
+      // an item the player cannot tell apart from that one.
+      //
+      // KNOWN, REPORTED, AND NOT FIXED HERE. Each of these is pixel-identical
+      // to the item beside it -- in the tile and in the race:
+      //   * The skins share a material outright: skinCanvas caches one canvas
+      //     per TYPE ('oil', 'rb'), and nothing else about them differs.
+      //     Aurora differs from Rainbow only in how fast it cycles, which a
+      //     still cannot show.
+      //   * The patterns are invisible because the mesh that wears the skin
+      //     material has no `uv` attribute (position, normal, color, skinIndex,
+      //     skinWeight), so every mapped skin and every pattern samples ONE
+      //     texel. A pattern either misses that texel (these) or tints the
+      //     whole bean flat. Fixing it changes how every racer looks, and a
+      //     racer's look does not change without approved screenshots.
+      // Anything else that comes out identical fails.
+      const KNOWN_SAME = {
+        'skin:aurora':'skin:rainbow', 'skin:spectrum':'skin:rainbow', 'skin:peacock':'skin:oil',
+        'skin:prismvoid':'skin:solarflare',
+        'pattern:spots':'pattern:none', 'pattern:stars':'pattern:none', 'pattern:hearts':'pattern:none',
+        'pattern:bubbles':'pattern:none', 'pattern:circuit':'pattern:none', 'pattern:scales':'pattern:none',
+        'pattern:lightning':'pattern:none', 'pattern:glitch':'pattern:none'
+      };
+      const same = [];
+      for(const [kind, list] of Object.entries(KINDS)){
+        const seen = new Map();
+        for(const it of list){
+          const key = kind + ':' + it.id;
+          tileCache.delete(key);
+          let img = null;
+          try{ img = tilePixelsFor(kind, it.id); }catch(e){ fail(key + ' preview threw: ' + e.message); continue; }
+          const n = img && img.data ? invOpaque(img.data) : 0;
+          if(n < MIN_OPAQUE){ fail(key + ' preview has ' + n + ' opaque pixels of ' + TILE_PX*TILE_PX); continue; }
+          const h = invHash(img.data);
+          if(!seen.has(h)){ seen.set(h, key); continue; }
+          if(KNOWN_SAME[key] === seen.get(h)) same.push(it.id + '=' + seen.get(h).split(':')[1]);
+          else fail(key + ' renders pixel-identical to ' + seen.get(h));
+        }
+      }
+      if(same.length) notes.push('KNOWN identical renders (not fixed here): ' + same.join(' '));
+      for(const s of SKINS){ const sw = skinSwatch(s); if(typeof sw !== 'string' || !sw.trim()) fail('skin ' + s.id + ' has no swatch'); }
+      for(const p of PATTERNS){
+        let css = '';
+        try{ css = patternPreviewCSS(p); }catch(e){ fail('pattern ' + p.id + ' swatch threw: ' + e.message); continue; }
+        if(p.id !== 'none' && !/^url\(data:image\//.test(css)) fail('pattern ' + p.id + ' swatch is "' + String(css).slice(0, 24) + '"');
+      }
+      notes.push(Object.entries(KINDS).map(([k, l]) => l.length + ' ' + k).join(', ') + ' rendered');
+
+      // ---- 4. owned and equipped, through the locker's own controls -------
+      // First the whole catalogue owned: every item on its shelf, rendered.
+      invStats(blank); invOwnAll();
+      openLobbyTab('locker');
+      for(const [kind, list] of Object.entries(KINDS)){
+        openLocker(kind);
+        if(lkInventory().length !== list.length)
+          fail(kind + ': the locker holds ' + lkInventory().length + ' of ' + list.length + ' owned');
+        const unpainted = [...document.querySelectorAll('#lkGrid .lkTile canvas')].filter(c => !c.classList.contains('done')).length;
+        if(unpainted) fail(kind + ': ' + unpainted + ' locker tiles have no render');
+      }
+      // Then each item on its own: owned through the list a purchase writes
+      // to, found on its shelf, selected, and put on by EQUIP. One item at a
+      // time keeps the shelf a few tiles long -- equipping all 79 colourways
+      // against a full shelf rebuilds 6,000 canvases, and the GC that leaves
+      // behind is still running when whatever check comes next starts timing.
+      let equipped = 0;
+      for(const [kind, list] of Object.entries(KINDS)){
+        for(const it of list){
+          invStats(blank);
+          if(kind === 'skin')    stats.owned = [it.id];
+          if(kind === 'pattern') stats.patterns = [it.id];
+          openLocker(kind);
+          const i = lkInventory().findIndex(x => x.id === it.id);
+          const tile = i < 0 ? null : document.querySelectorAll('#lkGrid .lkTile')[i];
+          const nm = tile && tile.querySelector('.uiCardName');
+          if(!nm || nm.textContent !== it.name){ fail(kind + ' ' + it.id + ' is owned and has no locker tile of its own'); continue; }
+          tile.click();                                   // selects
+          const act = $('lkAction');
+          if(!act.disabled) act.click();                  // equips
+          const on = [...document.querySelectorAll('#lkGrid .lkTile.equipped')];
+          const onName = on.length === 1 ? on[0].querySelector('.uiCardName').textContent : null;
+          if(custom[kind] !== it.id) fail(kind + ' ' + it.id + ': EQUIP left the ' + kind + ' as ' + custom[kind]);
+          else if(onName !== it.name) fail(kind + ' ' + it.id + ': ' + on.length + ' tiles marked equipped' + (onName ? ' (' + onName + ')' : ''));
+          else if($('lkAction').textContent !== 'EQUIPPED') fail(kind + ' ' + it.id + ': the button reads ' + $('lkAction').textContent + ' once equipped');
+          else equipped++;
+        }
+      }
+      notes.push(equipped + ' equipped through EQUIP');
+
+      // ---- 5. the pass: thirty real items, and claiming grants each -------
+      invStats(blank);
+      const rewards = passRewards();
+      if(rewards.length !== PASS_TIERS) fail('the pass has ' + rewards.length + ' tiers, not ' + PASS_TIERS);
+      for(let t = 1; t <= PASS_TIERS; t++){
+        const n = rewards.filter(r => r.tier === t).length;
+        if(n !== 1) fail('pass tier ' + t + ' appears ' + n + ' times');
+      }
+      for(const r of rewards){
+        const tag = 'pass tier ' + r.tier;
+        if(!r.label) fail(tag + ' has no label');
+        if(!RARITY[r.rarity]) fail(tag + ' has rarity "' + r.rarity + '"');
+        if(r.kind === 'coins'){
+          if(!(Number.isInteger(r.coins) && r.coins > 0)) fail(tag + ' pays ' + r.coins + ' coins');
+          else if(String(r.name).indexOf(String(r.coins)) < 0) fail(tag + ' is called "' + r.name + '" and pays ' + r.coins);
+          continue;
+        }
+        const item = byId[r.kind] && byId[r.kind].get(r.id);
+        if(!item){ fail(tag + ' gives ' + r.kind + ' "' + r.id + '", which does not exist'); continue; }
+        if(r.name !== item.name) fail(tag + ' calls ' + r.kind + ' ' + r.id + ' "' + r.name + '"; it is "' + item.name + '"');
+      }
+      stats.passClaimed = [];
+      for(const r of rewards){
+        const tag = 'pass tier ' + r.tier, c0 = stats.coins || 0;
+        try{ psGive(r); }catch(e){ fail(tag + ' threw on claim: ' + e.message); continue; }
+        if(r.kind === 'coins'){ if(stats.coins !== c0 + r.coins) fail(tag + ' paid ' + (stats.coins - c0) + ' of ' + r.coins); }
+        else if(r.kind === 'skin'){ if(!ownedSkins().has(r.id)) fail(tag + ' was claimed and ' + r.id + ' is not owned'); }
+        else if(r.kind === 'pattern'){ if(!ownedPatterns().has(r.id)) fail(tag + ' was claimed and ' + r.id + ' is not owned'); }
+        else { openLocker(r.kind); if(!lkInventory().some(it => it.id === r.id)) fail(tag + ': ' + r.id + ' is not in the locker'); }
+      }
+      openLobbyTab('pass');
+      document.querySelectorAll('#pass .psTile').forEach((t, i)=>{
+        const r = psRewards[i]; if(!r) return;
+        if(r.kind === 'coins'){ if(t.textContent.indexOf(String(r.coins)) < 0) fail('pass tier ' + r.tier + ' tile does not show its coins'); return; }
+        const c = t.querySelector('canvas');
+        if(!c || !c.classList.contains('done')) fail('pass tier ' + r.tier + ' tile has no render');
+      });
+
+      // ---- 6. the shop: every entry real, priced, dealt and drawable -------
+      const pool = shopPool(), poolKeys = pool.map(it => it.kind + ':' + it.id);
+      const want = [...KINDS.skin, ...KINDS.pattern].filter(it => it.unlock.kind !== 'default')
+                   .map(it => (byId.skin.get(it.id) === it ? 'skin:' : 'pattern:') + it.id);
+      if(new Set(poolKeys).size !== poolKeys.length) fail('the shop pool lists an item twice');
+      const missing = want.filter(k => poolKeys.indexOf(k) < 0), extra = poolKeys.filter(k => want.indexOf(k) < 0);
+      if(missing.length) fail('never in the shop: ' + missing.slice(0, 4).join(', '));
+      if(extra.length) fail('in the shop but not in the catalogue: ' + extra.slice(0, 4).join(', '));
+      for(const it of pool){
+        const item = byId[it.kind] && byId[it.kind].get(it.id);
+        if(!item){ fail('shop entry ' + it.kind + ':' + it.id + ' is not a real ' + it.kind); continue; }
+        const pr = shopPrice(it);
+        if(pr.kind === 'coins' || pr.kind === 'crowns'){ if(!(pr.n > 0)) fail('shop entry ' + it.id + ' is priced at ' + pr.n + ' ' + pr.kind); }
+        else if(!(it.unlock.kind === 'badge' && badgeIds.has(it.unlock.badge))) fail('shop entry ' + it.id + ' is shown as a badge unlock but unlocks by ' + it.unlock.kind);
+        if(pr.kind !== 'coins' && !unlockText(it)) fail('shop entry ' + it.id + ' has no unlock text to show');
+      }
+      const rareN = pool.filter(p => FEATURED_TIERS.includes(p.rarity)).length, plainN = pool.length - rareN;
+      const day0 = shopDay();
+      for(let d = 0; d < 120; d++){
+        Date.now = ()=> (day0 + d) * DAY_MS + 3600000;
+        const rows = shopRows();
+        const dealt = [...rows.featured, ...rows.daily].map(it => it.kind + ':' + it.id);
+        if(rows.featured.length !== Math.min(SHOP_FEATURED, rareN || pool.length) || rows.daily.length !== Math.min(SHOP_DAILY, plainN || pool.length))
+          fail('day +' + d + ' deals ' + rows.featured.length + ' + ' + rows.daily.length + ' cards');
+        if(new Set(dealt).size !== dealt.length) fail('day +' + d + ' deals the same item twice');
+        const stray = dealt.filter(k => poolKeys.indexOf(k) < 0);
+        if(stray.length) fail('day +' + d + ' deals ' + stray.join(', '));
+      }
+      Date.now = realNow;
+      invStats(blank);
+      openLobbyTab('shop');
+      const n0 = shCards.length;
+      for(const it of pool){
+        let card;
+        try{ card = shopCard(it, false); }catch(e){ fail('shop card for ' + it.id + ' threw: ' + e.message); continue; }
+        const nm = card.querySelector('.shName'), foot = card.querySelector('.shFoot'), shot = card.querySelector('canvas');
+        if(!nm || nm.textContent !== it.name) fail('shop card for ' + it.id + ' is named "' + (nm ? nm.textContent : '') + '"');
+        if(!foot || !foot.textContent.trim()) fail('shop card for ' + it.id + ' shows no price or unlock');
+        if(!shot || !shot.classList.contains('done')) fail('shop card for ' + it.id + ' has no render');
+        else if(invOpaque(shot.getContext('2d').getImageData(0, 0, shot.width, shot.height).data) < MIN_OPAQUE)
+          fail('shop card for ' + it.id + ' painted an empty render');
+      }
+      shCards.length = n0;
+      notes.push(pool.length + ' shop entries, 120 days dealt');
+
+      // ---- 7. the daily spin: every tier it can land has a wedge and a skin --
+      for(const [k, w] of SPIN_ODDS){
+        if(!RARITY[k]) fail('SPIN_ODDS rolls "' + k + '", which is not a rarity');
+        if(!(w > 0)) fail('SPIN_ODDS gives ' + k + ' a weight of ' + w);
+      }
+      for(const w of WHEEL) if(!RARITY[w]) fail('a wheel wedge is "' + w + '", not a rarity');
+      for(const r of RARITY_ORDER){
+        if(!SKINS.some(s => s.rarity === r)) fail('no skin is ' + r + ', so the spin can land on an empty tier');
+        if(WHEEL.indexOf(r) < 0) fail('the wheel has no ' + r + ' wedge for a ' + r + ' prize to land on');
+      }
+
+      // ---- 8. badges, on their own screen, earned and paid ----------------
+      invStats(blank);
+      stats.badges = ACHIEVEMENTS.map(a => a.id);
+      stats.claimed = ACHIEVEMENTS.filter((a, i) => i % 2).map(a => a.id);
+      openLobbyTab('badges');
+      const cards = [...document.querySelectorAll('#bgGrid .bgCard')];
+      if(cards.length !== ACHIEVEMENTS.length) fail(cards.length + ' badge cards for ' + ACHIEVEMENTS.length + ' badges');
+      ACHIEVEMENTS.forEach((a, i)=>{
+        const c = cards[i]; if(!c) return;
+        const nm = c.querySelector('.bgName'), ico = c.querySelector('.bgIco'), paid = i % 2 === 1;
+        if(!nm || nm.textContent !== a.name) fail('badge card ' + i + ' is not ' + a.name);
+        if(!ico || !ico.textContent.trim()) fail('badge ' + a.id + ' shows no icon');
+        if(!c.classList.contains('got')) fail('badge ' + a.id + ' is earned and not shown as earned');
+        if(c.classList.contains('paid') !== paid) fail('badge ' + a.id + (paid ? ' is paid and not shown as paid' : ' is shown as paid'));
+        if(!paid && !c.querySelector('.bgClaim')) fail('badge ' + a.id + ' is earned and unpaid with no CLAIM');
+      });
+      notes.push(ACHIEVEMENTS.length + ' badges, ' + PASS_TIERS + ' pass tiers');
+    } finally {
+      Date.now = realNow;
+      invRestore(snap);
+    }
+    return { name:'λ inventory: every item has an id, a name, a real unlock, a render and a locker tile that equips',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [μ] the rarity a screen shows is the rarity the item has -----------
+  // The locker, the pass and the shop each print a rarity pill for an item.
+  // The locker is the inventory -- the screen that shows what the player
+  // actually has -- so it is the reference, and it is itself held to the
+  // catalogue for everything the catalogue gives a rarity. A pill anywhere
+  // else that disagrees with it tells the player the item is something it
+  // is not. ([γ] holds the daily spin's prize card to the tier it awarded.)
+  //
+  // And the words: a line of catalogue copy that says how an item is got
+  // must not leave out a way the game actually gives it. Every colourway is
+  // a daily-spin candidate, so copy that names a route must name the spin.
+  function checkRarityShown(){
+    const bad = [], notes = [], snap = invSnap();
+    try{
+      state = 'menu';
+      invStats(invBlank()); invOwnAll();
+      const locker = new Map();
+      openLobbyTab('locker');
+      for(const kind of LK_TABS.map(t => t.id)){
+        openLocker(kind);
+        const tiles = document.querySelectorAll('#lkGrid .lkTile');
+        lkInventory().forEach((it, i)=>{
+          const pill = tiles[i] && tiles[i].querySelector('.rarityPill');
+          const shown = pill ? pill.textContent : '(none)';
+          locker.set(kind + ':' + it.id, shown);
+          const cat = kind === 'skin' ? SKIN_BY_ID[it.id] : kind === 'pattern' ? PATTERN_BY_ID[it.id] : null;
+          if(cat && shown !== RARITY[cat.rarity].name.toUpperCase())
+            bad.push('locker ' + kind + ' ' + it.id + ' shows ' + shown + ', the catalogue says ' + cat.rarity);
+        });
+      }
+      // The pass, each tier selected the way a player selects it.
+      openLobbyTab('pass');
+      const tiles = document.querySelectorAll('#pass .psTile');
+      let passN = 0;
+      psRewards.forEach((r, i)=>{
+        if(r.kind === 'coins' || !tiles[i]) return;
+        tiles[i].click();
+        passN++;
+        const shown = $('psRarity').textContent, want = locker.get(r.kind + ':' + r.id);
+        if(shown !== want) bad.push('pass tier ' + r.tier + ' ' + r.name + ' (' + r.kind + ') shows ' + shown + '; the locker shows ' + want);
+      });
+      // Every card the shop can deal.
+      openLobbyTab('shop');
+      const pool = shopPool(), n0 = shCards.length;
+      for(const it of pool){
+        const pill = shopCard(it, false).querySelector('.rarityPill');
+        const shown = pill ? pill.textContent : '(none)', want = locker.get(it.kind + ':' + it.id);
+        if(shown !== want) bad.push('shop ' + it.kind + ' ' + it.id + ' shows ' + shown + '; the locker shows ' + want);
+      }
+      shCards.length = n0;
+      // The copy.
+      const ROUTE = /\b(win|wins|match|matches|badge|coins?|buy|bought|sold|shop|pass|spin|only)\b/i;
+      let blurbs = 0;
+      for(const s of SKINS){
+        if(!s.blurb) continue;
+        blurbs++;
+        if(!ROUTE.test(s.blurb)) continue;
+        if(!/\bspin\b/i.test(s.blurb)) bad.push(s.id + ' says "' + s.blurb + '" -- the daily spin gives it too');
+        if(/cannot be bought|can't be bought|not for sale/i.test(s.blurb) && shopPrice(Object.assign({ kind:'skin' }, s)).kind === 'coins')
+          bad.push(s.id + ' says it cannot be bought, and the shop sells it');
+        if(/\bonly\b/i.test(s.blurb)) bad.push(s.id + ' says "' + s.blurb + '", and more than one thing gives it');
+      }
+      notes.push(locker.size + ' locker pills, ' + passN + ' pass tiers, ' + pool.length + ' shop cards, ' + blurbs + ' blurb(s)');
+    } finally {
+      invRestore(snap);
+    }
+    return { name:'μ rarity: the pass and the shop show each item the rarity the locker shows it, and the copy is true',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ν] the daily spin's prize, as data --------------------------------
+  // [γ] watches the wheel land. This is the half before the animation: the
+  // real pickSpinPrize(), called thousands of times against ownership states
+  // chosen to corner it -- a new profile, each tier the only one left, each
+  // tier exhausted, each tier down to its last skin, everything owned,
+  // ownership by badge and by wins, a save carrying retired ids and
+  // duplicates, and forty random collections. In every one, and for every
+  // tier the roll can come out as, the pick is walked across every candidate
+  // of the tier it lands in, so no skin can hide behind the draw.
+  //
+  // The draw is stubbed only to aim it: rollSpinRarity() and pick() consume
+  // Math.random as they always do, and the value that lands tier T is the
+  // middle of T's band, read off SPIN_ODDS itself. Then the same function is
+  // run free on a seeded stream, and a new profile must reach all six tiers.
+  //
+  // What is held: the prize is a real catalogue skin, never one already
+  // owned; `landed` -- what the wheel is turned to -- is that skin's rarity
+  // and has a wedge; a roll that has unowned skins in its own tier is not
+  // slid elsewhere; the coin prize comes only when nothing is left.
+  function checkSpinPrizeData(){
+    const bad = [], notes = [], snap = invSnap();
+    const realRandom = Math.random;
+    const total = SPIN_ODDS.reduce((a, b)=> a + b[1], 0);
+    const mid = {}; { let acc = 0; for(const [k, v] of SPIN_ODDS){ mid[k] = (acc + v/2) / total; acc += v; } }
+    const aim = (vals)=>{ let i = 0; return ()=> i < vals.length ? vals[i++] : realRandom(); };
+    const fails = new Map();
+    const note = (k, ex)=>{ const f = fails.get(k); if(f) f.n++; else fails.set(k, { n:1, ex }); };
+    let calls = 0, granted = new Set();
+    const judge = (tag, rolled)=>{
+      const owned = ownedSkins();
+      let p;
+      try{ p = pickSpinPrize(); }catch(e){ note('threw: ' + e.message, tag); return null; }
+      calls++;
+      if(!p || typeof p !== 'object'){ note('returned no prize', tag); return null; }
+      if(!RARITY[p.landed]){ note('landed "' + p.landed + '", not a rarity', tag); return p; }
+      if(WHEEL.indexOf(p.landed) < 0) note('landed ' + p.landed + ', which has no wedge', tag);
+      if(p.skin){
+        if(SKIN_BY_ID[p.skin.id] !== p.skin){ note('granted "' + (p.skin && p.skin.id) + '", not a catalogue skin', tag); return p; }
+        granted.add(p.skin.id);
+        if(owned.has(p.skin.id)) note('granted an owned skin', tag + ': ' + p.skin.id);
+        if(p.skin.rarity !== p.landed) note('reported one rarity and awarded another', tag + ': ' + p.landed + ' for ' + p.skin.id + ' (' + p.skin.rarity + ')');
+        if(rolled && p.landed !== rolled && SKINS.some(s => s.rarity === rolled && !owned.has(s.id)))
+          note('slid off a tier that still had skins', tag + ': ' + rolled + ' -> ' + p.landed);
+      } else {
+        const left = SKINS.filter(s => !owned.has(s.id)).length;
+        if(left) note('paid coins with skins still unowned', tag + ': ' + left + ' left');
+        if(!(Number.isInteger(p.coins) && p.coins > 0)) note('the all-owned prize is not coins', tag + ': ' + p.coins);
+      }
+      return p;
+    };
+    try{
+      const blank = invBlank(), ids = SKINS.map(s => s.id);
+      const states = [['a new profile', []]];
+      for(const T of RARITY_ORDER){
+        const inT = SKINS.filter(s => s.rarity === T).map(s => s.id);
+        states.push(['only ' + T + ' left', ids.filter(id => inT.indexOf(id) < 0)]);
+        states.push([T + ' all owned', inT]);
+        states.push([T + ' down to its last', inT.slice(0, -1)]);
+        states.push(['one ' + T + ' left in the game', ids.filter(id => id !== inT[inT.length - 1])]);
+      }
+      states.push(['everything owned', ids.slice()]);
+      states.push(['every badge and 100 wins', [], { badges: ACHIEVEMENTS.map(a => a.id), wins: 100 }]);
+      states.push(['retired ids and duplicates in the save', ['zz_retired', ids[8], ids[8], 'zz_renamed', ids[20]]]);
+      const rs = seededRandom(0x5B1D);
+      for(let k = 0; k < 40; k++){
+        const keep = [0.2, 0.5, 0.8, 0.97][k % 4];
+        states.push(['random collection ' + k, ids.filter(()=> rs() < keep)]);
+      }
+      const set = (st)=>{ invStats(blank); stats.owned = st[1].slice(); if(st[2]) Object.assign(stats, st[2]); };
+
+      // 1. aimed: every state, every rolled tier, every candidate
+      for(const st of states){
+        set(st);
+        granted = new Set();
+        const own = ownedSkins(), unowned = SKINS.filter(s => !own.has(s.id)).map(s => s.id);
+        for(const T of RARITY_ORDER){
+          Math.random = aim([mid[T], 0]);
+          const first = judge(st[0] + ', rolled ' + T, T);
+          if(!first || !first.skin) continue;
+          const m = SKINS.filter(s => s.rarity === first.landed && !own.has(s.id)).length;
+          for(let j = 1; j < m; j++){
+            Math.random = aim([mid[T], (j + 0.5) / m]);
+            judge(st[0] + ', rolled ' + T, T);
+          }
+        }
+        const unreached = unowned.filter(id => !granted.has(id));
+        if(unreached.length) note('a candidate the spin can never give', st[0] + ': ' + unreached.slice(0, 4).join(', '));
+      }
+      // 2. free-running, on a seeded stream
+      Math.random = seededRandom(0xD1CE);
+      for(let k = 0; k < 3000; k++){ const st = states[k % states.length]; set(st); judge(st[0] + ', free draw', null); }
+      set(states[0]);
+      const tiers = new Set();
+      for(let k = 0; k < 4000; k++){ const p = judge('a new profile, free draw', null); if(p) tiers.add(p.landed); }
+      const never = RARITY_ORDER.filter(r => !tiers.has(r));
+      if(never.length) note('a new profile never lands some tiers', never.join(', '));
+      notes.push(calls + ' real pickSpinPrize() calls over ' + states.length + ' ownership states; free draws landed ' + [...tiers].join('/'));
+    } finally {
+      Math.random = realRandom;
+      invRestore(snap);
+    }
+    for(const [k, f] of fails) bad.push(k + ' x' + f.n + ' (e.g. ' + f.ex + ')');
+    return { name:'ν daily spin: the prize is a real, unowned skin of the tier the wheel is turned to, across every ownership',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 8).join('; ') : notes.join('; ') };
+  }
+
+  // ---- [ξ] a save the catalogue has moved on from --------------------------
+  // A save outlives the catalogue it was written against: a colourway is
+  // retired or renamed, a badge id changes, and the old id stays in
+  // stats.owned or stats.badges for good. It must not be counted. Built as a
+  // real saved profile (scrambleRush.profile.v6) and loaded by the real
+  // loadProfile(), then read off the screens a player reads:
+  //   * the Stats rows "Colourways owned", "Patterns owned" and "Badges
+  //     earned" must agree with the locker's tiles and the badge cards,
+  //   * the header's "N of T earned" must agree with the cards too,
+  //   * a collection badge ("Own 30 colourways") is earned exactly when the
+  //     locker shows that many -- its promise, measured where it is kept --
+  //   * and the unknown ids are still in the save afterwards: counting only
+  //     what the game knows, not deleting what it does not.
+  // Last, the duplicate the pass writes when it grants a colourway the
+  // player already bought: reproduced through CLAIM, and shown harmless.
+  async function checkOrphanCounts(){
+    const bad = [], notes = [], snap = invSnap();
+    const GHOST_SKINS = ['zz_retired_colour', 'zz_renamed_colour'], GHOST_PAT = 'zz_retired_pattern', GHOST_BADGE = 'zz_retired_badge';
+    const rows = ()=>{
+      openLobbyTab('badges');
+      const tab = document.querySelector('#badges .bgTab[data-bg="stats"]');
+      if(tab) tab.click(); else bad.push('no STATS tab on the badges screen');
+      const out = {};
+      for(const c of document.querySelectorAll('#bgStats .statCard')){
+        const k = c.querySelector('.k'), v = c.querySelector('.v');
+        if(k && v) out[k.textContent.trim()] = v.textContent.trim();
+      }
+      const got = document.querySelectorAll('#bgGrid .bgCard.got').length;
+      const head = (($('bgSummary').textContent || '').match(/(\d+)\s+of\s+(\d+)/) || []);
+      const tab2 = document.querySelector('#badges .bgTab[data-bg="badges"]');
+      if(tab2) tab2.click();
+      return { out, got, head: head[1] === undefined ? null : Number(head[1]) };
+    };
+    const tiles = ()=>{
+      openLobbyTab('locker');
+      const n = {};
+      for(const kind of ['skin', 'pattern']){ openLocker(kind); n[kind] = document.querySelectorAll('#lkGrid .lkTile').length; }
+      return n;
+    };
+    const load = async (st)=>{
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ custom: snap.custom, stats: st }));
+      await loadProfile();
+    };
+    // The counts a player reads, against what the same player can see.
+    const judge = (tag)=>{
+      const t = tiles(), r = rows();
+      const want = { 'Colourways owned': t.skin + ' / ' + SKINS.length,
+                     'Patterns owned':   t.pattern + ' / ' + PATTERNS.length,
+                     'Badges earned':    r.got + ' / ' + ACHIEVEMENTS.length };
+      for(const [k, v] of Object.entries(want))
+        if(r.out[k] !== v) bad.push(tag + ': Stats says ' + k + ' ' + r.out[k] + '; the ' + (k === 'Badges earned' ? 'badge cards show ' : 'locker shows ') + v);
+      if(r.head !== r.got) bad.push(tag + ': the header says ' + r.head + ' earned; ' + r.got + ' cards are earned');
+      return t;
+    };
+    try{
+      state = 'menu';
+      // ---- A. just under both collection badges, plus retired ids ---------
+      const collect = (noun)=> ACHIEVEMENTS.find(a => new RegExp('^own \\d+ ' + noun + '$', 'i').test(a.desc || ''));
+      const cSk = collect('colourways'), cPt = collect('patterns');
+      if(!cSk || !cPt) bad.push('no "Own N colourways" / "Own N patterns" badge to test against');
+      const need = (a)=> Number((a.desc.match(/\d+/) || [0])[0]);
+      const gated = new Set([...SKINS, ...PATTERNS].filter(i => i.unlock.kind === 'badge').map(i => i.unlock.badge));
+      const inert = ACHIEVEMENTS.filter(a => !gated.has(a.id) && a !== cSk && a !== cPt).slice(0, 2).map(a => a.id);
+      const skins = SKINS.filter(s => s.unlock.kind === 'coins').map(s => s.id)
+                    .slice(0, need(cSk) - 1 - SKINS.filter(s => s.unlock.kind === 'default').length);
+      const pats  = PATTERNS.filter(p => p.unlock.kind === 'coins').map(p => p.id)
+                    .slice(0, need(cPt) - 1 - PATTERNS.filter(p => p.unlock.kind === 'default').length);
+      await load(Object.assign(invBlank(), {
+        owned:    [...skins, ...GHOST_SKINS, GHOST_SKINS[0], skins[0]],
+        patterns: [...pats, GHOST_PAT, GHOST_PAT],
+        badges:   [...inert, GHOST_BADGE, inert[0]],
+        claimed:  [GHOST_BADGE],
+        passClaimed: [1, 999, 'x']
+      }));
+      const tA = judge('A (' + (need(cSk) - 1) + ' colourways, ' + (need(cPt) - 1) + ' patterns, + retired ids)');
+      if(tA.skin !== need(cSk) - 1 || tA.pattern !== need(cPt) - 1)
+        bad.push('A: the locker shows ' + tA.skin + ' colourways and ' + tA.pattern + ' patterns; built ' + (need(cSk) - 1) + ' and ' + (need(cPt) - 1));
+      for(const [a, have] of [[cSk, tA.skin], [cPt, tA.pattern]]){
+        if(!a) continue;
+        const earned = stats.badges.includes(a.id);
+        if(earned !== (have >= need(a)))
+          bad.push('A: "' + a.desc + '" is ' + (earned ? 'earned' : 'not earned') + ' with ' + have + ' in the locker');
+      }
+      await saveProfile();
+      const saved = (JSON.parse(localStorage.getItem(SAVE_KEY) || '{}').stats) || {};
+      const kept = [...GHOST_SKINS.map(g => (saved.owned || []).includes(g)), (saved.patterns || []).includes(GHOST_PAT),
+                    (saved.badges || []).includes(GHOST_BADGE)];
+      if(kept.some(k => !k)) bad.push('A: a retired id was deleted from the save');
+      openLobbyTab('pass');
+      const claimedTiles = document.querySelectorAll('#pass .psTile.claimed').length;
+      if(claimedTiles !== 1) bad.push('A: passClaimed [1, 999, "x"] shows ' + claimedTiles + ' claimed tiers, not 1');
+      notes.push('A: ' + tA.skin + ' colourways, ' + tA.pattern + ' patterns, collection badges ' +
+                 (stats.badges.includes(cSk.id) || stats.badges.includes(cPt.id) ? 'EARNED' : 'not earned') + ', retired ids kept in the save');
+
+      // ---- B. the whole catalogue, plus retired ids ------------------------
+      await load(Object.assign(invBlank(), {
+        owned:    [...SKINS.map(s => s.id), ...GHOST_SKINS],
+        patterns: [...PATTERNS.map(p => p.id), GHOST_PAT],
+        badges:   [...ACHIEVEMENTS.map(a => a.id), GHOST_BADGE, ACHIEVEMENTS[0].id]
+      }));
+      const tB = judge('B (everything, + retired ids)');
+      notes.push('B: ' + tB.skin + ' / ' + SKINS.length + ' colourways');
+
+      // ---- C. the duplicate the pass writes ------------------------------
+      const rewards = passRewards();
+      const rs = rewards.find(r => r.kind === 'skin'), rp = rewards.find(r => r.kind === 'pattern');
+      let xp = 0; for(let n = 1; n <= PASS_TIERS; n++) xp += passTierCost(n);
+      await load(Object.assign(invBlank(), { owned:[rs.id], patterns:[rp.id], xp }));
+      openLobbyTab('pass');
+      for(const r of [rs, rp]){
+        const i = psRewards.findIndex(x => x.tier === r.tier);
+        const tile = document.querySelectorAll('#pass .psTile')[i];
+        if(!tile){ bad.push('C: no tile for pass tier ' + r.tier); continue; }
+        tile.click();
+        $('psAction').click();                            // CLAIM
+      }
+      const dupS = stats.owned.filter(id => id === rs.id).length, dupP = stats.patterns.filter(id => id === rp.id).length;
+      if(dupS !== 2 || dupP !== 2) notes.push('C: claiming did not duplicate (' + dupS + ', ' + dupP + ')');
+      const tC = judge('C (bought ' + rs.id + ' and ' + rp.id + ', then claimed both from the pass)');
+      openLobbyTab('locker');
+      openLocker('skin');
+      const same = [...document.querySelectorAll('#lkGrid .uiCardName')].filter(n => n.textContent === rs.name).length;
+      if(same !== 1) bad.push('C: ' + rs.name + ' has ' + same + ' locker tiles after the duplicate');
+      notes.push('C: the pass wrote ' + rs.id + ' x' + dupS + ' and ' + rp.id + ' x' + dupP + ' into the save; locker, Stats and badges still count it once (' + tC.skin + ' colourways)');
+    } catch(e){
+      bad.push('threw: ' + (e && e.message));
+    } finally {
+      invRestore(snap);
+    }
+    return { name:'ξ profile: retired and duplicate ids in a save are never counted, and never deleted',
+             pass: bad.length===0, detail: bad.length ? bad.length + ': ' + bad.slice(0, 8).join('; ') : notes.join('; ') };
   }
 
 
@@ -7111,6 +9255,552 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---------- ο: a solid is solid to a racer who cannot be hurt ----------
+  // A dive makes the diver invulnerable for as long as it is in the air, and
+  // checkObstacles returned on invulnerability BEFORE the pillars, the solid
+  // doors, the hoop's rim, the Wall Rush walls and the bumpers. So a dive was a
+  // way through all of them -- and once a centre was past a slab's middle line
+  // the push-out chose the far face and finished the job. An audit sweep put
+  // between 68 and 151 of every 730 approaches straight through a solid, and
+  // plain running none. Invulnerability is immunity from being HIT; it was
+  // never meant to be a licence to stand inside a pillar.
+  //
+  // Every solid is approached at speed from more than one angle and at both
+  // frame lengths, doing nothing, diving at each frame of the run-up, jumping,
+  // and jumping with a dive on top. A trial fails if the racer's centre crossed
+  // the solid's middle line inside its footprint while low enough to be
+  // stopped by it -- measured at the crossing itself, so a racer that went
+  // over the top of the gate is over the top of the gate. Two controls keep
+  // "nothing got through" from being passed by a racer that never arrived: a
+  // plain run reaches every solid, and the open way past each one -- round the
+  // pillar, through the gate's door, the paper door, the hole in the hoop, the
+  // gap in the wall -- still lets a racer through.
+  function checkSolidsStaySolid(){
+    const bad = [], rep = {};
+    const DTS = [1/60, 0.033];
+    // Actions in 60 Hz frames, turned into ticks for the longer step.
+    const ACTS = [null];
+    for(let k=0;k<=12;k++) ACTS.push({[k]:'dive'});
+    ACTS.push({0:'jump'}, {0:'jump',3:'dive'}, {0:'jump',5:'dive'}, {0:'jump',8:'dive'},
+              {2:'jump',6:'dive'}, {4:'jump',9:'dive'});
+    const FRAMES60 = 40;
+    let p = null;                  // a new round makes new racers: re-read after every begin()
+    const input0 = computeInputVec;
+    let steer = null;
+    // Steer straight down the approach, whatever the camera is doing.
+    computeInputVec = function(){ return steer ? {ix:steer.ix, iy:steer.iy} : input0(); };
+    const run = (T, sx, sy, ang, dt, acts)=>{
+      if(T.before) T.before();
+      timeLimit = raceTime + 900;
+      Object.assign(p, { x:sx, y:sy, h:0, vh:0, floorH:0, onRamp:null, onShortcut:null, onMover:null,
+        onCrumble:null, onLog:null, onDeck:null, invuln:0, diveT:0, diveCd:0, stumbleT:0, getUpT:0,
+        tumbleT:0, tumbleSpin:0, respawnFreeze:0, airDive:false, falling:false, slideT:0, landT:0,
+        jumpBuf:0, coyote:0, windT:0, squash:0, platVX:0, finished:false, lavaOut:false,
+        facing:ang, vx:Math.cos(ang)*T.spd, vy:Math.sin(ang)*T.spd });
+      steer = { ix:Math.cos(ang), iy:Math.sin(ang) };
+      const n = Math.ceil(FRAMES60/(dt*60));
+      const at = {};
+      if(acts) for(const k in acts) at[Math.round(k/(dt*60))] = acts[k];
+      const tr = [[p.x, p.y, p.h, T.line()]];
+      for(let i=0;i<n;i++){
+        if(at[i]==='jump') doJump(p); else if(at[i]==='dive') doDive(p);
+        window.__dbg.tick(1, dt);
+        tr.push([p.x, p.y, p.h, T.line()]);
+        if(p.falling || state!=='racing') break;
+      }
+      steer = null;
+      return tr;
+    };
+    // The first place a trace crossed the solid's middle line going the way it
+    // was sent, interpolated: where along the line, and how high the feet were.
+    const cross = (T, tr)=>{
+      const ax = T.axis==='x' ? 0 : 1, o = 1-ax, s = T.sign||1;
+      for(let i=1;i<tr.length;i++){
+        const a = (tr[i-1][ax]-tr[i-1][3])*s, b = (tr[i][ax]-tr[i][3])*s;
+        if(a < 0 && b >= 0){
+          const k = a/(a-b);
+          return { along: tr[i-1][o] + (tr[i][o]-tr[i-1][o])*k, h: tr[i-1][2] + (tr[i][2]-tr[i-1][2])*k };
+        }
+      }
+      return null;
+    };
+    const actName = (a)=> a ? Object.keys(a).map(k=>a[k]+'@'+k).join('+') : 'run';
+    const parkRace = ()=>{ for(const r of racers) if(!r.isPlayer){
+      r.x = TRACK_W/2; r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; } };
+
+    const TARGETS = [
+      ['sunny', ()=>{
+        const o = obstacles.find(x=>x.type==='pillars' && x.items.length); if(!o) return null;
+        const it = o.items[0];
+        return { tag:'pillar', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:it.r+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.r*0.7]],
+          through:(c)=>Math.abs(c.along-it.x) < it.r,
+          touched:(q)=>Math.hypot(q[0]-it.x, q[1]-o.y) < it.r+RADIUS,
+          open:{ aim:[it.x-(it.r+RADIUS+12), o.y], ang:Math.PI/2 } };
+      }],
+      ['sunny', ()=>{
+        const o = obstacles.find(x=>x.type==='bumper' && x.items.length); if(!o) return null;
+        const it = o.items[0];
+        return { tag:'bumper', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:it.r+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.r*0.7]],
+          through:(c)=>Math.abs(c.along-it.x) < it.r*0.86 && c.h < 40,
+          touched:(q)=>Math.hypot(q[0]-it.x, q[1]-o.y) < it.r+RADIUS && q[2] < 46 };
+      }],
+      ['sunny', ()=>{
+        const g = obstacles.find(x=>x.type==='gate'); if(!g) return null;
+        const inGap = (x)=>g.xs.some(gx=>Math.abs(x-gx) < g.gapW/2);
+        return { tag:'gate', axis:'y', line:()=>g.y, aim:[(g.xs[0]+g.xs[1])/2, g.y], clear:g.d/2+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2-0.6,0]],
+          through:(c)=>!inGap(c.along) && c.h < g.h,
+          touched:(q)=>Math.abs(q[1]-g.y) < g.d/2+RADIUS+1 && !inGap(q[0]) && q[2] < g.h,
+          open:{ aim:[g.xs[0], g.y], ang:Math.PI/2 } };
+      }],
+      ['sunny', ()=>{
+        const fk = obstacles.find(x=>x.type==='fork'); if(!fk) return null;
+        // from the flat side, so the approach is on the floor and not on the catwalk
+        const base = fk.risk > 0 ? 0 : Math.PI, s = fk.risk > 0 ? 1 : -1;
+        // Past the far end of the divider, or in front of where it starts, is
+        // round it rather than through it.
+        return { tag:'fork', axis:'x', sign:s, line:()=>fk.cx, aim:[fk.cx, fk.wallFrom+120], clear:8+RADIUS+40,
+          approaches:[[base,0],[base+0.5,0],[base-0.5,0]],
+          through:(c)=>c.h < 44 && c.along > fk.wallFrom && c.along < fk.yEnd,
+          touched:(q)=>Math.abs(q[0]-fk.cx) < 8+RADIUS+1 && q[2] < 44 };
+      }],
+      ['doors', ()=>{
+        const o = obstacles.find(x=>x.type==='doors' && x.items.some(i=>!i.fake)); if(!o) return null;
+        const it = o.items.find(i=>!i.fake), paper = o.items.find(i=>i.fake);
+        return { tag:'door', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:o.d/2+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.w/2-6]],
+          through:(c)=>Math.abs(c.along-it.x) < it.w/2 && c.h < 62,
+          touched:(q)=>Math.abs(q[1]-o.y) < o.d/2+RADIUS+1 && Math.abs(q[0]-it.x) < it.w/2+RADIUS-8 && q[2] < 62,
+          open: paper ? { aim:[paper.x, o.y], ang:Math.PI/2 } : null };
+      }],
+      ['slide', ()=>{
+        const o = obstacles.find(x=>x.type==='hoop'); if(!o) return null;
+        const rim = (x,h)=>Math.abs(Math.hypot(x-o.cx, h+RADIUS-o.hc) - o.r);
+        return { tag:'hoop', axis:'y', line:()=>o.y, aim:[o.cx-o.r+12, o.y], clear:o.tube+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2,-8]],
+          through:(c)=>rim(c.along, c.h) < o.tube,
+          touched:(q)=>Math.abs(q[1]-o.y) < o.tube+RADIUS+1 && rim(q[0], q[2]) < o.tube+RADIUS*0.55,
+          open:{ aim:[o.cx, o.y], ang:Math.PI/2 } };
+      }],
+      ['walls', ()=>{
+        const walls = obstacles.filter(x=>x.type==='blockwall' && x.travel);
+        const plate = obstacles.find(x=>x.type==='plate');
+        if(!walls.length || !plate) return null;
+        const o = walls[0], W0 = (plate.yNear+plate.yFar)/2, travel0 = o.travel;
+        const it = o.items[Math.floor(o.items.length/2)];
+        const hi = o.hi || 70;
+        const onBlock = (x)=>o.items.some(b=>Math.abs(x-b.x) < b.w/2);
+        return { tag:'wall', axis:'y', line:()=>o.wy, aim:[it.x, W0], clear:o.d/2+RADIUS+40,
+          // one wall, put back where it was for every approach; the others far
+          // off; and the field stood behind it, where it is going away from them
+          before:()=>{
+            o.wy = W0; o.travel = travel0;
+            for(const w of walls) if(w!==o) w.wy = 1e5;
+            racers.filter(r=>!r.isPlayer).forEach((r,i)=>{
+              Object.assign(r, { x:plate.x0+30+(i%8)*((plate.x1-plate.x0-60)/7), y:W0+140+Math.floor(i/8)*40,
+                vx:0, vy:0, h:0, vh:0, falling:false, respawnFreeze:1e9, lavaOut:false }); });
+          },
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0]],
+          through:(c)=>onBlock(c.along) && c.h < hi,
+          touched:(q)=>Math.abs(q[1]-q[3]) < o.d/2+RADIUS+1 && o.items.some(b=>Math.abs(q[0]-b.x) < b.w/2+RADIUS-6) && q[2] < hi,
+          open:{ aim:[wallGapX(o), W0], ang:Math.PI/2 } };
+      }],
+    ];
+
+    try {
+      let map = null;
+      for(const [key, make] of TARGETS){
+        if(map !== key){ begin(key); map = key; p = player(); if(key!=='walls') parkRace(); }
+        const T = make();
+        if(!T){ bad.push(key+': nothing of this kind generated'); continue; }
+        T.spd = speedCap();
+        const R = rep[T.tag] = { trials:0, through:0, reached:0, runs:0 };
+        const eg = [];
+        for(const [ang, off] of T.approaches) for(const dt of DTS){
+          const dx = Math.cos(ang), dy = Math.sin(ang);
+          const ax = T.aim[0] - dy*off, ay = T.aim[1] + dx*off;
+          const seen = new Set();
+          for(const acts of ACTS){
+            // the same ticks twice is the same trial
+            const sig = acts ? Object.keys(acts).map(k=>acts[k]+Math.round(k/(dt*60))).join() : '';
+            if(seen.has(sig)) continue; seen.add(sig);
+            const tr = run(T, ax - dx*T.clear, ay - dy*T.clear, ang, dt, acts);
+            R.trials++;
+            if(!acts){ R.runs++; if(tr.some(T.touched)) R.reached++; }
+            const c = cross(T, tr);
+            if(c && T.through(c)){
+              R.through++;
+              if(eg.length < 3) eg.push(actName(acts)+' dt'+dt.toFixed(3)+' ang'+ang.toFixed(1)
+                                        +' at '+c.along.toFixed(0)+' h'+c.h.toFixed(0));
+            }
+          }
+        }
+        if(R.through) bad.push(T.tag+': '+R.through+'/'+R.trials+' went through ('+eg.join('; ')+')');
+        if(!R.reached) bad.push(T.tag+': no plain run ever reached it, so nothing was tested');
+        if(T.open){
+          const tr = run(T, T.open.aim[0] - Math.cos(T.open.ang)*T.clear,
+                            T.open.aim[1] - Math.sin(T.open.ang)*T.clear, T.open.ang, 1/60, null);
+          R.open = !!cross(T, tr);
+          if(!R.open) bad.push(T.tag+': the open way past it did not let a racer through');
+        }
+      }
+    } finally {
+      computeInputVec = input0;
+      steer = null;
+    }
+    return { name:'ο a dive, a jump or both never carries a racer through a solid',
+             pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,8).join('; ')
+                   : Object.entries(rep).map(([k,v])=>k+' '+v.trials+' trials, '+v.runs+' plain runs reached it '
+                       +v.reached+'x'+(v.open===undefined?'':', open way '+(v.open?'passes':'BLOCKED'))).join('; '),
+             rep };
+  }
+
+  // ---------- π: an eliminated racer is not a body in anybody's way ----------
+  // racerCollisions filtered on r.knockedOut, a field nothing has ever set, so a
+  // racer knocked out of a survival round -- drawn seventy below the floor at
+  // fifteen per cent -- went on shoving the live ones: measured on Tile Trap, a
+  // player running into where one lay was held to 97 units in forty frames
+  // against 156 with nobody there. The slipstream had the same filter, so the
+  // same ghost towed whoever ran up behind it.
+  function checkEliminatedNotSolid(){
+    const bad = [], rep = {};
+    begin('sunny');
+    const p = player();
+    const bots = racers.filter(r=>!r.isPlayer), body = bots[0];
+    // somewhere with nothing else in reach
+    let y0 = 260;
+    while(y0 < trackLength-800 && obstacles.some(o=>o.y0!==undefined && o.y1!==undefined
+            && o.y1+60 > y0-60 && o.y0-60 < y0+320)) y0 += 40;
+    const go = (lavaOut)=>{
+      for(const r of bots) if(r!==body){ r.x = TRACK_W/2; r.y = -9000; r.vx = 0; r.vy = 0; r.respawnFreeze = 1e9; }
+      Object.assign(body, { x:TRACK_W/2, y:y0+70, h:0, vh:0, vx:0, vy:0, falling:false, finished:false,
+                            respawnFreeze:1e9, lavaOut, lavaCatchY:y0+70 });
+      Object.assign(p, { x:TRACK_W/2, y:y0, h:0, vh:0, vx:0, vy:0, floorH:0, falling:false, finished:false,
+                         stumbleT:0, tumbleT:0, getUpT:0, diveT:0, invuln:0, lavaOut:false });
+      timeLimit = raceTime + 900;
+      window.__dbg.hold('w', true);
+      let draft = 0;
+      for(let i=0;i<50;i++){ window.__dbg.tick(1); draft = Math.max(draft, p.draft||0); }
+      window.__dbg.hold('w', false);
+      return { gained: p.y - y0, draft, bodyMoved: Math.hypot(body.x-TRACK_W/2, body.y-(y0+70)) };
+    };
+    const out = go(true), live = go(false);
+    body.lavaOut = false; body.respawnFreeze = 0;
+    rep.eliminated = 'player gained '+out.gained.toFixed(0)+', body moved '+out.bodyMoved.toFixed(1)+', draft '+out.draft.toFixed(3);
+    rep.live = 'player gained '+live.gained.toFixed(0)+', body moved '+live.bodyMoved.toFixed(1);
+    if(out.bodyMoved > 0.01) bad.push('the eliminated racer was shoved '+out.bodyMoved.toFixed(1));
+    if(out.gained < 70 + RADIUS*2) bad.push('the player was held up behind an eliminated racer ('+out.gained.toFixed(0)+' gained)');
+    if(out.draft > 0) bad.push('an eliminated racer towed the player (draft '+out.draft.toFixed(3)+')');
+    // the control: the same racer, still in the round, is in the way
+    if(!(live.bodyMoved > 1 || live.gained < out.gained - 10)) bad.push('a live racer in the same spot was not in the way either, so this measured nothing');
+    return { name:'π an eliminated racer is not solid and does not tow',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
+  }
+
+  // ---------- ρ: the moving hazards are drawn where they hit ----------
+  // Check B puts every obstacle's ORIGIN where collision thinks it is. These
+  // four are right at the origin and wrong everywhere else, because what
+  // matters about them is how they turn:
+  //   the hammer's mace swung along world X from its pivot rather than across
+  //   the track, so on a bend it hung up to 80 units from the head that hits;
+  //   a disc's arm was drawn mirrored (three.js turns local +X to -Z for a
+  //   positive rotation.y) and its deck spun against the carry;
+  //   a tilt deck leant the opposite way on both axes to the floor you stand on;
+  //   a log turned its group by l.ang and its pegs by l.ang again, the other
+  //   way, so the pegs stood still while the ones that hit you went round, and
+  //   the barrel turned against the carry.
+  // And the debug tick drew obstacles at the raw clock where the shipped loop
+  // draws them at obsTime(), so a speed event put every debug render out.
+  function checkHazardMeshes(){
+    const bad = [], worst = { hammer:0, arm:0, spin:0, deck:0, peg:0, tick:0 }, seen = {};
+    const TS = [0.37, 1.21, 2.08, 3.3, 4.75];
+    const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion();
+    const wrap = (a)=>{ while(a>Math.PI) a-=Math.PI*2; while(a<-Math.PI) a+=Math.PI*2; return a; };
+    const maceErr = (o, it, t)=>{
+      const ang = hammerAngle(it, t);
+      const want = toWorld(it.pivotX + Math.sin(ang)*it.armLen, o.y, 96 - 76*Math.cos(ang));
+      it.mesh.mace.getWorldPosition(V);
+      return Math.hypot(V.x-want.x, V.y-want.y, V.z-want.z);
+    };
+    for(const key of ['sunny','tiltdeck']){
+      begin(key);
+      for(const t of TS){
+        syncObstacles(t);
+        for(const o of obstacles) if(o.type==='hammer') for(const it of o.items){
+          seen.hammer = (seen.hammer||0)+1;
+          worst.hammer = Math.max(worst.hammer, maceErr(o, it, t));
+        }
+      }
+    }
+    for(const key of ['sunny','neon']){
+      begin(key);
+      for(const t of TS){
+        syncObstacles(t);
+        for(const o of obstacles) if(o.type==='discField') for(const c of o.cells){
+          if(!c.mesh) continue;
+          seen.disc = (seen.disc||0)+1;
+          // the deck: its local +X, in the disc's own frame (x across, z along)
+          V.set(1,0,0).applyQuaternion(c.spin.quaternion);
+          worst.spin = Math.max(worst.spin, Math.abs(wrap(Math.atan2(V.z, V.x) - discAng(c,t))));
+          if(c.noArm) continue;
+          const arm = c.armPivot.children[0];
+          arm.getWorldPosition(V2); c.mesh.worldToLocal(V2);
+          const a = discArmAng(c,t), rr = c.r*0.47;
+          worst.arm = Math.max(worst.arm, Math.hypot(V2.x - Math.cos(a)*rr, V2.z - Math.sin(a)*rr));
+        }
+      }
+    }
+    begin('tiltdeck');
+    for(const o of obstacles) if(o.type==='tiltdeck') o.decks.forEach((dk,i)=>{
+      const m = o.meshes && o.meshes[i]; if(!m) return;
+      const tx0 = dk.tx, ty0 = dk.ty;
+      for(const [tx,ty] of [[0.8,0],[0,-0.8],[0.6,0.5],[-0.5,-0.6]]){
+        dk.tx = tx; dk.ty = ty;
+        syncObstacles(window.__T||0);
+        m.updateMatrixWorld(true);
+        m.getWorldQuaternion(Q); V.set(0,1,0).applyQuaternion(Q);
+        const pa = pathAngle(dk.y);
+        const ux = V.x*Math.cos(pa) - V.z*Math.sin(pa), uz = V.x*Math.sin(pa) + V.z*Math.cos(pa);
+        for(const [fx,fy] of [[0.45,0.45],[-0.45,0.45],[0.45,-0.45],[-0.45,-0.45]]){
+          const ox = fx*dk.w, oy = fy*dk.d;
+          seen.deck = (seen.deck||0)+1;
+          worst.deck = Math.max(worst.deck, Math.abs(-(ux*ox + uz*oy)/V.y - (-(tx*ox + ty*oy)*o.maxTilt)));
+        }
+      }
+      dk.tx = tx0; dk.ty = ty0;
+    });
+    begin('logjam');
+    for(const o of obstacles) if(o.type==='logroll') o.logs.forEach((l,i)=>{
+      const g = o.meshes && o.meshes[i]; if(!g || !l.pegMeshes) return;
+      const ang0 = l.ang, pa = pathAngle((l.a+l.b)/2), rho = o.R + o.pegLen*0.2;
+      for(const L of [0, 0.9, 2.2, -1.4, 3.6]){
+        l.ang = L;
+        syncObstacles(window.__T||0);
+        g.updateMatrixWorld(true); g.getWorldPosition(V2);
+        l.pegs.forEach((peg,k)=>{
+          l.pegMeshes[k].getWorldPosition(V);
+          const across = (V.x-V2.x)*Math.cos(pa) - (V.z-V2.z)*Math.sin(pa), up = V.y-V2.y;
+          const a = peg.a + L;
+          seen.peg = (seen.peg||0)+1;
+          worst.peg = Math.max(worst.peg, Math.hypot(across - Math.sin(a)*rho, up - Math.cos(a)*rho));
+        });
+      }
+      l.ang = ang0;
+    });
+    // the debug tick draws at the clock the obstacles collide at
+    begin('sunny');
+    const hm = obstacles.find(o=>o.type==='hammer');
+    const boost0 = obsBoost;
+    try {
+      obsBoost = 1.37;                 // as though a speed event had run them ahead
+      const t0 = window.__T;
+      window.__dbg.tick(1);
+      for(const it of hm.items){
+        seen.tick = (seen.tick||0)+1;
+        worst.tick = Math.max(worst.tick, maceErr(hm, it, obsTime(t0)));
+      }
+    } finally { obsBoost = boost0; }
+    const LIM = { hammer:1, arm:1, spin:0.02, deck:1, peg:1, tick:1 };
+    for(const k in LIM){
+      if(!seen[k === 'spin' ? 'disc' : k === 'arm' ? 'disc' : k]) bad.push('nothing to measure for '+k);
+      else if(!(worst[k] <= LIM[k])) bad.push(k+' drawn '+worst[k].toFixed(k==='spin'?3:1)+(k==='spin'?' rad':'')+' from its collider');
+    }
+    return { name:'ρ hammer, disc arm and deck, tilt deck and log pegs are drawn where they collide',
+             pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ')+' | ' : '')
+                   + Object.entries(worst).map(([k,v])=>k+' '+v.toFixed(2)).join(', ')
+                   + ' over '+JSON.stringify(seen) };
+  }
+
+  // ---------- σ: a joiner sees the course the host is running ----------
+  // A joiner never runs update(): the loop gives mp.role==='client' clientTick,
+  // which only sent input. So every obstacle whose state the host's simulation
+  // MOVES -- Wall Rush walls, Beam Team's arms, the closing ring, tiles and
+  // hexes falling, logs turning, decks tilting, slabs crumbling, paper doors
+  // tearing, cannonballs -- stood still on a joiner's screen, and the state
+  // message carried no floorH, so a joiner drew every racer on a log, a deck or
+  // a lower tier at the height of a floor that was not there.
+  //
+  // The host half is a real round with a peer that captures every 'state'
+  // message the real update() broadcasts through the real serializer, and what
+  // the host's world was when it sent it. The joiner half is the same page put
+  // back to the round's opening state and switched to mp.role 'client', fed
+  // those messages through the real handleClientData while the debug loop runs
+  // its client branch. After each message the joiner must hold what the host
+  // held; between messages the moving parts must stay with the host.
+  function checkJoinerObstacles(){
+    const bad = [], rep = {};
+    const mp0 = mp;
+    const LAYER = { tilefield:'tiles', hexfield:'cells' };
+    const read = ()=>{
+      const s = {};
+      obstacles.forEach((o,i)=>{
+        if(o.type==='blockwall' && o.travel) s[i] = { wy:o.wy, gap:o.gapStart };
+        else if(o.type==='spinlaser' && o.ramp) s[i] = { ang:o.ang };
+        else if(o.type==='ring') s[i] = { r:o.r };
+        else if(o.type==='disc') s[i] = { ang:o.ang||0 };
+        else if(o.type==='logroll') s[i] = { angs:o.logs.map(l=>l.ang) };
+        else if(o.type==='tiltdeck') s[i] = { tilt:o.decks.map(d=>[d.tx, d.ty]) };
+        else if(o.type==='crumble') s[i] = { down:o.slabs.map(x=>x.gone?1:0).join(''), drop:o.slabs.map(x=>x.drop||0) };
+        else if(LAYER[o.type]) s[i] = { gone:o[LAYER[o.type]].map(x=>x.gone?1:0).join(''),
+                                        touched:o[LAYER[o.type]].map(x=>x.touched?1:0).join('') };
+        else if(o.type==='doors') s[i] = { broken:o.items.map(x=>x.broken?1:0).join('') };
+        else if(o.type==='cannon') s[i] = { cool:o.items.map(x=>x.cool) };
+      });
+      s.shots = shots.map(b=>[b.x, b.y]);
+      return s;
+    };
+    const floors = ()=>{ const f = {}; for(const r of racers) f[r.remoteId||r._localId] = r.floorH||0; return f; };
+    // The round's opening state, which is what a joiner is built from.
+    const plain = (k,v)=> (v && typeof v==='object' && (v.isObject3D || v.isMaterial || v.isTexture || v.isBufferGeometry)) ? undefined
+                          : (k==='meshes'||k==='mesh'||k==='pegMeshes'||k==='armPivot'||k==='panel'||k==='lip'||k==='topMat') ? undefined : v;
+    const put = (dst, src)=>{
+      for(const k in src){
+        const v = src[k];
+        if(v && typeof v==='object' && dst[k] && typeof dst[k]==='object') put(dst[k], v);
+        else dst[k] = (v===null && typeof dst[k]==='number') ? dst[k] : v;
+      }
+    };
+    const near = (a,b,tol)=> typeof a==='number' && typeof b==='number' && Math.abs(a-b) <= tol;
+    // tight after a message; loose for the moving parts between messages
+    const diff = (J, H, loose)=>{
+      const out = [];
+      const T = loose ? { wy:1.0, ang:0.02, r:0.8, tilt:0.06, drop:0.06, cool:0.06 }
+                      : { wy:0.011, ang:2e-4, r:0.011, tilt:2e-4, drop:0.002, cool:0.011 };
+      for(const i in H){
+        if(i==='shots') continue;
+        const h = H[i], j = J[i]; if(!j){ out.push(i+' missing'); continue; }
+        if('wy' in h && !near(j.wy, h.wy, T.wy)) out.push('wall '+i+' y '+(+j.wy).toFixed(1)+' vs '+h.wy.toFixed(1));
+        if('gap' in h && !loose && j.gap !== h.gap) out.push('wall '+i+' gap '+j.gap+' vs '+h.gap);
+        if('ang' in h && !near(j.ang, h.ang, T.ang)) out.push('ang '+i+' '+(+j.ang).toFixed(3)+' vs '+h.ang.toFixed(3));
+        if('r' in h && !near(j.r, h.r, T.r)) out.push('ring '+i+' r '+(+j.r).toFixed(1)+' vs '+h.r.toFixed(1));
+        if(h.angs) h.angs.forEach((a,k)=>{ if(!near(j.angs[k], a, T.ang)) out.push('log '+i+'/'+k+' '+(+j.angs[k]).toFixed(3)+' vs '+a.toFixed(3)); });
+        if(h.tilt) h.tilt.forEach((t,k)=>{ if(!near(j.tilt[k][0], t[0], T.tilt) || !near(j.tilt[k][1], t[1], T.tilt))
+                                            out.push('deck '+i+'/'+k+' '+j.tilt[k].map(v=>(+v).toFixed(3))+' vs '+t.map(v=>v.toFixed(3))); });
+        if('down' in h && !loose && j.down !== h.down) out.push('slabs '+i+' '+j.down+' vs '+h.down);
+        if(h.drop) h.drop.forEach((d,k)=>{ if(!near(j.drop[k], d, T.drop)) out.push('slab '+i+'/'+k+' drop '+(+j.drop[k]).toFixed(2)+' vs '+d.toFixed(2)); });
+        if('gone' in h && !loose && (j.gone !== h.gone || j.touched !== h.touched)){
+          let n = 0; for(let k=0;k<h.gone.length;k++) if(j.gone[k]!==h.gone[k] || j.touched[k]!==h.touched[k]) n++;
+          out.push('floor '+i+': '+n+' cells differ');
+        }
+        if('broken' in h && !loose && j.broken !== h.broken) out.push('doors '+i+' '+j.broken+' vs '+h.broken);
+        if(h.cool) h.cool.forEach((c,k)=>{ if(!near(j.cool[k], c, T.cool)) out.push('cannon '+i+'/'+k+' cool '+(+j.cool[k]).toFixed(2)+' vs '+c.toFixed(2)); });
+      }
+      if(!loose){
+        if(J.shots.length !== H.shots.length) out.push('shots '+J.shots.length+' vs '+H.shots.length);
+        else H.shots.forEach((s,k)=>{ if(!near(J.shots[k][0], s[0], 0.011)) out.push('shot '+k+' x '+J.shots[k][0].toFixed(1)+' vs '+s[0].toFixed(1)); });
+      }
+      return out;
+    };
+    const setup = {
+      logjam:(p)=>{ const o = obstacles.find(x=>x.type==='logroll'); const l = o.logs[0]; Object.assign(p, { x:l.cx, y:l.a+30 }); },
+      tiltdeck:(p)=>{ const o = obstacles.find(x=>x.type==='tiltdeck'); const d = o.decks[0]; Object.assign(p, { x:d.cx+d.w*0.3, y:d.y-d.d*0.3 }); },
+      sunny:(p)=>{ const o = obstacles.find(x=>x.type==='crumble'); Object.assign(p, { x:o.slabs[0].x, y:o.yStart-30 }); },
+    };
+    const MAPS = ['walls','beam','shrink','tiles','comb','lastrung','logjam','tiltdeck','doors','sunny','cannonc'];
+    try {
+      for(const key of MAPS){
+        // EACH MAP'S FIELD FROM ITS OWN SEED. begin() re-pins the stream only
+        // after the build, so the course and the field -- every bot's speed,
+        // hat and slot -- came from wherever the previous map's race left the
+        // stream, and whatever ran before this check besides. A change to the
+        // log jam's race changed who stood on the tilt deck. Pinned here, a
+        // map's field is a function of this check and that map, nothing else.
+        Math.random = seededRandom(seedForCheck('σ:' + key));
+        begin(key);
+        const p = player();
+        if(setup[key]){ setup[key](p); p.vx = 0; p.vy = 0; p.h = 0; p.vh = 0; p.falling = false; }
+        const start = JSON.parse(JSON.stringify(obstacles, plain));
+        const msgs = [], truth = [], at = [], bytes = [];
+        let tick = 0;
+        mp = Object.assign({}, mp0, { role:'host', tOffset:0, sendAccum:0,
+          conns:[{ open:true, send:(d)=>{ if(!d || d.type!=='state') return;
+            const s = JSON.stringify(d); bytes.push(s.length); msgs.push(JSON.parse(s));
+            truth.push({ s:read(), f:floors() }); at.push(tick); } }] });
+        timeLimit = raceTime + 900;
+        window.__dbg.hold('w', true);
+        for(tick=0; tick<60*8 && state==='racing'; tick++) window.__dbg.tick(1);
+        window.__dbg.hold('w', false);
+        // what moved at any point, not just between the first message and the
+        // last: a slab that fell and came back ends where it started
+        const H0 = truth[0] && truth[0].s;
+        const moved = H0 ? Object.keys(H0).filter(k=>truth.some(t=>JSON.stringify(t.s[k])!==JSON.stringify(H0[k]))).length : 0;
+        const floored = truth.some(t=>Object.values(t.f).some(v=>Math.abs(v) > 1));
+        // the joiner: the opening state, the client branch, the host's own messages
+        obstacles.forEach((o,i)=>put(o, start[i]));
+        shots.length = 0;
+        mp = Object.assign({}, mp0, { role:'client', conns:[], hostConn:{ open:true, send(){} }, tOffset:0, sendAccum:0 });
+        state = 'racing';
+        const errs = [];
+        let fErr = 0, fWorst = 0, tiltWorst = -1;
+        for(let k=0;k<msgs.length && errs.length<4;k++){
+          if(k>0){
+            for(let n=at[k]-at[k-1]; n>0; n--) window.__dbg.tick(1);
+            // how far the joiner's deck lean has drifted from the host's by
+            // the time the next message lands: the margin, not just pass/fail
+            const now = read(), want = truth[k].s;
+            for(const i in want) if(want[i] && want[i].tilt && now[i] && now[i].tilt)
+              want[i].tilt.forEach((t,m)=>{ tiltWorst = Math.max(tiltWorst,
+                Math.abs(now[i].tilt[m][0] - t[0]), Math.abs(now[i].tilt[m][1] - t[1])); });
+            const d = diff(now, want, true);
+            if(d.length) errs.push('between msgs '+(k-1)+'-'+k+': '+d.slice(0,3).join(', '));
+          }
+          handleClientData(msgs[k]);
+          const d = diff(read(), truth[k].s, false);
+          if(d.length) errs.push('after msg '+k+': '+d.slice(0,3).join(', '));
+          const hf = truth[k].f;
+          for(const r of racers) if(r._netId && r._netId in hf){
+            const e = Math.abs((r.floorH||0) - hf[r._netId]);
+            if(e > 0.06){ fErr++; fWorst = Math.max(fWorst, e); }
+          }
+        }
+        if(fErr) errs.push('floorH off on '+fErr+' racer-messages, by up to '+fWorst.toFixed(1));
+        // And a host that predates all this sends neither field: a joiner of
+        // one must go on exactly as it did, nothing carried on and no error.
+        if(key==='walls'){
+          obstacles.forEach((o,i)=>put(o, start[i]));
+          shots.length = 0;
+          netHeardFor = null;             // a joiner that has never heard a snapshot this round
+          const before = JSON.stringify(read());
+          try {
+            for(let k=0;k<msgs.length;k++){
+              const m = JSON.parse(JSON.stringify(msgs[k])); delete m.obs;
+              for(const r of m.racers) delete r.floorH;
+              handleClientData(m);
+              if(k+1<msgs.length) for(let n=at[k+1]-at[k]; n>0; n--) window.__dbg.tick(1);
+            }
+            if(JSON.stringify(read()) !== before) errs.push('messages from an old host moved the course on the joiner');
+            if(racers.some(r=>r._netId && (r.floorH||0) !== 0)) errs.push('messages from an old host left a floorH behind');
+          } catch(e){ errs.push('messages from an old host threw: '+e.message); }
+        }
+        const avg = bytes.length ? Math.round(bytes.reduce((a,b)=>a+b,0)/bytes.length) : 0;
+        const inFlight = truth.reduce((m,t)=>Math.max(m, t.s.shots.length), 0);
+        // the host's whole run as one number: every state message it sent,
+        // hashed, so a change meant for the joiner can be shown not to have
+        // moved the host by so much as a bit
+        let fp = 0x811c9dc5;
+        const all = JSON.stringify(msgs);
+        for(let i=0;i<all.length;i++){ fp ^= all.charCodeAt(i); fp = Math.imul(fp, 0x01000193); }
+        rep[key] = msgs.length+' msgs, '+moved+' stateful moved, '+(floored?'floorH seen':'no floorH')
+                 +(inFlight ? ', up to '+inFlight+' shots in flight' : '')
+                 +(tiltWorst >= 0 ? ', tilt worst between msgs '+tiltWorst.toFixed(4) : '')
+                 +', bytes avg '+avg+' max '+(bytes.length?Math.max(...bytes):0)
+                 +', host '+(fp>>>0).toString(16);
+        if(!msgs.length) bad.push(key+': the host sent no state');
+        else if(!moved) bad.push(key+': nothing stateful moved on the host, so nothing was measured');
+        if(key==='cannonc' && !inFlight) bad.push('cannonc: no cannonball was in flight, so none was measured');
+        if(errs.length) bad.push(key+': '+errs.join(' | '));
+        mp = mp0;
+      }
+    } finally { mp = mp0; }
+    return { name:'σ a joiner sees the walls, arms, rings, floors, logs, decks, slabs, doors and shots the host is running',
+             pass: bad.length===0,
+             detail: (bad.length ? bad.slice(0,6).join('; ')+' || ' : '') + JSON.stringify(rep) };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7124,6 +9814,9 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
+      // Solids stay solid, the eliminated are not bodies, hazards are drawn where they hit,
+      // and a joiner sees the course the host is running.
+      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],['ρ',checkHazardMeshes],['σ',checkJoinerObstacles],
       // These two used to be pinned to the end of the registry as a WORKAROUND:
       // the suite shared one Math.random stream and one accumulating clock, [~]
       // steps ninety simulated seconds of lobby into that clock, and putting it
@@ -7138,8 +9831,15 @@
       ['!',checkCharacterSymmetry],['$',checkCharacterTopology],
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
-      ['<',checkUiLocker],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
-      [',',checkSpinRowStill],['-',checkStartup],
+      ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
+      [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
+      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
+      ['θ',checkDailyNudge],['ι',checkSpinBanksCoins],['κ',checkOrphanLook],
+      // the inventory and economy audit: every item, the pills, the spin's
+      // prize as data, and a save the catalogue has moved on from
+      ['λ',checkInventoryAudit],['μ',checkRarityShown],['ν',checkSpinPrizeData],['ξ',checkOrphanCounts],
+      // the spin's result waits for the wheel it is the result of
+      ['ς',checkPrizeAfterStop],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
@@ -7149,7 +9849,9 @@
       ['|',checkPrematchHiddenTab],
       // ...and the other half of the same feature: the JOINER's path, which
       // until now nothing in this suite had ever run.
-      ['{',checkJoinerPrepares],['}',checkJoinerFrames]
+      ['{',checkJoinerPrepares],['}',checkJoinerFrames],
+      // the camera and visual audit
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

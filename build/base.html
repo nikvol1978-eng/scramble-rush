@@ -356,8 +356,18 @@
   function randCode(){ const c='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<5;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
   function mpErr(msg){ const el=$('mpErr'); if(el) el.textContent=msg||''; }
   function broadcast(data){ for(const c of mp.conns){ if(c.open){ try{ c.send(data); }catch(e){} } } }
+  // WHAT A RACER WEARS travels as ids: the joiner's skin and pattern in its
+  // hello, and every racer's in the host's state, so each side draws the field
+  // the way the other chose it. They were missing from both, which drew every
+  // friend on the host, and every racer on a joiner, as a flat bean. An id is
+  // kept only if this build knows it: a peer is not trusted to name an object.
+  function netSkinId(id){ return (typeof id==='string' && Object.prototype.hasOwnProperty.call(SKIN_BY_ID, id)) ? id : null; }
+  function netPatternId(id){ return (typeof id==='string' && Object.prototype.hasOwnProperty.call(PATTERN_BY_ID, id)) ? id : null; }
+  function helloPayload(){ return {type:'hello', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes, skin:custom.skin, pattern:custom.pattern}; }
+  function profileFromHello(d){ return {name:d.name, color:d.color, hat:d.hat, eyes:d.eyes, skin:netSkinId(d.skin), pattern:netPatternId(d.pattern)}; }
   function serializeRacer(r){
     return {id:r.remoteId||r._localId, x:r.x,y:r.y,h:r.h,facing:r.renderFacing,color:r.color,
+      skinId:r.skinId||null, patternId:r.patternId||null,
       name:r.isPlayer?(custom.name||'YOU'):r.name, hat:r.hat, eyes:r.eyes, stumbleT:r.stumbleT, diveT:r.diveT,
       falling:r.falling, fallT:r.fallT, finished:r.finished, finishTime:r.finishTime, squash:r.squash||0,
       lavaOut:r.lavaOut||false};
@@ -397,7 +407,7 @@
   }
   function setupHostConn(conn){
     conn.on('data', data=>{
-      if(data.type==='hello'){ conn.peerProfile={name:data.name,color:data.color,hat:data.hat,eyes:data.eyes}; broadcastRoster(); updateLobbyUI(); }
+      if(data.type==='hello'){ conn.peerProfile=profileFromHello(data); broadcastRoster(); updateLobbyUI(); }
       else if(data.type==='input'){ mp.remoteInput[conn.peer]={ix:data.ix,iy:data.iy}; }
       else if(data.type==='action'){
         const r=racers.find(x=>x.remoteId===conn.peer);
@@ -432,7 +442,7 @@
       mp.peer.on('open', ()=>{
         const conn=mp.peer.connect(PEER_PREFIX+code, {reliable:true});
         mp.hostConn=conn;
-        conn.on('open', ()=>{ conn.send({type:'hello', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes}); showLobby(); });
+        conn.on('open', ()=>{ conn.send(helloPayload()); showLobby(); });
         conn.on('data', handleClientData);
         conn.on('close', ()=>{ mpErr('Host left the room.'); leaveMultiplayer(); goHome(); });
       });
@@ -445,7 +455,11 @@
       if(!r){
         r = Object.assign(baseRacer(), {_netId:entry.id, isPlayer:entry.id===(mp.peer&&mp.peer.id)});
         racers.push(r);
-        const b=makeBlob({color:entry.color, hat:entry.hat, eyes:entry.eyes});
+        // dressed the way buildRacerMeshes dresses it on the host
+        const sk=netSkinId(entry.skinId);
+        r.skinId=sk; r.patternId=sk ? netPatternId(entry.patternId) : null;
+        const b=makeBlob(sk ? {skin:skinOf(sk), pattern:patternOf(r.patternId), hat:entry.hat, eyes:entry.eyes}
+                            : {color:entry.color, hat:entry.hat, eyes:entry.eyes});
         racerGroup.add(b.group);
         if(r.isPlayer){ const arrow=new THREE.Mesh(new THREE.ConeGeometry(5,10,4), new THREE.MeshBasicMaterial({color:0xffcb3d})); arrow.rotation.x=Math.PI; arrow.position.y=RADIUS+34; b.group.add(arrow); b.arrow=arrow; }
         r.mesh=b;
@@ -678,7 +692,9 @@
   function keyName(k){ return k===' '?'SPACE': k==='arrowup'?'↑': k==='arrowdown'?'↓': k==='arrowleft'?'←': k==='arrowright'?'→': k.length===1?k.toUpperCase():k.toUpperCase(); }
   window.addEventListener('keydown', e=>{
     const k = e.key.toLowerCase();
-    if(listeningFor){ e.preventDefault(); settings.keys[listeningFor]=k; listeningFor=null; buildSettings(); updateHint(); return; }
+    // A key being bound is consumed here: without stopImmediatePropagation the
+    // lobby's listener also acted on it, so binding E walked the tabs away.
+    if(listeningFor){ e.preventDefault(); e.stopImmediatePropagation(); settings.keys[listeningFor]=k; listeningFor=null; buildSettings(); updateHint(); return; }
     keys[k]=true;
     if(k===settings.keys.jump){ e.preventDefault(); tryJump(); }
     if(k===settings.keys.dive){ e.preventDefault(); tryDive(); }

@@ -148,8 +148,8 @@
     switch(lkTab){
       case 'skin':    return SKINS.map(s=>({ id:s.id, name:s.name, rarity:s.rarity, unlock:s.unlock }));
       case 'pattern': return PATTERNS.map(p=>({ id:p.id, name:p.name, rarity:p.rarity, unlock:p.unlock }));
-      case 'hat':     return HATS.map(([id,name])=>({ id, name, rarity:'common', unlock:{kind:'default'} }));
-      case 'eyes':    return EYES.map(([id,name])=>({ id, name, rarity:'common', unlock:{kind:'default'} }));
+      case 'hat':     return HATS.map(([id,name])=>({ id, name, rarity:itemRarity('hat', id), unlock:{kind:'default'} }));
+      case 'eyes':    return EYES.map(([id,name])=>({ id, name, rarity:itemRarity('eyes', id), unlock:{kind:'default'} }));
     }
   }
   function lkOwned(item){

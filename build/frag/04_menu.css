@@ -159,7 +159,9 @@
     content:'\1F512';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:1.5rem;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.6));
   }
-  .shopCard .rlab{
+  /* the spin's prize card wears the same tier pill as the shop; it had no
+     rule of its own and rendered as a bare highlighted word */
+  .shopCard .rlab, #spinResult .rlab{
     font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;
     padding:3px 8px;border-radius:999px;border:2px solid var(--line);align-self:center;
   }
@@ -194,30 +196,83 @@
   .dailyBtn svg{width:24px;height:24px;fill:none;stroke:var(--line);stroke-width:1.9;stroke-linejoin:round;}
   .dailyBtn:hover{filter:brightness(1.08);}
   .dailyBtn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--line);}
-  .dailyBtn.ready{background:var(--gold);animation:dailyNudge 1.6s ease-in-out infinite;}
+  /* The spin-ready nudge. It was written as .dailyBtn.ready, but #dailyBtn is
+     the .dailyBadge on the PLAY pill now (already gold), so it never matched
+     and a ready spin never moved. */
+  .dailyBadge.ready{animation:dailyNudge 1.6s ease-in-out infinite;}
   @keyframes dailyNudge{0%,88%,100%{transform:none}92%{transform:rotate(-7deg)}96%{transform:rotate(7deg)}}
+  @media (prefers-reduced-motion: reduce){ .dailyBadge.ready{animation:none;} }
 
-  .wheelWrap{position:relative;width:232px;height:232px;margin:4px 0 2px;}
-  .wheel{
-    position:absolute;inset:0;border-radius:50%;border:5px solid var(--line);
-    box-shadow:0 6px 0 var(--line), inset 0 0 0 4px rgba(255,255,255,0.22);
+  /* THE WHEEL. --ws is its diameter and every part of it is a fraction of
+     that one number -- the hub, the pointer, the names' radius and their type
+     size -- so the wheel scales as one object instead of a 232px drawing whose
+     labels were placed in pixels. It stays inside a 360px phone with room for
+     its shadow, and it may not be squeezed by the column around it (it used to
+     be: at 360x640 the flex column shrank it to 232x114, an oval). Instead it
+     gives up size to the window's HEIGHT: the rest of the column is about
+     542px tall (title, subtitle, the prize slot, status, buttons, gaps and
+     the chrome row), so the wheel takes what is left, down to a floor. The
+     short-window layout in 04b_ui25.css re-derives this with its own number. */
+  .wheelWrap{
+    --ws:min(256px, 72vw, max(196px, calc(100vh - 542px)));
+    position:relative;flex:0 0 auto;width:var(--ws);height:var(--ws);margin:14px 0 0;
+    /* the drop shadow belongs to the FIXED frame: on the turning disc an
+       offset shadow turned with it and swung round the wheel as it spun */
+    border-radius:50%;box-shadow:0 6px 0 var(--line), 0 16px 30px rgba(10,4,30,0.45);
   }
+  /* the one thing that turns -- see #wheelRotor in the markup */
+  .wheelRotor{position:absolute;inset:0;border-radius:50%;}
+  .wheel{
+    position:absolute;inset:0;border-radius:50%;border:6px solid var(--line);overflow:hidden;
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.26);
+  }
+  /* thin dark lines on the wedge boundaries, centre to rim */
+  .wheelSeps{position:absolute;inset:0;}
+  .wsep{
+    position:absolute;left:50%;top:0;width:2px;height:50%;margin-left:-1px;
+    transform-origin:50% 100%;transform:rotate(var(--a));background:rgba(26,16,51,0.62);
+  }
+  /* the winning wedge, lit once the wheel stops (conic set by doSpin) */
+  .wheelWin{position:absolute;inset:0;border-radius:50%;opacity:0;pointer-events:none;}
+  .wheelWin.on{animation:wheelWin 1.3s ease-out forwards;}
+  .wheelWin.on.still{animation:none;opacity:0.2;}
+  @keyframes wheelWin{0%{opacity:0}18%{opacity:0.55}42%{opacity:0.12}64%{opacity:0.42}100%{opacity:0.2}}
   .wheelLabels{position:absolute;inset:0;pointer-events:none;}
+  /* A name sits in the middle of its wedge, tangential -- so the winner reads
+     level under the pointer -- centred on --ws*0.375 from the middle, which
+     keeps LEGENDARY and SUPER RARE clear of both boundaries and the rim. */
   .wlab{
-    position:absolute;left:50%;top:50%;margin-left:-42px;width:84px;text-align:center;
-    font-weight:700;font-size:0.58rem;letter-spacing:0.4px;text-transform:uppercase;
-    text-shadow:0 1px 2px rgba(0,0,0,0.35);
+    position:absolute;left:50%;top:50%;width:max-content;white-space:nowrap;
+    transform-origin:0 0;
+    transform:rotate(var(--a)) translateY(calc(var(--ws) * -0.375)) translate(-50%, -50%);
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:calc(var(--ws) * 0.042);
+    line-height:1;letter-spacing:0.3px;text-transform:uppercase;
+  }
+  .wlab.lt{text-shadow:0 1px 2px rgba(10,4,30,0.55);}
+  .wlab.dk{text-shadow:0 1px 0 rgba(255,255,255,0.4);}
+  /* fixed lighting over the disc: lit from above, shaded at the foot */
+  .wheelGloss{
+    position:absolute;inset:6px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.2), rgba(255,255,255,0) 46%);
+    box-shadow:inset 0 -10px 22px rgba(10,4,30,0.26);
   }
   .wheelHub{
-    position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
-    border-radius:50%;background:var(--cream);border:4px solid var(--line);
-    box-shadow:0 3px 0 var(--line);
+    position:absolute;inset:0;margin:auto;width:calc(var(--ws) * 0.19);height:calc(var(--ws) * 0.19);
+    border-radius:50%;border:4px solid var(--line);
+    background:radial-gradient(circle at 36% 30%, #ffffff 0, var(--cream) 42%, #eadcc3 100%);
+    box-shadow:0 3px 0 var(--line), 0 6px 12px rgba(10,4,30,0.35);
+  }
+  .wheelHub::after{
+    content:'';position:absolute;inset:22%;border-radius:50%;
+    border:2px solid rgba(26,16,51,0.16);
   }
   .wheelPin{
-    position:absolute;left:50%;top:-14px;margin-left:-12px;width:24px;height:28px;z-index:3;
-    background:var(--gold);border:3px solid var(--line);
-    clip-path:polygon(50% 100%, 0 0, 100% 0);
+    position:absolute;left:50%;top:calc(var(--ws) * -0.085);z-index:3;overflow:visible;
+    width:calc(var(--ws) * 0.14);height:calc(var(--ws) * 0.168);margin-left:calc(var(--ws) * -0.07);
+    filter:drop-shadow(0 3px 0 var(--line));
   }
+  .wheelPin path{fill:var(--gold);stroke:var(--line);stroke-width:3.5;stroke-linejoin:round;}
+  .wheelPin circle{fill:var(--cream);stroke:var(--line);stroke-width:2.5;}
   #spinResult{min-height:96px;display:flex;align-items:center;justify-content:center;}
   #spinResult .prize{
     display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -425,7 +480,6 @@
   @media (max-width: 1000px){
     .psHead, .psInfo{ width:min(38%, 280px); }
     .psTile{ width:74px; height:74px; }
-    .psTile.hi{ width:92px; height:92px; }
   }
   /* ---- v24 §5.4: the shop ------------------------------------------------ */
   #shop{ display:block; }
@@ -526,11 +580,17 @@
   }
 
   /* ---- the buy confirm, shared by the locker and the shop ---------------- */
-  .buyBox{ position:absolute; inset:0; z-index:24; display:flex; align-items:center; justify-content:center;
+  /* A modal, so the modal layer: above the screens (50) AND the chrome row
+     (55). At z-index 24 it was painted under the shop -- the cards covered
+     BUY and CANCEL -- while the tab strip stayed clickable over it. */
+  .buyBox{ position:absolute; inset:0; z-index:var(--z-modal); display:flex; align-items:center; justify-content:center;
            background:rgba(21,12,46,0.62); }
   .buyCard{ padding:22px 26px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .buyTitle{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.1rem; color:var(--line); letter-spacing:1px; }
-  .buyShot{ width:132px; height:132px; }
+  /* In the card's flow. The game's bare `canvas{position:absolute; inset:0}`
+     rule otherwise lifts the preview out of the column and over the title,
+     the name and the price. */
+  .buyShot{ position:relative; inset:auto; width:132px; height:132px; flex:0 0 auto; }
   .buyName{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1.25rem; color:var(--line); }
   .buyCost{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:1rem; color:var(--line); opacity:0.8; }
   .buyWarn{ font-family:'Fredoka',sans-serif; font-weight:700; font-size:0.82rem; color:var(--red); min-height:1em; }
@@ -579,11 +639,17 @@
   }
   .lkTab.sel{ background:var(--teal); }
 
-  /* Four columns, and it scrolls under a header that stays. */
+  /* Four columns, and it scrolls under a header that stays.
+     grid-auto-rows:max-content IS THE SCROLL. With implicit `auto` rows the
+     grid sized each row from the card's MINIMUM height, and a card that clips
+     its overflow has an automatic minimum of zero -- so once the cards
+     outgrew the panel the rows shrank instead of the grid scrolling, and every
+     card cut off its own name footer (79 owned colours: 10px rows). A row is
+     now exactly as tall as the card in it, whatever the panel's height. */
   .lkGrid{
     flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
     display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; padding:4px 6px 8px 2px;
-    align-content:start;
+    align-content:start; grid-auto-rows:max-content;
   }
   /* display:block, not flex. As a column flexbox with an absolutely positioned
      child the tile had no content to get a height from, aspect-ratio had
@@ -652,9 +718,13 @@
   /* ---- v24 §5.1: the shell every menu screen sits in -------------------- */
   /* Rings, not a picture: one repeating gradient turning very slowly behind
      everything. Slow enough that it never competes with the thing in front of
-     it, and present enough that a flat panel is not floating on nothing. */
+     it, and present enough that a flat panel is not floating on nothing.
+     FIXED, not absolute: it overhangs the window by 30% on every side so the
+     corners stay covered as it turns, and an absolute box that does that
+     widens the document -- 1700px at 1280, so the page itself could be
+     scrolled 420px sideways. A fixed box paints the same and scrolls nothing. */
   #menuRings{
-    position:absolute; inset:-30%; z-index:1; pointer-events:none;
+    position:fixed; inset:-30%; z-index:1; pointer-events:none;
     background:repeating-radial-gradient(circle at 50% 50%,
       rgba(255,255,255,0.085) 0 44px, rgba(255,255,255,0) 44px 120px);
     animation:ringSpin 90s linear infinite;
@@ -701,8 +771,10 @@
      centred over a screen whose brand sits at the left and whose currency chips
      sit at the right, and at 960 the named strip ran under both of them -- PLAY
      and LOCKER disappeared behind the wordmark. 1150 is where the three stop
-     fitting side by side. */
-  @media (max-width: 1150px){
+     fitting side by side -- with a small balance. With a five- or six-figure
+     one the chips ran over the named strip up to 1235px, so the names come off
+     at 1200 and 04b_ui25.css lets the strip give way to the chips above that. */
+  @media (max-width: 1200px){
     #menuChrome .tabName{ display:none; }
     #menuChrome .tabPill{ padding:0; width:52px; min-width:52px; }
   }
@@ -715,7 +787,9 @@
   .tabPill.sel svg{stroke:var(--cream);fill:var(--cream);}
   .dailyBadge{position:absolute;top:-12px;right:-12px;width:26px;height:26px;border-radius:50%;background:var(--gold);border:2.5px solid var(--line);box-shadow:0 2px 0 var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
   .dailyBadge svg{width:14px;height:14px;fill:none;stroke:var(--line);stroke-width:2.2;}
-  .dailyBadge .pip{top:-6px;right:-6px;width:12px;height:12px;border-width:2px;}
+  /* -4, not -6: the badge hangs 12px above the pill, and at -6 the pip hung
+     past the top of the window by a pixel at every width above 760. */
+  .dailyBadge .pip{top:-4px;right:-4px;width:12px;height:12px;border-width:2px;}
 
   .lobbyCurrency{display:flex;gap:8px;justify-self:end;align-items:center;}
   .crownChip{display:inline-flex;align-items:center;gap:8px;background:var(--line);color:var(--gold);font-weight:700;font-size:1.05rem;padding:6px 16px 6px 10px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}
@@ -753,7 +827,7 @@
      stop trying: the strip and the chips take the top line together, and the
      lobby's own content starts below them. */
   @media (max-width:760px){
-    #menuChrome{ padding:10px 8px; justify-content:center; align-items:flex-start; }
+    #menuChrome{ justify-content:center; align-items:flex-start; }
     #menuChrome .lobbyTabs{ gap:2px; padding:5px 6px; }
     #menuChrome .tabPill{ width:40px; min-width:40px; height:34px; padding:0; }
     #menuChrome .tabPill svg{ width:19px; height:19px; }
@@ -761,7 +835,6 @@
        instead of on top of it */
     #menuChrome .lobbyCurrency{ position:static; margin-left:6px; gap:5px; }
     #menuChrome .crownChip, #menuChrome .coinChip{ padding:4px 8px; font-size:0.8rem; }
-    #home.lobby{ padding-top:60px; }
     .nameCard{min-width:0;} .playBig{font-size:1.5rem;padding:8px 28px 8px 20px;}
   }
   /* Small phones. The daily badge hangs off the PLAY pill's top corner, so the
@@ -770,7 +843,6 @@
     #menuChrome .tabPill{ width:34px; min-width:34px; height:31px; }
     #menuChrome .tabPill svg{ width:17px; height:17px; }
     #menuChrome .crownChip, #menuChrome .coinChip{ padding:3px 6px; font-size:0.74rem; }
-    #home.lobby{ padding-top:54px; }
   }
 
   /* ============ ROUND REVEAL ============ */

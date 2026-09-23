@@ -34,7 +34,8 @@
   // What each tier gives. Coins, then a pattern, a colourway, a hat, an eye
   // set, and round again -- drawn from the catalogue in a fixed order so the
   // track is the same for everyone and can be read ahead of time. Tier thirty
-  // is a Special colourway that is only here.
+  // is the one Special colourway on the track -- not exclusive to it: the shop
+  // sells it and the daily spin can land it too.
   const PASS_SPECIAL = 'solarflare';
   function passRewards(){
     const out = [];
@@ -56,9 +57,9 @@
         case 3: { const id = skins[si++ % skins.length], s = skinOf(id);
                   out.push({ tier:t, kind:'skin', id, name:s.name, rarity:s.rarity, label:'Colourway' }); break; }
         case 4: { const id = hats[hi++ % hats.length];
-                  out.push({ tier:t, kind:'hat', id, name:(HATS.find(h=>h[0]===id)||[,id])[1], rarity:'rare', label:'Hat' }); break; }
+                  out.push({ tier:t, kind:'hat', id, name:(HATS.find(h=>h[0]===id)||[,id])[1], rarity:itemRarity('hat', id), label:'Hat' }); break; }
         default:{ const id = eyes[ei++ % eyes.length];
-                  out.push({ tier:t, kind:'eyes', id, name:(EYES.find(e=>e[0]===id)||[,id])[1], rarity:'rare', label:'Eyes' }); break; }
+                  out.push({ tier:t, kind:'eyes', id, name:(EYES.find(e=>e[0]===id)||[,id])[1], rarity:itemRarity('eyes', id), label:'Eyes' }); break; }
       }
     }
     return out;

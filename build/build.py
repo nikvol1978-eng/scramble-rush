@@ -647,6 +647,10 @@ cut("  async function loadProfile(){",
     }catch(e){ /* first run, or storage blocked \u2014 just play unsaved */ }
     if(!SKIN_BY_ID[custom.skin]) custom.skin='pink';
     if(!PATTERN_BY_ID[custom.pattern]) custom.pattern='none';
+    // The hat and the eyes too: an id the game does not know rendered nothing
+    // and left no tile equipped in the locker. Same defaults as `custom`.
+    if(!HATS.some(h=>h[0]===custom.hat)) custom.hat='crown';
+    if(!EYES.some(e=>e[0]===custom.eyes)) custom.eyes='round';
     stats.owned  = stats.owned  || [];
     stats.patterns = stats.patterns || [];
     stats.badges = stats.badges || [];
@@ -767,6 +771,36 @@ cut("""    else if(data.type==='roundStart'){""",
 """,
     "client runs the real pre-match")
 
+# ---------------------------------------------------------------- the joiner sees the course
+# A joiner never runs update(), so the obstacle state the host's simulation
+# moves -- walls, arms, the ring, falling tiles and hexes, logs, decks, slabs,
+# paper doors, cannonballs -- never moved on its screen, and the state message
+# carried no floorH, so every racer on a log, a deck or a lower tier was drawn
+# at a floor that was not there. The host adds both to the message it already
+# sends at the cadence it already has; the joiner applies them and carries the
+# moving parts on between messages (09_minigames.js). Every read is guarded:
+# an old client ignores the new fields, and a new client of an old host gets
+# none and behaves exactly as before.
+sub("squash:r.squash||0,\n      lavaOut:r.lavaOut||false};",
+    "squash:r.squash||0,\n      lavaOut:r.lavaOut||false, floorH:Math.round((r.floorH||0)*10)/10};",
+    "state carries floorH")
+sub("squash:entry.squash||0,lavaOut:entry.lavaOut||false});",
+    "squash:entry.squash||0,lavaOut:entry.lavaOut||false,\n"
+    "        floorH:(typeof entry.floorH==='number' && isFinite(entry.floorH)) ? entry.floorH : 0});",
+    "joiner applies floorH")
+sub("broadcast({type:'state', lavaZ, racers: racers.map(serializeRacer)});",
+    "broadcast({type:'state', lavaZ, racers: racers.map(serializeRacer), obs: netObsSnapshot()});",
+    "state carries the course")
+sub("    else if(data.type==='state'){ applyNetworkState(data.racers); if(typeof data.lavaZ==='number') lavaZ=data.lavaZ; }",
+    "    else if(data.type==='state'){ applyNetworkState(data.racers); if(typeof data.lavaZ==='number') lavaZ=data.lavaZ;\n"
+    "      if(data.obs) applyObsSnapshot(data.obs); }",
+    "joiner applies the course")
+sub("  function clientTick(dt){\n",
+    "  function clientTick(dt){\n"
+    "    // the course goes on moving between the host's messages, by its rules\n"
+    "    netObsTick(dt);\n",
+    "joiner moves the course between messages")
+
 # ---------------------------------------------------------------- countdown tick
 # In the MAIN loop rather than in update(), because update() is the host/solo
 # path -- a PeerJS client goes through clientTick and would never have ticked.
@@ -858,6 +892,7 @@ cut("""    const p=racers.find(r=>r.isPlayer);
 sub("  function baseRacer(){ return {x:0,y:-60,",
     "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,"
     + "tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,platVX:0,"
+    + "mvOk:false,mvX:0,mvY:-60,mvH:0,"
     + "x:0,y:-60,",
     "baseRacer fields")
 

@@ -209,13 +209,20 @@
   let shTick = 0;
   function closeShop(){
     if(shTick){ clearInterval(shTick); shTick = 0; }
+    // The buy dialog belongs to the screen that opened it. Left up, it sat
+    // over whatever came next -- the lobby, Mode Select, the locker.
+    closeBuy();
     $('shop').classList.add('hidden');
   }
 
   // ---- keyboard: arrows move, Enter opens, Esc back ----------------------
   window.addEventListener('keydown', e=>{
     if($('shop').classList.contains('hidden')) return;
-    if(!$('buyBox').classList.contains('hidden')) return;      // the dialog owns the keys
+    // The dialog owns the keys, and Esc is its way out -- as in the locker.
+    if(!$('buyBox').classList.contains('hidden')){
+      if(e.key==='Escape'){ closeBuy(); e.preventDefault(); }
+      return;
+    }
     if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
     let d = 0;
     if(e.key==='ArrowRight') d = 1;

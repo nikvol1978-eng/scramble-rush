@@ -261,11 +261,27 @@
 <div id="daily" class="screen shade hidden">
   <h1 class="title" style="font-size:2.2rem;">DAILY SPIN</h1>
   <div class="subtitle">One free colourway a day. Rarer tiers are rarer.</div>
+  <!-- ONE PHYSICAL WHEEL. #wheelRotor is the only element that is ever
+       turned, and the wedges, their separators and the rarity names are all
+       inside it -- so a name cannot drift off its wedge, because nothing
+       animates the names: they are carried. The names used to be a SIBLING of
+       the wedge disc and only the disc was rotated, so they sat still while
+       the colours spun under them. The pointer, the hub and the fixed lighting
+       are outside the rotor and never move. -->
   <div class="wheelWrap">
-    <div class="wheelPin"></div>
-    <div class="wheel" id="wheel"></div>
-    <div class="wheelLabels" id="wheelLabels"></div>
+    <div class="wheelRotor" id="wheelRotor">
+      <div class="wheel" id="wheel">
+        <div class="wheelWin" id="wheelWin"></div>
+        <div class="wheelSeps" id="wheelSeps"></div>
+      </div>
+      <div class="wheelLabels" id="wheelLabels"></div>
+    </div>
+    <div class="wheelGloss"></div>
     <div class="wheelHub"></div>
+    <svg class="wheelPin" viewBox="0 0 40 48" aria-hidden="true">
+      <path d="M20 46 L7.74 23.77 A14 14 0 1 1 32.26 23.77 Z"/>
+      <circle cx="20" cy="17" r="4.6"/>
+    </svg>
   </div>
   <div id="spinResult"></div>
   <!-- The status line is its own fixed slot. It used to be the SPIN button's

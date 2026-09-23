@@ -117,6 +117,50 @@
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // ---- which side of a solid a racer is put back on ----
+  // The physics loop notes where each racer was before this tick moved it
+  // (mvX, mvY, mvH, good while mvOk), and a solid pushes a racer back out the
+  // side it came in by. Deciding that from where the centre is NOW is what made
+  // the old dive a way through: once anything had carried the centre past a
+  // slab's middle line, the push-out chose the far face and finished the
+  // crossing for it. A centre that crossed the line in THIS tick has got
+  // through only if the point where it crossed was open -- a gap, or over the
+  // top -- and is otherwise put back where it came from. Nothing but the
+  // physics loop records a start, so a check or a teleport that calls
+  // checkObstacles on its own gets the plain answer, as does a jump in position
+  // no tick of movement could make.
+  function moveKnown(r){
+    return r.mvOk === true && Math.abs(r.x - r.mvX) + Math.abs(r.y - r.mvY) < 80;
+  }
+  // The side (sign) of the line x=c (axisX) or y=c the racer belongs on; 0 only
+  // for a centre exactly on the line. open(along, h) is whether the solid
+  // leaves room at that point of its middle line, `along` being the other
+  // coordinate and h the height of the feet.
+  function sideOf(r, axisX, c, open){
+    const cur = axisX ? r.x : r.y, from = axisX ? r.mvX : r.mvY;
+    const now = Math.sign(cur - c);
+    if(!moveKnown(r)) return now;
+    const was = Math.sign(from - c);
+    if(!was || was === now) return now;
+    const k = (c - from)/(cur - from);
+    const along = axisX ? r.mvY + (r.y - r.mvY)*k : r.mvX + (r.x - r.mvX)*k;
+    return open(along, r.mvH + (r.h - r.mvH)*k) ? now : was;
+  }
+  // The way out of a round solid: straight out from its centre, from where the
+  // racer is -- unless this tick took the centre past the solid's own (the
+  // offsets before and after point apart) while it was low enough to be
+  // stopped, in which case back out along the side it came from. `top` is the
+  // solid's height over the course surface (Infinity for a pillar).
+  let outNX = 0, outNY = 0;
+  function roundOut(r, cx, cy, top){
+    let nx = r.x - cx, ny = r.y - cy;
+    if(moveKnown(r)){
+      const px = r.mvX - cx, py = r.mvY - cy;
+      if(nx*px + ny*py < 0 && (r.floorH||0) + r.mvH < top){ nx = px; ny = py; }
+    }
+    const d = Math.hypot(nx, ny) || 1;
+    outNX = nx/d; outNY = ny/d;
+  }
   // checkObstacles is handed a racer and a clock, not the frame's step, and a
   // surface that pushes every frame needs the step or it pushes harder on a
   // slow machine. The physics loop leaves it here.
@@ -687,23 +731,18 @@
       const fin = (courseScript||[]).find(s=>s.type==='finish');
       const runIn = fin ? Math.min(fin.len, 520) : 400;
       const chk = checkerTexture('#ffffff', '#1a1033', 6);
-      const segs = Math.max(3, Math.round((runIn + FINISH_ZONE)/150));
-      const span = runIn + FINISH_ZONE;
-      // one texture and one material for the whole apron
+      // one texture and one material for the whole apron -- and one swept
+      // strip painted on the floor, like the start apron (18_coursemesh.js)
       const finTex = chk.clone(); finTex.needsUpdate = true;
-      finTex.repeat.set(4, (span/segs)/90);
-      const finMat = new THREE.MeshFloorMaterial({map:finTex});
-      for(let i=0;i<segs;i++){
-        const sy = z - runIn + span*(i+0.5)/segs;
-        const plate = new THREE.Mesh(THREE.RoundedBox(TRACK_W-14, 3, (span/segs)*0.99),
-          finMat);
-        plate.receiveShadow = true;
-        placeAt(plate, TRACK_W/2, sy, 1.4); courseGroup.add(plate);
-      }
+      const finMat = floorPaint(new THREE.MeshFloorMaterial({map:finTex, side:THREE.DoubleSide}), 1);
+      const apron = new THREE.Mesh(ribbonStrip(z - runIn, z + FINISH_ZONE,
+        s=>[toWorld(7, s, FLOOR_PAINT_TOP), toWorld(TRACK_W-7, s, FLOOR_PAINT_TOP)],
+        s=>[[0, s/90], [4, s/90]]), finMat);
+      apron.receiveShadow = true; courseGroup.add(apron);
     }
     const line=new THREE.Mesh(THREE.RoundedBox(TRACK_W,2.4,14),
-      new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}));
-    placeAt(line, TRACK_W/2, z, 0.9); courseGroup.add(line);
+      floorPaint(new THREE.MeshLambertMaterial({map:checkerTexture('#ffffff','#1a1033',1)}), 2));
+    placeOnSlope(line, TRACK_W/2, z, FLOOR_PAINT_TOP + 0.3 - 1.2); courseGroup.add(line);
 
     const postMat=new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', (courseLook?courseLook.accents[0]:currentMap.accent))});
     const barMat =new THREE.MeshLambertMaterial({color:0x1a1033});
@@ -746,13 +785,46 @@
     boulders.push(b);
   }
 
-  function updateMinigames(dt,t){
+  // ============================================================
+  // WHAT A MINIGAME LOOKS LIKE, AND WHAT A JOINER IS TOLD ABOUT IT
+  // ============================================================
+  // updateMinigames is the simulation, and only a host or a solo game runs it:
+  // a joiner's loop runs clientTick instead. It used to draw as it went -- the
+  // tiles wobbling and dropping, the ring's scale, the cannon's warning, the
+  // cannonballs' meshes -- so a joiner drew none of it, and since the state
+  // message carried no obstacle state either, a joiner's walls, arms, ring,
+  // floors, logs, decks, slabs and doors all stood as they were at the gun.
+  //
+  // Now the drawing is presentMinigames, which syncObstacles runs every frame
+  // on both, so a host and a joiner render the same state by the same code.
+  // The host puts that state in its existing periodic 'state' message
+  // (netObsSnapshot), the joiner applies it (applyObsSnapshot) and carries the
+  // moving parts on between messages by the host's own rules (netObsTick).
+  // A client that predates this ignores the extra field; a joiner of a host
+  // that predates it gets no field and nothing changes.
+  const shotMeshes = [];                  // [{b, m}]: the mesh drawn for each ball in flight
+  function presentFloor(cells, fuseTime, warnAt, warnHex, wobRate, wobAmp, dropBy, axis, turnBy, t){
+    for(const c of cells){
+      const m = c.mesh; if(!m) continue;
+      if(c.touched && !c.gone){
+        m.position.y = c.baseY + Math.sin(t*wobRate)*Math.max(0, 1-c.fuse/fuseTime)*wobAmp;
+        if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<warnAt ? warnHex : 0xffd166);
+      } else if(c.gone){
+        if(m.visible){
+          const d = Math.min(1, c.drop||0);
+          m.position.y = c.baseY - d*dropBy; m.rotation[axis] = d*turnBy;
+          if(d >= 1) m.visible = false;
+        }
+      } else if(!m.visible || m.position.y !== c.baseY || m.rotation[axis] !== 0){
+        // rebuilt: back into place
+        m.visible = true; m.rotation[axis] = 0; m.position.y = c.baseY;
+        if(c.topMat && c.topMat.color) c.topMat.color.setHex(0xffffff);
+      }
+    }
+  }
+  function presentMinigames(t){
     for(const o of obstacles){
-      if(o.type==='mover'){
-        const x = moverX(o,t);
-        o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
-        o._px = x;
-      } else if(o.type==='gems'){
+      if(o.type==='gems'){
         if(o.meshes) o.meshes.forEach((m,i)=>{
           const g=o.items[i];
           m.visible = !g.taken;
@@ -761,6 +833,302 @@
             m.position.y = m.userData.baseY + Math.sin(t*3+g.spin)*5;
           }
         });
+      } else if(o.type==='ring'){
+        if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
+      } else if(o.type==='disc'){
+        if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + (o.ang||0);
+      } else if(o.type==='doors'){
+        if(o.meshes) o.items.forEach((it,i)=>{ const m=o.meshes[i]; if(it.broken && m && m.panel && m.panel.visible) m.panel.visible=false; });
+      } else if(o.type==='cannon'){
+        // Drawn when the fuse moved, which is exactly the cannons the pack is
+        // near: one far down the course keeps the warning it had.
+        if(o.meshes) o.items.forEach((it,i)=>{
+          const m = o.meshes[i];
+          if(!m || !m.warn || it.cool === it._drawnCool) return;
+          // the first sight of it only notes where the fuse stands: a fuse
+          // that never moves never lights anything
+          if(it._drawnCool === undefined){ it._drawnCool = it.cool; return; }
+          it._drawnCool = it.cool;
+          const lead = it.cool;                       // seconds until this one fires
+          if(lead <= CANNON_WARN && lead > 0){
+            m.warn.visible = true;
+            // flash faster as it gets closer, so urgency reads without a HUD
+            const urgency = 1 - lead/CANNON_WARN;
+            m.warn.material.opacity = (0.18 + 0.42*urgency) * (0.55 + 0.45*Math.sin(t*(14+urgency*22)));
+          } else { m.warn.visible = false; }
+        });
+      } else if(o.type==='tilefield'){
+        presentFloor(o.tiles, o.fuseTime, o.fuseTime*0.4, 0xff7a5c, 26, 2.2, 140, 'z', 0.5, t);
+      } else if(o.type==='hexfield'){
+        presentFloor(o.cells, o.fuseTime, hexFuse(o)*0.45, 0xff5a4d, 30, 2.4, 160, 'x', 0.6, t);
+      }
+    }
+    // cannonballs: a mesh for each one in flight, gone with it
+    for(let i=shotMeshes.length-1;i>=0;i--){
+      const e = shotMeshes[i];
+      if(shots.indexOf(e.b) < 0){ if(e.m.parent) e.m.parent.remove(e.m); shotMeshes.splice(i,1); }
+    }
+    for(const b of shots){
+      if(!b.mesh){
+        const g = new THREE.Mesh(new THREE.SphereGeometry(b.r,14,10), shotMaterial());
+        g.castShadow = true; courseGroup.add(g); b.mesh = g; shotMeshes.push({b, m:g});
+        const co = b.src && obstacles[b.src[0]];
+        const cm = co && co.type==='cannon' && co.meshes && co.meshes[b.src[1]];
+        if(cm) cm.recoil = 1;
+      }
+      placeAt(b.mesh, b.x, b.y, b.r+26); b.mesh.rotation.z = -(b.spin||0);
+    }
+  }
+
+  // ---- the host's side: the stateful part of the course, compactly ----
+  // Continuous values in every message. Tiles and hexes are two bits a cell
+  // (touched, gone): all of them about once a second, and in between only the
+  // cells that changed, so a message that goes missing costs at most a second.
+  let netSeq = 0, netShotId = 0, netClock = 0;
+  // The obstacle list a snapshot has been heard for. A joiner of a host that
+  // sends none -- one that predates this -- never carries anything on.
+  let netHeardFor = null;
+  const NET_FULL_EVERY = 22;              // at the 45ms cadence, about a second
+  const netQ2 = (v)=>Math.round(v*100)/100, netQ4 = (v)=>Math.round(v*1e4)/1e4;
+  function netCellState(c){ return (c.touched?1:0) | (c.gone?2:0); }
+  function netPack(states){
+    const bytes = new Uint8Array(Math.ceil(states.length/4));
+    for(let i=0;i<states.length;i++) bytes[i>>2] |= states[i] << ((i&3)*2);
+    let s = ''; for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function netUnpack(str, n){
+    const raw = atob(str), out = new Array(n);
+    for(let i=0;i<n;i++) out[i] = (raw.charCodeAt(i>>2) >> ((i&3)*2)) & 3;
+    return out;
+  }
+  function netObsSnapshot(){
+    const full = (netSeq++ % NET_FULL_EVERY) === 0;
+    const o = [];
+    obstacles.forEach((ob,i)=>{
+      switch(ob.type){
+        case 'blockwall': if(ob.travel) o.push([i,'w', netQ2(ob.wy), netQ2(ob.travel), ob.gapStart]); break;
+        case 'spinlaser': if(ob.ramp) o.push([i,'b', netQ4(ob.ang||0), netQ4(ob.speed)]); break;
+        case 'ring': o.push([i,'r', netQ2(ob.r), netQ2(ob.wait)]); break;
+        case 'disc': o.push([i,'d', netQ4(ob.ang||0)]); break;
+        case 'logroll': o.push([i,'l'].concat(ob.logs.map(l=>netQ4(l.ang)))); break;
+        case 'tiltdeck': { const e = [i,'t']; for(const d of ob.decks) e.push(netQ4(d.tx), netQ4(d.ty)); o.push(e); break; }
+        case 'crumble': {
+          // only the slabs that are not simply standing there; the rest are
+          const e = [i,'c'];
+          ob.slabs.forEach((sl,k)=>{ if(sl.touched || sl.gone || sl.drop>0 || sl.fuse>0)
+            e.push(k, netQ4(sl.fuse), netQ4(sl.back||0), netQ4(sl.drop||0), (sl.touched?1:0)|(sl.gone?2:0)); });
+          o.push(e); break;
+        }
+        case 'tilefield': case 'hexfield': {
+          const cells = ob.type==='tilefield' ? ob.tiles : ob.cells;
+          const now = cells.map(netCellState), e = [i, ob.type==='tilefield' ? 'T' : 'H'];
+          if(full || !ob._netSent) e.push(1, netPack(now));
+          else { const ch = []; for(let k=0;k<now.length;k++) if(now[k]!==ob._netSent[k]) ch.push(k, now[k]); e.push(0, ch); }
+          ob._netSent = now;
+          // how far gone each shaking cell is, which is what the shake and the colour read
+          const fz = []; cells.forEach((c,k)=>{ if(c.touched && !c.gone) fz.push(k, netQ2(c.fuse)); });
+          e.push(fz); o.push(e); break;
+        }
+        case 'doors': { let m = 0; ob.items.forEach((it,k)=>{ if(it.broken) m |= 1<<k; }); o.push([i,'o', m]); break; }
+        case 'gems': o.push([i,'g', ob.items.map(g=>g.taken?1:0).join('')]); break;
+        case 'cannon': o.push([i,'k'].concat(ob.items.map(it=>netQ4(it.cool)))); break;
+      }
+    });
+    const s = [];
+    for(const b of shots){
+      if(!b.id) b.id = ++netShotId;
+      s.push(b.id, netQ2(b.x), netQ2(b.y), b.r, netQ2(b.vx), netQ4(b.spin||0), b.src?b.src[0]:-1, b.src?b.src[1]:-1);
+    }
+    return { f:full?1:0, o, s };
+  }
+
+  // ---- the joiner's side ----
+  function netSetCell(c, st){
+    const touched = !!(st&1), gone = !!(st&2);
+    if(gone && !c.gone) c.drop = 0;                        // it starts to fall now, here
+    if(!gone && c.gone){ c.drop = 0; c.fuse = -1; }        // rebuilt
+    c.touched = touched; c.gone = gone;
+  }
+  function applyObsSnapshot(snap){
+    if(!snap || !Array.isArray(snap.o)) return;
+    netHeardFor = obstacles;
+    const num = (v)=> typeof v === 'number' && isFinite(v);
+    for(const e of snap.o){
+      if(!Array.isArray(e)) continue;
+      const ob = obstacles[e[0]]; if(!ob) continue;
+      switch(e[1]){
+        case 'w':
+          if(ob.type!=='blockwall' || !ob.travel) break;
+          if(num(e[2])) ob.wy = e[2]; if(num(e[3])) ob.travel = e[3];
+          if(num(e[4]) && e[4] !== ob.gapStart){
+            ob.gapStart = e[4];
+            const it = wallItems(ob);
+            for(let k=0;k<ob.items.length && k<it.length;k++) ob.items[k].x = it[k].x;
+          }
+          break;
+        case 'b': if(ob.type==='spinlaser'){ if(num(e[2])) ob.ang = e[2]; if(num(e[3])) ob.speed = e[3]; } break;
+        case 'r': if(ob.type==='ring'){ if(num(e[2])) ob.r = e[2]; if(num(e[3])) ob.wait = e[3]; } break;
+        case 'd': if(ob.type==='disc' && num(e[2])) ob.ang = e[2]; break;
+        case 'l': if(ob.type==='logroll') ob.logs.forEach((l,k)=>{ if(num(e[2+k])) l.ang = e[2+k]; }); break;
+        case 't':
+          // the host's lean, exactly; between messages leanDeck carries it on
+          // by the host's rule (netObsTick)
+          if(ob.type!=='tiltdeck') break;
+          netTrackRacers();
+          ob.decks.forEach((d,k)=>{
+            const tx = e[2+2*k], ty = e[3+2*k]; if(!num(tx) || !num(ty)) return;
+            d._netT = netClock;
+            d.tx = tx; d.ty = ty;
+          });
+          break;
+        case 'c':
+          if(ob.type==='crumble'){
+            const listed = new Set();
+            for(let k=2;k+4<e.length;k+=5){
+              const sl = ob.slabs[e[k]]; if(!sl) continue; listed.add(e[k]);
+              if(num(e[k+1])) sl.fuse = e[k+1]; if(num(e[k+2])) sl.back = e[k+2]; if(num(e[k+3])) sl.drop = e[k+3];
+              sl.touched = !!(e[k+4]&1); sl.gone = !!(e[k+4]&2);
+            }
+            ob.slabs.forEach((sl,k)=>{ if(!listed.has(k)){ sl.touched = false; sl.gone = false; sl.drop = 0; sl.fuse = -1; } });
+          }
+          break;
+        case 'T': case 'H': {
+          const cells = (e[1]==='T' && ob.type==='tilefield') ? ob.tiles : (e[1]==='H' && ob.type==='hexfield') ? ob.cells : null;
+          if(!cells) break;
+          if(e[2]===1 && typeof e[3]==='string'){ const st = netUnpack(e[3], cells.length); cells.forEach((c,k)=>netSetCell(c, st[k])); }
+          else if(Array.isArray(e[3])) for(let k=0;k+1<e[3].length;k+=2){ const c = cells[e[3][k]]; if(c) netSetCell(c, e[3][k+1]); }
+          if(Array.isArray(e[4])) for(let k=0;k+1<e[4].length;k+=2){ const c = cells[e[4][k]]; if(c && num(e[4][k+1])) c.fuse = e[4][k+1]; }
+          break;
+        }
+        case 'o': if(ob.type==='doors' && num(e[2])) ob.items.forEach((it,k)=>{ if(e[2] & (1<<k)) it.broken = true; }); break;
+        case 'g': if(ob.type==='gems' && typeof e[2]==='string') ob.items.forEach((g,k)=>{ g.taken = e[2][k]==='1'; }); break;
+        case 'k': if(ob.type==='cannon') ob.items.forEach((it,k)=>{ if(num(e[2+k])) it.cool = e[2+k]; }); break;
+      }
+    }
+    if(Array.isArray(snap.s)){
+      const keep = new Set();
+      for(let k=0;k+7<snap.s.length;k+=8){
+        const q = snap.s, id = q[k];
+        if(!num(q[k+1]) || !num(q[k+2]) || !num(q[k+3]) || !num(q[k+4])) continue;
+        keep.add(id);
+        let b = shots.find(x=>x.id===id);
+        if(!b){ b = { id, spin:0 }; if(q[k+6] >= 0) b.src = [q[k+6], q[k+7]]; shots.push(b); }
+        b.x = q[k+1]; b.y = q[k+2]; b.r = q[k+3]; b.vx = q[k+4]; if(num(q[k+5])) b.spin = q[k+5];
+      }
+      for(let k=shots.length-1;k>=0;k--) if(!keep.has(shots[k].id)) shots.splice(k,1);
+    }
+  }
+  // Between messages the course keeps moving on a joiner's screen by the
+  // host's own rules. Nothing here decides anything: a tile shakes until the
+  // host says it went, and every message puts the joiner back on the host.
+  function netObsTick(dt){
+    netClock += dt;
+    if(state!=='racing' || netHeardFor !== obstacles) return;
+    let packBack = 1e9, packFront = -1e9;
+    for(const r of racers){ if(r.y < packBack) packBack = r.y; if(r.y > packFront) packFront = r.y; }
+    for(const o of obstacles){
+      if(o.type==='blockwall' && o.travel){
+        o.travel = Math.min(o.travelMax, o.travel + o.ramp*dt);
+        o.wy -= o.travel*dt;
+        if(o.wy < o.wrapLo) o.wy += o.cycle;           // the new gap comes with the next message
+      } else if(o.type==='spinlaser' && o.ramp){
+        const dir = Math.sign(o.speed) || 1;
+        if(Math.abs(o.speed) < o.speedMax) o.speed += dir*o.ramp*dt;
+        o.ang = (o.ang||0) + o.speed*dt;
+      } else if(o.type==='ring'){
+        if(o.wait > 0) o.wait -= dt; else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
+      } else if(o.type==='disc'){
+        o.ang = (o.ang||0) + o.speed*dt;
+      } else if(o.type==='logroll'){
+        for(const l of o.logs) l.ang += l.spin*dt;
+      } else if(o.type==='tiltdeck'){
+        // the lean follows the weight on the deck: the host's own spring,
+        // on the racers the host has told us about, where it last put them.
+        // A deck no message has described yet stays where it is.
+        for(const d of o.decks) if(d._netT !== undefined) leanDeck(o, d, dt, true);
+      } else if(o.type==='crumble'){
+        for(const sl of o.slabs){
+          if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
+          if(sl.gone){
+            sl.drop = Math.min(1, sl.drop + dt*2.4);
+            sl.back -= dt;
+            if(sl.back <= 0){ sl.gone = false; sl.touched = false; sl.fuse = -1; }
+          } else if(sl.drop > 0) sl.drop = Math.max(0, sl.drop - dt*3.2);
+        }
+      } else if(o.type==='tilefield' || o.type==='hexfield'){
+        const cells = o.type==='tilefield' ? o.tiles : o.cells, rate = o.type==='tilefield' ? 1.6 : 1.5;
+        for(const c of cells){
+          if(c.touched && !c.gone) c.fuse = Math.max(0, c.fuse - dt);
+          else if(c.gone && c.drop < 1) c.drop += dt*rate;
+        }
+      } else if(o.type==='cannon'){
+        for(const it of o.items){
+          if(it.y > packFront+2200 || it.y < packBack-700) continue;
+          it.cool -= dt; if(it.cool <= 0) it.cool = it.interval;
+        }
+      }
+    }
+    for(const b of shots){ b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r; }
+  }
+
+  // A tilt deck leans toward the weight on it, one spring step. ONE rule for
+  // both ends: the host runs it on its own racers, and a joiner between
+  // messages runs it on the racers the host has told it about (netOnly),
+  // each where it is heading by its last two messages (netTrackRacers) -- so
+  // the joiner's deck goes where the host's is going, a racer stepping on
+  // counted about when it steps on, instead of the deck carrying on in a
+  // straight line; and every message still puts it back on the host's lean.
+  function leanDeck(o, dk, dt, netOnly){
+    let sx = 0, sy = 0, n = 0;
+    for(const r of racers){
+      let x = r.x, y = r.y, h = r.h;
+      if(netOnly){
+        if(r._netId === undefined) continue;
+        if(r._nt !== undefined){
+          // height too: a racer coming down from a jump lands on the deck,
+          // and starts to weigh on it, between one message and the next
+          const a = Math.min(netClock - r._nt, 0.15);
+          x += (r._nvx||0)*a; y += (r._nvy||0)*a; h = Math.max(0, (h||0) + (r._nvh||0)*a);
+        }
+      }
+      if(r.lavaOut || r.falling || h > 40) continue;
+      if(Math.abs(x-dk.cx) > dk.w/2 || Math.abs(y-dk.y) > dk.d/2) continue;
+      sx += (x-dk.cx)/(dk.w/2); sy += (y-dk.y)/(dk.d/2); n++;
+    }
+    // Weight, not position. Divided by the count alone this was the mean
+    // offset, so one racer standing at the edge tipped the deck as hard as
+    // twenty did -- which is not what a deck on a pivot does and not what
+    // the round is called. Dividing by at least `hold` racers instead
+    // makes the first few of them count for what they weigh: one at the
+    // edge is a lean you can feel, five is the deck going over.
+    const w = Math.max(o.hold, n);
+    const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
+    const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
+    const k = Math.min(1, o.spring*dt);
+    dk.tx += (tX - dk.tx)*k;
+    dk.ty += (tY - dk.ty)*k;
+  }
+  // Where each racer the host describes is heading, from its last two
+  // messages, for leanDeck to weigh it there. Once per message however many
+  // decks there are; a respawn is a jump, not a speed, so it carries nothing.
+  function netTrackRacers(){
+    for(const r of racers){
+      if(r._netId === undefined || r._nt === netClock) continue;
+      const el = r._nt === undefined ? 0 : netClock - r._nt;
+      let vx = el > 0.001 ? (r.x - r._nx)/el : 0, vy = el > 0.001 ? (r.y - r._ny)/el : 0;
+      let vh = el > 0.001 ? ((r.h||0) - r._nh)/el : 0;
+      if(Math.hypot(vx, vy) > 900){ vx = 0; vy = 0; vh = 0; }
+      r._nx = r.x; r._ny = r.y; r._nh = r.h||0; r._nt = netClock; r._nvx = vx; r._nvy = vy; r._nvh = vh;
+    }
+  }
+
+  function updateMinigames(dt,t){
+    for(const o of obstacles){
+      if(o.type==='mover'){
+        const x = moverX(o,t);
+        o.dx = (o._px===null || o._px===undefined) ? 0 : x - o._px;
+        o._px = x;
       } else if(o.type==='blockwall' && o.travel){
         // Faster for as long as the round lasts, and a new gap every lap: a
         // wall you have already read is not a wall you get to read twice.
@@ -780,7 +1148,6 @@
         // the ring waits a beat, then closes for the rest of the round
         if(o.wait > 0) o.wait -= dt;
         else o.r = Math.max(o.rMin, o.r - o.shrink*dt);
-        if(o.disc){ o.disc.scale.set(o.r, 1, o.r); for(const m of o.lip) m.scale.set(o.r, o.r, 1); }
       } else if(o.type==='spinlaser' && o.ramp){
         // Not until the gun. The reveal and the flyover run about eleven
         // seconds and the field cannot move for any of it, so arms that swept
@@ -794,29 +1161,9 @@
       } else if(o.type==='logroll'){
         for(const l of o.logs) l.ang += l.spin*dt;
       } else if(o.type==='tiltdeck'){
-        for(const dk of o.decks){
-          let sx = 0, sy = 0, n = 0;
-          for(const r of racers){
-            if(r.lavaOut || r.falling || r.h > 40) continue;
-            if(Math.abs(r.x-dk.cx) > dk.w/2 || Math.abs(r.y-dk.y) > dk.d/2) continue;
-            sx += (r.x-dk.cx)/(dk.w/2); sy += (r.y-dk.y)/(dk.d/2); n++;
-          }
-          // Weight, not position. Divided by the count alone this was the mean
-          // offset, so one racer standing at the edge tipped the deck as hard as
-          // twenty did -- which is not what a deck on a pivot does and not what
-          // the round is called. Dividing by at least `hold` racers instead
-          // makes the first few of them count for what they weigh: one at the
-          // edge is a lean you can feel, five is the deck going over.
-          const w = Math.max(o.hold, n);
-          const tX = n ? clamp(sx/w*o.lean, -1, 1) : 0;
-          const tY = n ? clamp(sy/w*o.lean, -1, 1) : 0;
-          const k = Math.min(1, o.spring*dt);
-          dk.tx += (tX - dk.tx)*k;
-          dk.ty += (tY - dk.ty)*k;
-        }
+        for(const dk of o.decks) leanDeck(o, dk, dt, false);
       } else if(o.type==='disc'){
         o.ang = (o.ang||0) + o.speed*dt;
-        if(o.mesh) o.mesh.rotation.y = pathAngle(o.y) + o.ang;
       } else if(o.type==='crumble'){
         for(const sl of o.slabs){
           if(sl.fuse > 0){ sl.fuse -= dt; if(sl.fuse <= 0){ sl.gone = true; sl.back = o.respawnTime; } }
@@ -870,38 +1217,33 @@
         // runner switched cannons off for the whole pack behind them.
         if(it.y > packFront+2200 || it.y < packBack-700) continue;
         it.cool -= dt;
+        // The warning on the floor is drawn by presentMinigames from it.cool;
+        // what stays here is the sound, once, as it lights.
         const m = o.meshes && o.meshes[i];
         if(m && m.warn){
           const lead = it.cool;                       // seconds until this one fires
           if(lead <= CANNON_WARN && lead > 0){
-            m.warn.visible = true;
-            // flash faster as it gets closer, so urgency reads without a HUD
-            const urgency = 1 - lead/CANNON_WARN;
-            m.warn.material.opacity = (0.18 + 0.42*urgency) * (0.55 + 0.45*Math.sin(t*(14+urgency*22)));
             if(!it.warned){ it.warned = true;
               const p = racers.find(r=>r.isPlayer);
               if(p && Math.abs(p.y - it.y) < 900) SFX.count();
             }
-          } else { m.warn.visible = false; }
+          }
         }
         if(it.cool<=0){
           it.warned = false;
           it.cool = it.interval;
+          // Which cannon fired it travels with it: presentMinigames gives the
+          // ball its mesh and that barrel its recoil, on a host and a joiner alike.
           const b = { x: it.side<0 ? 10 : TRACK_W-10, y: it.y, r: it.r,
-                      vx: it.side<0 ? it.speed : -it.speed, spin:0 };
-          const g = new THREE.Mesh(new THREE.SphereGeometry(it.r,14,10), shotMaterial());
-          g.castShadow=true; placeAt(g, b.x, b.y, it.r+26);
-          courseGroup.add(g); b.mesh=g;
+                      vx: it.side<0 ? it.speed : -it.speed, spin:0, src:[obstacles.indexOf(o), i] };
           shots.push(b);
-          if(o.meshes && o.meshes[i]) o.meshes[i].recoil = 1;
         }
       }
     }
     for(let i=shots.length-1;i>=0;i--){
       const b=shots[i];
       b.x += b.vx*dt; b.spin = (b.spin||0) + b.vx*dt/b.r;
-      if(b.mesh){ placeAt(b.mesh, b.x, b.y, b.r+26); b.mesh.rotation.z = -b.spin; }
-      if(b.x < -60 || b.x > TRACK_W+60){ if(b.mesh) courseGroup.remove(b.mesh); shots.splice(i,1); continue; }
+      if(b.x < -60 || b.x > TRACK_W+60){ shots.splice(i,1); continue; }
 
       // ---- a cannonball is not only a threat to racers ----
       // It brings a crumbling slab down under it...
@@ -960,28 +1302,20 @@
     const field = obstacles.find(o=>o.type==='tilefield');
     if(field){
       for(const tl of field.tiles){
+        // State only: presentMinigames draws each tile from it.
         if(tl.touched && !tl.gone){
           tl.fuse -= dt;
-          if(tl.mesh){
-            const wob = Math.sin(t*26)*Math.max(0, 1-tl.fuse/field.fuseTime)*2.2;
-            tl.mesh.position.y = tl.baseY + wob;
-            if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(tl.fuse<field.fuseTime*0.4 ? 0xff7a5c : 0xffd166);
-          }
           if(tl.fuse<=0){ tl.gone=true; tl.drop=0;
             tl.back = (tl.layer>=2) ? Infinity : field.respawnTime;   // the bottom floor stays gone
             spawnBurst3D(tl.x, tl.y, 0x8a7060, 5); }
         } else if(tl.gone){
           if(tl.drop<1){
             tl.drop += dt*1.6;
-            if(tl.mesh){ tl.mesh.position.y = tl.baseY - tl.drop*140; tl.mesh.rotation.z = tl.drop*0.5;
-              if(tl.drop>=1) tl.mesh.visible=false; }
           } else {
             tl.back -= dt;
             if(tl.back<=0){
               // rebuild: rise back into place
               tl.gone=false; tl.touched=false; tl.fuse=-1; tl.drop=0;
-              if(tl.mesh){ tl.mesh.visible=true; tl.mesh.rotation.z=0; tl.mesh.position.y=tl.baseY;
-                if(tl.topMat && tl.topMat.color) tl.topMat.color.setHex(0xffffff); }
               spawnBurst3D(tl.x, tl.y, 0xffffff, 4);
             }
           }
@@ -993,12 +1327,9 @@
     const hf = obstacles.find(o=>o.type==='hexfield');
     if(hf){
       for(const c of hf.cells){
+        // State only, as for the tiles.
         if(c.touched && !c.gone){
           c.fuse -= dt;
-          if(c.mesh){
-            c.mesh.position.y = c.baseY + Math.sin(t*30)*Math.max(0,1-c.fuse/hf.fuseTime)*2.4;
-            if(c.topMat && c.topMat.color) c.topMat.color.setHex(c.fuse<hexFuse(hf)*0.45 ? 0xff5a4d : 0xffd166);
-          }
           // Infinity, not a flag checked at the other end: the rebuild below
           // counts this down, so a rung that is never coming back is one whose
           // countdown never finishes.
@@ -1007,14 +1338,10 @@
         } else if(c.gone){
           if(c.drop<1){
             c.drop += dt*1.5;
-            if(c.mesh){ c.mesh.position.y = c.baseY - c.drop*160; c.mesh.rotation.x = c.drop*0.6;
-              if(c.drop>=1) c.mesh.visible=false; }
           } else {
             c.back -= dt;
             if(c.back<=0){
               c.gone=false; c.touched=false; c.fuse=-1; c.drop=0;
-              if(c.mesh){ c.mesh.visible=true; c.mesh.rotation.x=0; c.mesh.position.y=c.baseY;
-                if(c.topMat && c.topMat.color) c.topMat.color.setHex(0xffffff); }
             }
           }
         }
@@ -1106,9 +1433,12 @@
     if(fk && r.h < 44){
       const dx = r.x - fk.cx, minD = 8 + RADIUS;
       if(Math.abs(dx) < minD){
-        const sgn = Math.sign(dx) || (Math.sign(r.vx) || 1);
+        // over it, or round either end of it, is a fair way across
+        const sgn = sideOf(r, true, fk.cx, (y,h)=> h >= 44 || y < fk.wallFrom-RADIUS || y > fk.yEnd)
+                 || (Math.sign(r.vx) || 1);
         r.x = fk.cx + sgn*minD;
-        if(sgn*r.vx < 0){ r.vx = 0; r.squash = Math.max(r.squash, 0.3); }
+        // squash on a real impact only: leaning on it re-armed this every frame
+        if(sgn*r.vx < 0){ if(-sgn*r.vx > 1.5) r.squash = Math.max(r.squash, 0.3); r.vx = 0; }
       }
     }
 
@@ -1117,9 +1447,12 @@
     if(gt && r.h < gt.h){
       const through = gt.xs.some(gx => Math.abs(r.x-gx) < gt.gapW/2 - RADIUS*0.35);
       if(!through){
-        const side = Math.sign(r.y - gt.y) || -1;
+        // A racer whose feet were over the top where they crossed its middle
+        // went over it, and comes down on the far side; anyone else goes back.
+        const side = sideOf(r, false, gt.y, (x,h)=> h >= gt.h
+                       || gt.xs.some(gx => Math.abs(x-gx) < gt.gapW/2 - RADIUS*0.35)) || -1;
         r.y = gt.y + side*(gt.d/2 + RADIUS);
-        if(side*r.vy < 0){ r.vy = 0; r.squash = Math.max(r.squash, 0.3); }
+        if(side*r.vy < 0){ if(-side*r.vy > 1.5) r.squash = Math.max(r.squash, 0.3); r.vy = 0; }
         // slide toward the nearer door rather than standing there pressing into it
         let best = gt.xs[0];
         for(const gx of gt.xs) if(Math.abs(gx-r.x) < Math.abs(best-r.x)) best = gx;
@@ -1227,7 +1560,9 @@
         // on nothing. Differencing the position itself cannot drift, because it
         // IS the position.
         if(ridden && !(r.tumbleT>0)){
-          const step = platX(ridden, t) - platX(ridden, t - frameK/60);
+          // t is the OBSTACLE clock, which a frenzy runs at eventSpeed(): step
+          // back by what it advanced this frame, or the deck outruns its rider
+          const step = platX(ridden, t) - platX(ridden, t - eventSpeed()*frameK/60);
           r.x += step;
           // ...and the same thing as a velocity, in the units r.vx is in, so
           // that doJump can hand it to the jump.
@@ -1364,7 +1699,19 @@
       }
     }
 
-    if(r.invuln>0) return;
+    // ---- solids ----------------------------------------------------------
+    // Above the invulnerability gate, not behind it. A racer who cannot be hurt
+    // -- in a dive, just up off the floor, just back from a fall -- is still a
+    // body, and a pillar is still a pillar. The gate used to sit above all of
+    // these, so every dive was a pass through any of them: the audit sweep put
+    // up to one approach in five through a pillar that way. What being
+    // untouchable still buys is the HIT -- the stumble off a pillar, the bounce
+    // off a door or the rim, a bumper's fling, a wall's knockdown -- so those
+    // stay behind it, which is also what stops a racer held against a solid
+    // being hit by it again on every frame of the invulnerability its first hit
+    // handed out. `inv` is read once, as the gate did, so a hit here does not
+    // spare the racer something further down the list this same frame.
+    const inv = r.invuln > 0;
     for(const o of obstacles){
       if(r.y<o.y0-40||r.y>o.y1+40) continue;
 
@@ -1372,11 +1719,12 @@
         for(const it of o.items){
           const dx=r.x-it.x, dy=r.y-o.y; const d=Math.hypot(dx,dy);
           if(d<it.r+RADIUS-4){
-            const nx=dx/(d||1), ny=dy/(d||1); const pen=it.r+RADIUS-4-d;
-            r.x+=nx*pen; r.y+=ny*pen;
+            roundOut(r, it.x, o.y, Infinity);
+            const nx=outNX, ny=outNY;
+            r.x = it.x + nx*(it.r+RADIUS-4); r.y = o.y + ny*(it.r+RADIUS-4);
             const vn=r.vx*nx+r.vy*ny;
             if(vn<0){ r.vx-=vn*nx*1.4; r.vy-=vn*ny*1.4;
-              if(-vn>4){ r.stumbleT=320; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
+              if(-vn>4 && !inv){ r.stumbleT=320; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
             r.vx += (nx>=0?1:-1)*0.8;
           }
         }
@@ -1387,21 +1735,27 @@
             const it=o.items[i];
             if(Math.abs(r.x-it.x) > it.w/2 + RADIUS - 8) continue;
             if(it.fake){
+              // Paper tears whoever goes through it -- a diver used to pass
+              // through an intact panel. Being slowed by it is the hit.
               if(!it.broken){
                 it.broken=true;
                 const m=o.meshes && o.meshes[i];
                 if(m){ m.panel.visible=false; }
                 spawnBurst3D(it.x, o.y, 0xfff1c9, 14);
-                r.vy *= 0.62; r.stumbleT=Math.max(r.stumbleT,120);
+                if(!inv){ r.vy *= 0.62; r.stumbleT=Math.max(r.stumbleT,120); }
                 if(r.isPlayer){ SFX.bump(); camShake=3; }
               }
             } else {
-              const side = Math.sign(r.y-o.y)||-1;
+              const side = sideOf(r, false, o.y, (x,h)=> h >= 62 || !o.items.some(q=>!q.fake
+                             && Math.abs(x-q.x) <= q.w/2 + RADIUS - 8)) || -1;
               r.y = o.y + side*(o.d/2 + RADIUS);
-              if(side<0 && r.vy>0){ r.vy = -Math.abs(r.vy)*0.35 - 1; r.stumbleT=340; r.invuln=260;
-                spawnBurst3D(r.x, o.y, 0x5b3aa8, 8);
-                if(r.isPlayer){ SFX.hit(); camShake=5; } }
-              r.vx += (r.x < it.x ? -1 : 1)*5.2;   // deflect toward a gap instead of sticking
+              if(inv){ if(side*r.vy < 0) r.vy = 0; }
+              else {
+                if(side<0 && r.vy>0){ r.vy = -Math.abs(r.vy)*0.35 - 1; r.stumbleT=340; r.invuln=260;
+                  spawnBurst3D(r.x, o.y, 0x5b3aa8, 8);
+                  if(r.isPlayer){ SFX.hit(); camShake=5; } }
+                r.vx += (r.x < it.x ? -1 : 1)*5.2;   // deflect toward a gap instead of sticking
+              }
             }
           }
         }
@@ -1415,16 +1769,20 @@
           const dx = r.x - o.cx, dh = (r.h + RADIUS) - o.hc;
           const d = Math.hypot(dx, dh);
           if(Math.abs(d - o.r) < o.tube + RADIUS*0.55){
-            const side = Math.sign(r.y - o.y) || -1;
+            const side = sideOf(r, false, o.y, (x,h)=>
+                           Math.abs(Math.hypot(x - o.cx, h + RADIUS - o.hc) - o.r) >= o.tube + RADIUS*0.55) || -1;
             r.y = o.y + side*(o.tube + RADIUS);
-            if(side < 0 && r.vy > 0){
-              r.vy = -Math.abs(r.vy)*0.40 - 1;
-              r.stumbleT = Math.max(r.stumbleT, 380); r.invuln = Math.max(r.invuln, 320);
-              spawnBurst3D(r.x, o.y, 0xffd54f, 10);
-              if(r.isPlayer){ SFX.hit(); camShake = Math.max(camShake, 5); }
+            if(inv){ if(side*r.vy < 0) r.vy = 0; }
+            else {
+              if(side < 0 && r.vy > 0){
+                r.vy = -Math.abs(r.vy)*0.40 - 1;
+                r.stumbleT = Math.max(r.stumbleT, 380); r.invuln = Math.max(r.invuln, 320);
+                spawnBurst3D(r.x, o.y, 0xffd54f, 10);
+                if(r.isPlayer){ SFX.hit(); camShake = Math.max(camShake, 5); }
+              }
+              // and shoved back toward the hole, which is always inward
+              r.vx -= Math.sign(dx)*2.2;
             }
-            // and shoved back toward the hole, which is always inward
-            r.vx -= Math.sign(dx)*2.2;
           }
         }
 
@@ -1434,12 +1792,14 @@
         // one: a standing jump tops out within a unit or two of it, so the
         // round's whole premise -- a wall you cannot jump -- came down to
         // rounding. The race sections keep the 70 they were built against.
-        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < (o.hi || 70)){
+        const hi = o.hi || 70;
+        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < hi){
           const shift=blockShift(o,t);
           for(const it of o.items){
             const bx=it.x+shift;
             if(Math.abs(r.x-bx) > it.w/2 + RADIUS - 6) continue;
-            const side = Math.sign(r.y-wy)||-1;
+            const side = sideOf(r, false, wy, (x,h)=> h >= hi || !o.items.some(q=>
+                           Math.abs(x-(q.x+shift)) <= q.w/2 + RADIUS - 6)) || -1;
             r.y = wy + side*(o.d/2 + RADIUS);
             if(o.travel){
               // A wall that is coming for you carries you. Knocking you down
@@ -1454,7 +1814,8 @@
               // pinned at the far side of the wall slid to the gap on its own
               // in under two seconds, and nobody was ever swept off.
               r.vx += (r.x < bx ? -1 : 1)*0.30;
-            } else {
+            } else if(inv){ if(side*r.vy < 0) r.vy = 0; }
+            else {
               if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
                 sendTumbling(r, 6, 0, -1); r.invuln=520;
                 spawnBurst3D(r.x,wy,0xff8a5c,8); }
@@ -1464,7 +1825,37 @@
           }
         }
 
-      } else if(o.type==='laserbar'){
+      } else if(o.type==='bumper'){
+        for(const it of o.items){
+          const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
+          if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
+            roundOut(r, it.x, o.y, 46);
+            const nx=outNX, ny=outNY;
+            r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
+            // Untouchable, it does not fling you; it is still in the way.
+            if(inv){ const vn = r.vx*nx + r.vy*ny; if(vn < 0){ r.vx -= vn*nx; r.vy -= vn*ny; } continue; }
+            // Pinball: fling outward, harder the faster you hit it -- but
+            // only the part of your speed that was actually going into it.
+            // Brushing past one at full tilt used to fling you as hard as
+            // running straight at it.
+            const closing = Math.max(0, -(r.vx*nx + r.vy*ny));
+            const kick = 6.2 + closing*0.75;
+            r.vx = nx*kick; r.vy = ny*kick;
+            r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
+            spawnBurst3D(r.x,r.y,0xff4fa3,8);
+            if(r.isPlayer){ SFX.bump(); camShake=4; }
+            return;
+          }
+        }
+      }
+    }
+
+    // ---- hazards: these only HIT, so being untouchable is a pass ----
+    if(inv) return;
+    for(const o of obstacles){
+      if(r.y<o.y0-40||r.y>o.y1+40) continue;
+
+      if(o.type==='laserbar'){
         const by=laserY(o,t);
         if(Math.abs(r.y-by) < 12 + RADIUS*0.60){
           // Measured from the surface underfoot, not from the racer's own h.
@@ -1484,26 +1875,6 @@
         }
 
       //<<shelved:hit-roller>>
-      } else if(o.type==='bumper'){
-        for(const it of o.items){
-          const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
-          if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
-            const nx=dx/(d||1), ny=dy/(d||1);
-            r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
-            // Pinball: fling outward, harder the faster you hit it -- but
-            // only the part of your speed that was actually going into it.
-            // Brushing past one at full tilt used to fling you as hard as
-            // running straight at it.
-            const closing = Math.max(0, -(r.vx*nx + r.vy*ny));
-            const kick = 6.2 + closing*0.75;
-            r.vx = nx*kick; r.vy = ny*kick;
-            r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
-            spawnBurst3D(r.x,r.y,0xff4fa3,8);
-            if(r.isPlayer){ SFX.bump(); camShake=4; }
-            return;
-          }
-        }
-
       } else if(o.type==='boost'){
         if(surfaceH(r) < 30 && Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-o.cx) < o.w/2 + RADIUS - 8){
           // a speed floor rather than an impulse, so it does not depend on frame rate

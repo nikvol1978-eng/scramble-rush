@@ -206,7 +206,11 @@
     const br = Math.sin(t*1.9);                   // the breath, about a third of a hertz
     const sw = Math.sin(t*0.77);                  // the weight shift, slower still
     const lag = Math.sin(t*1.9 - 0.6);            // arms trail the breath
-    const ease=(o,axis,to)=>{ o.rotation[axis] += (to-o.rotation[axis])*0.18; };
+    // On the frames of a landing the stance is taken at once, as the running
+    // pose takes its own: easing out of the air tuck while the landing's bend
+    // was added on top folded a standing landing's knee well past a running one's.
+    const EK = r.landT > 0 ? 1 : 0.18;
+    const ease=(o,axis,to)=>{ o.rotation[axis] += (to-o.rotation[axis])*EK; };
     ease(L[0],'x', 0.03 + sw*0.02); ease(L[1],'x', 0.03 - sw*0.02);
     ease(K[0],'x', KNEE_REST + 0.05 + Math.max(0, sw)*0.07);
     ease(K[1],'x', KNEE_REST + 0.05 + Math.max(0,-sw)*0.07);
@@ -218,6 +222,34 @@
     m.tilt.rotation.z = sw*0.010;                 // the weight really does shift
     m.tilt.rotation.x = -0.012 + br*0.008;
     breathe(br*0.013);
+  }
+
+  // ---- the fade, applied to the WHOLE racer ----------------------------
+  // A fall or a knockout fades the racer, and a racer is several meshes: the
+  // body, the trim (limbs, hat and eyes merged onto one material), the
+  // player's marker and, on some skins, a glow shell. Fading bodyMat alone
+  // left the trim at full strength -- a crown, two mitts and a pair of eyes
+  // hanging over the hole. Every one of these materials is this racer's own
+  // (makeCharacter and buildRacerMeshes build them per call), so writing them
+  // fades nobody else. An opaque one is made transparent only while it is
+  // faded, so a racer on its feet draws exactly as it always did. The aura is
+  // left to animateAura, which rewrites it every frame; see syncRacers.
+  function fadeRacer(m, a){
+    m.bodyMat.opacity = a; m.outMat.opacity = a*0.55;
+    if(!m._fade){
+      const skip = new Set([m.bodyMat, m.outMat]);
+      if(m.aura) m.aura.traverse(o=>{ if(o.material) skip.add(o.material); });
+      m._fade = [];
+      m.group.traverse(o=>{
+        if(!o.isMesh || !o.material || skip.has(o.material)) return;
+        m._fade.push({ mat:o.material, base:o.material.opacity, trans:o.material.transparent });
+      });
+    }
+    for(const f of m._fade){
+      f.mat.opacity = f.base*a;
+      const tr = f.trans || a < 1;
+      if(f.mat.transparent !== tr){ f.mat.transparent = tr; f.mat.needsUpdate = true; }
+    }
   }
 
   function syncRacers(t){
@@ -253,6 +285,19 @@
       r.lastFacing = r.renderFacing||0;
       m.head.rotation.y = r.headTurn;
 
+      // Take last frame's landing bend back out first. The idle pose EASES its
+      // joints from where they are, so a bend left in fed the next frame's
+      // ease and the bends compounded: a standing landing folded the knee to
+      // 2 rad for fifteen frames. The poses that set joints outright are
+      // unaffected -- they overwrite this either way.
+      if(r.landGive){
+        for(let i=0;i<2;i++){
+          m.kneePivots[i].rotation.x -= r.landGive;
+          m.footPivots[i].rotation.x += r.landGive*0.45;
+          m.elbowPivots[i].rotation.x += r.landGive*0.30;
+        }
+        r.landGive = 0;
+      }
       poseCharacter(m, r, t, moving, speed);
 
       // ---- THE LANDING, ABSORBED ---------------------------------------
@@ -270,6 +315,7 @@
           m.footPivots[i].rotation.x -= give*0.45;     // ankle rolls under the load
           m.elbowPivots[i].rotation.x -= give*0.30;    // arms come up as it sinks
         }
+        r.landGive = give;                             // taken back out next frame
         m.tilt.rotation.x -= give*0.10;
       }
 
@@ -316,11 +362,18 @@
         for(let i=0;i<2;i++){ m.pupils[i].scale.set(1,1,1); m.scleras[i].scale.set(1,1,1); }
       }
 
-      m.bodyMat.opacity=opacity; m.outMat.opacity=opacity*0.55;
+      fadeRacer(m, opacity);
       m.outline.visible = r.invuln>0 && (Math.floor(t*14)%2===0);
       if(m.hatGroup.userData.spin) m.hatGroup.userData.spin.rotation.y=t*12;
       if(m.hatGroup.userData.float) m.hatGroup.position.y=(m.hatGroup.userData.floatBase||0)+Math.sin(t*3)*2;
       if(m.arrow) m.arrow.position.y=RADIUS+34+Math.sin(t*4)*3;
       animateAura(m, t);
+      // animateAura sets the aura's opacities outright each frame, so the fade
+      // goes on after it; the next frame on your feet puts them back.
+      if(m.aura && opacity < 1){
+        const au = m.aura.userData;
+        au.shell.material.opacity *= opacity;
+        for(const mo of au.motes) mo.material.opacity *= opacity;
+      }
     }
   }

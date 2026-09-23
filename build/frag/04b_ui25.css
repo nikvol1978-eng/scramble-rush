@@ -69,7 +69,6 @@
      top-aligned here with enough headroom for both, and the badge tucks in a
      little rather than relying on room the row does not have. */
   @media (max-width:760px){
-    #menuChrome{ padding:16px var(--sp-2) 0; align-items:flex-start; }
     .dailyBadge{ top:-8px; right:-8px; }
   }
 
@@ -84,6 +83,13 @@
      chrome row -- its wordmark sat at y=5 and the new NIKCADE button landed
      straight on top of it, 42px of overlap. Same selector, later in the file. */
   #home.lobby{ padding-top:var(--content-top); }
+  /* The phone headroom for the daily badge (see above), placed AFTER the
+     #menuChrome rule it adjusts. It used to sit before it: same selector, and
+     the later `padding:0 var(--gut)` won at every width, so the badge stayed
+     flush with the top of the window and its pip was clipped at y=-4. */
+  @media (max-width:760px){
+    #menuChrome{ padding:16px var(--sp-2) 0; align-items:flex-start; }
+  }
   /* The locker's panel is absolute, so it takes the token as an inset rather
      than inheriting the padding. Same number, same source, no second guess. */
   #locker .lkPanel{ top:var(--content-top); bottom:var(--gut); right:var(--gut); }
@@ -105,10 +111,6 @@
     }
     .lkSubTabs{ flex-wrap:wrap; margin:10px 0 8px; }
     .lkTab{ padding:7px 12px; font-size:0.78rem; }
-    .uiCardMedia > .rarityPill{ font-size:0.46rem; padding:1px 5px; max-width:calc(100% - 12px);
-                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .uiCardFoot{ padding:5px 6px; }
-    .uiCardName{ font-size:0.68rem; }
   }
 
   /* ---- back to the arcade ---------------------------------------------
@@ -139,6 +141,44 @@
   @media (max-width:760px){
     #menuChrome .homeBtn{ position:static; transform:none; height:34px; width:38px; margin-right:6px; }
     #menuChrome .homeBtn:active{ transform:translateY(3px); }
+  }
+
+  /* ---- the chrome row FITS, at every width and every balance -----------
+     Measured before this block: on a phone the row is centred flex, and
+     centred overflow spills off BOTH edges. At 360 it was 421px of NIKCADE,
+     six pills, crowns and a 99,999 balance in 344px -- NIKCADE began 24px off
+     the left, squeezed from 38px to 26px, and the coin chip ran off the right
+     (at 360 and 375 even with no coins at all). Above 760 the strip was
+     centred and the chips pinned over its right end, so a five-figure balance
+     ran them onto the strip at 761-815 and, names on, at 1151-1235. [η] lays
+     the real row out at each width.
+
+     Above 760: three columns, 1fr auto 1fr. Whenever the sides fit, the strip
+     is dead centre exactly as before and NIKCADE and the chips keep their
+     places; when the chips need more than their half, the strip gives way to
+     the left instead of going under them. */
+  @media (min-width:761px){
+    #menuChrome{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; }
+    #menuChrome .homeBtn{ position:static; transform:none; grid-column:1; justify-self:start; }
+    #menuChrome .homeBtn:active{ transform:translateY(3px); }
+    #menuChrome .lobbyTabs{ grid-column:2; }
+    #menuChrome .lobbyCurrency{ position:static; grid-column:3; justify-self:end; margin-right:calc(22px - var(--gut)); }
+  }
+  /* Phones: nothing in the row may be squeezed. At 520 and below the pills and
+     gaps tighten (a six-figure balance ran off at 480), and at 413 and below
+     the crown chip gives up its place -- the lobby's name card carries the
+     same count. */
+  @media (max-width:760px){
+    #menuChrome .homeBtn, #menuChrome .lobbyTabs, #menuChrome .lobbyCurrency{ flex-shrink:0; }
+  }
+  @media (max-width:520px){
+    #menuChrome .homeBtn{ width:34px; margin-right:4px; }
+    #menuChrome .lobbyTabs{ gap:1px; padding:5px 4px; }
+    #menuChrome .tabPill{ width:31px; min-width:31px; }
+    #menuChrome .lobbyCurrency{ margin-left:4px; }
+  }
+  @media (max-width:413px){
+    #menuChrome .crownChip{ display:none; }
   }
 
   /* ---- SYSTEM 2 of 2 --------------------------------------------------
@@ -279,6 +319,17 @@
     border-radius:50%; background:var(--teal); border:2.5px solid var(--line);
     color:var(--line); font-size:0.74rem; font-weight:700;
     display:flex; align-items:center; justify-content:center; pointer-events:none;
+  }
+  /* The locker on a phone: smaller pill, tighter footer, smaller name. These
+     sat in the phone block near the top of this file, BEFORE the card rules
+     below them in source order -- same selectors, so the desktop values won
+     at every width and at 360px 47 of 79 names ellipsised. They live after
+     the component now. */
+  @media (max-width:760px){
+    .uiCardMedia > .rarityPill{ font-size:0.46rem; padding:1px 5px; max-width:calc(100% - 12px);
+                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .uiCardFoot{ padding:5px 6px; }
+    .uiCardName{ font-size:0.68rem; }
   }
 
   /* ======================================================================
@@ -528,12 +579,42 @@
   }
   /* A floor wide enough for the label it has, so a press cannot resize it. */
   #spinBtn{ min-width:150px; }
-  /* Belt and braces: the pin, the hub and the labels sit OUTSIDE the rotating
-     element, and this says so rather than leaving it to the markup's order. */
-  .wheelPin, .wheelHub, .wheelLabels{ transform-origin:center; }
+  /* The pin and the hub sit OUTSIDE the rotor and are never transformed. The
+     names are INSIDE it: they used to sit outside it too, which is exactly why
+     they stood still while the wedges spun. Check [γ] holds all of this. */
   .wheelLabels{ pointer-events:none; }
   @media (prefers-reduced-motion: reduce){
-    .wheel{ transition:none !important; }
+    .wheelRotor{ transition:none !important; }
+    .wheelWin.on{ animation:none; opacity:0.2; }
+  }
+  /* If the column still cannot fit, scroll from the top rather than centre
+     it off both ends: a centred column taller than the window puts the title
+     above y=0, where no scrollbar can reach it. */
+  #daily{ justify-content:safe center; }
+  /* A SHORT WINDOW (a phone held upright is 640-740px tall). The full prize
+     card is 183px of a 640px window, which left the wheel about 100px -- so
+     here the card lies on its side (swatch | tier and name | EQUIP), its slot
+     shrinks to match, the column closes up, and the wheel gets the room back.
+     The slot is still a FIXED height, so [;] and [,] hold here too: nothing
+     moves when the card arrives. */
+  @media (max-height:740px){
+    #daily{ gap:10px; }
+    #daily .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100vh - 406px))); }
+    #spinResult{ height:84px; min-height:84px; }
+    #spinResult .prize:has(.orb){
+      display:grid; grid-template-columns:auto auto auto; column-gap:12px; row-gap:3px;
+      align-items:center; padding:8px 12px 8px 10px;
+    }
+    #spinResult .prize .orb{ grid-row:1 / span 2; width:44px; height:44px; }
+    #spinResult .prize .rlab{ grid-column:2; grid-row:1; justify-self:start; align-self:end; }
+    #spinResult .prize .pname{ grid-column:2; grid-row:2; text-align:left; align-self:start; }
+    #spinResult .prize .btn{ grid-column:3; grid-row:1 / span 2; }
+  }
+  @supports (height:100dvh){
+    .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100dvh - 542px))); }
+    @media (max-height:740px){
+      #daily .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100dvh - 406px))); }
+    }
   }
 
   /* ======================================================================
@@ -828,7 +909,6 @@
     .bootRing{ animation-duration:2.4s; }
     .bootBean{ animation:none; }
     .bootMeter > i{ transition:none; }
-    #mlCount.pulse > span{ animation:none; }
   }
 
   /* ======================================================================
@@ -893,6 +973,12 @@
   /* Scale and opacity only -- nothing that changes the box, so no neighbour
      moves when it fires. */
   #mlCount.pulse > span{ animation:mlPop .42s cubic-bezier(.22,.9,.3,1); }
+  /* After the pulse, not before it: in the reduced-motion block above this
+     rule it lost to the unconditional animation on every machine, so a player
+     who asked for less motion still got a scaling number every second. */
+  @media (prefers-reduced-motion: reduce){
+    #mlCount.pulse > span{ animation:none; }
+  }
   @keyframes mlPop{
     from{ transform:scale(1.28); opacity:0.55; }
     to  { transform:scale(1);    opacity:1; }

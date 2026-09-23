@@ -32,6 +32,13 @@
   // While it is running the pivot follows on a much slacker weight, which turns
   // a cut across the whole course into a glide.
   let camSwitchT = 0;
+  // Set when the racer the camera is on is TELEPORTED rather than moved: a
+  // respawn puts them up to a whole section back in one frame. Followed at
+  // FOLLOW_XZ that is eight to eleven frames of the lens hanging where the
+  // fall happened with the racer behind it -- on Super Slide, under the
+  // course. A teleport is a cut, so the next syncCamera snaps. Consumed there.
+  let camCutPending = false;
+  function cutCameraTo(r){ if(r && typeof camSubject === 'function' && camSubject() === r) camCutPending = true; }
   const _camRay = new THREE.Raycaster();
   // Scratch. The camera runs every frame; allocating here would hand the GC a
   // steady drip for the whole race.
@@ -248,6 +255,7 @@
       dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return;
     }
     dt = dt||0.016;
+    if(camCutPending){ camCutPending = false; snap = true; }
     // the profile stage dims these; put them back for play
     dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
 
@@ -330,7 +338,10 @@
       _camRay.set(_camFrom, _camBack);
       _camRay.far = radius;
       const hitList = _camRay.intersectObjects(camBlockers, false);
-      if(hitList.length) reach = clamp(radius - hitList[0].distance - CAM.BLOCK_PAD, CAM.BLOCK_MIN, radius);
+      // The LAST hit, the one nearest the pivot. hitList[0] is the one nearest
+      // the far end, and with two walls on the boom stopping short of that one
+      // left the lens between them, looking at the back of the inner one.
+      if(hitList.length) reach = clamp(radius - hitList[hitList.length-1].distance - CAM.BLOCK_PAD, CAM.BLOCK_MIN, radius);
     }
     if(camReach === 0 || snap) camReach = reach;
     else camReach += (reach - camReach) * (1 - Math.exp(-(reach < camReach ? CAM.BLOCK_IN : CAM.BLOCK_OUT)*dt));
@@ -342,7 +353,7 @@
     chaseAim(camPos.x, camPos.y, camPos.z, look.yaw + pathAngle(p.y), _camAim);
     camera.lookAt(_camAim.x, _camAim.y, _camAim.z);
     _camPivot.set(camPos.x, camPos.y, camPos.z);
-    updateOcclusion(_camPivot);
+    updateOcclusion(_camPivot, p);
     const lightAt = toWorld(p.x, p.y, 0);
     dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
     dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);
