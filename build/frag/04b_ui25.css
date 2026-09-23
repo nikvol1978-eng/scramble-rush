@@ -541,12 +541,42 @@
   }
   /* A floor wide enough for the label it has, so a press cannot resize it. */
   #spinBtn{ min-width:150px; }
-  /* Belt and braces: the pin, the hub and the labels sit OUTSIDE the rotating
-     element, and this says so rather than leaving it to the markup's order. */
-  .wheelPin, .wheelHub, .wheelLabels{ transform-origin:center; }
+  /* The pin and the hub sit OUTSIDE the rotor and are never transformed. The
+     names are INSIDE it: they used to sit outside it too, which is exactly why
+     they stood still while the wedges spun. Check [γ] holds all of this. */
   .wheelLabels{ pointer-events:none; }
   @media (prefers-reduced-motion: reduce){
-    .wheel{ transition:none !important; }
+    .wheelRotor{ transition:none !important; }
+    .wheelWin.on{ animation:none; opacity:0.2; }
+  }
+  /* If the column still cannot fit, scroll from the top rather than centre
+     it off both ends: a centred column taller than the window puts the title
+     above y=0, where no scrollbar can reach it. */
+  #daily{ justify-content:safe center; }
+  /* A SHORT WINDOW (a phone held upright is 640-740px tall). The full prize
+     card is 183px of a 640px window, which left the wheel about 100px -- so
+     here the card lies on its side (swatch | tier and name | EQUIP), its slot
+     shrinks to match, the column closes up, and the wheel gets the room back.
+     The slot is still a FIXED height, so [;] and [,] hold here too: nothing
+     moves when the card arrives. */
+  @media (max-height:740px){
+    #daily{ gap:10px; }
+    #daily .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100vh - 406px))); }
+    #spinResult{ height:84px; min-height:84px; }
+    #spinResult .prize:has(.orb){
+      display:grid; grid-template-columns:auto auto auto; column-gap:12px; row-gap:3px;
+      align-items:center; padding:8px 12px 8px 10px;
+    }
+    #spinResult .prize .orb{ grid-row:1 / span 2; width:44px; height:44px; }
+    #spinResult .prize .rlab{ grid-column:2; grid-row:1; justify-self:start; align-self:end; }
+    #spinResult .prize .pname{ grid-column:2; grid-row:2; text-align:left; align-self:start; }
+    #spinResult .prize .btn{ grid-column:3; grid-row:1 / span 2; }
+  }
+  @supports (height:100dvh){
+    .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100dvh - 542px))); }
+    @media (max-height:740px){
+      #daily .wheelWrap{ --ws:min(256px, 72vw, max(196px, calc(100dvh - 406px))); }
+    }
   }
 
   /* ======================================================================

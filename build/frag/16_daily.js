@@ -103,18 +103,45 @@
                                         : 'Next spin in ' + fmtWait(spinReadyIn());
   }
 
+  // Light ink gets a dark shadow and dark ink a light one, so every name
+  // lifts off its wedge whichever way round its colours are.
+  function lightInk(hex){
+    const n = parseInt(String(hex).slice(1), 16);
+    return ((n>>16 & 255)*299 + (n>>8 & 255)*587 + (n & 255)*114) / 1000 > 150;
+  }
+
+  // ONE ROTATING BODY. The wedges, the lines between them and the names are
+  // all built INSIDE #wheelRotor, and #wheelRotor is the only thing doSpin
+  // turns. The names used to be built into a sibling of the wedge disc and
+  // only the disc was rotated, so for the whole spin every name sat still
+  // while the colours slid underneath it, and the wheel stopped with each
+  // name over the wrong wedge. Carrying them in one parent makes that
+  // impossible; animating two elements with copied timings would only make
+  // it unlikely.
   function buildWheel(){
-    const wheel = $('wheel');
+    const rotor = $('wheelRotor');
     const seg = 360/WHEEL.length;
     // conic-gradient starts at 12 o'clock and runs clockwise, same as our maths
     const stops = WHEEL.map((r,i)=>`${RARITY[r].label} ${i*seg}deg ${(i+1)*seg}deg`).join(',');
-    wheel.style.background = `conic-gradient(${stops})`;
-    wheel.style.transition = 'none';
-    wheel.style.transform = 'rotate(0deg)';
+    $('wheel').style.background = `conic-gradient(${stops})`;
+    $('wheelSeps').innerHTML = WHEEL.map((r,i)=>`<i class="wsep" style="--a:${i*seg}deg"></i>`).join('');
+    // Each name at the middle of its own wedge, in the rotor's frame, so it
+    // turns with that wedge and reads level when the wedge is under the pin.
     $('wheelLabels').innerHTML = WHEEL.map((r,i)=>{
       const a = i*seg + seg/2;
-      return `<span class="wlab" style="transform:rotate(${a}deg) translateY(-96px) rotate(${-a}deg);color:${RARITY[r].text}">${RARITY[r].name}</span>`;
+      return `<span class="wlab ${lightInk(RARITY[r].text) ? 'lt' : 'dk'}" style="--a:${a}deg;color:${RARITY[r].text}">${RARITY[r].name}</span>`;
     }).join('');
+    const win = $('wheelWin');
+    win.classList.remove('on', 'still');
+    win.style.background = '';
+    rotor.style.transition = 'none';
+    rotor.style.transform = 'rotate(0deg)';
+    // Commit the reset before anything can start a spin. Without a style
+    // flush here the next transition runs from whatever was last computed --
+    // a previous spin's resting angle, or nothing at all when the screen was
+    // display:none a moment ago, in which case the wheel does not spin, it
+    // jumps.
+    void rotor.offsetWidth;
     $('spinResult').innerHTML = '';
     syncSpinControls();
     spinning = false;
@@ -134,12 +161,20 @@
     const jitter = rand(-seg*0.32, seg*0.32);
     const target = 360*5 - (idx*seg + seg/2 + jitter);
 
-    const wheel = $('wheel');
+    const rotor = $('wheelRotor');
     // ONLY THE WHEEL ANIMATES. Everything around it -- title, subtitle, status,
-    // buttons, the result slot -- holds its box for the whole spin.
+    // buttons, the result slot -- holds its box for the whole spin. And the
+    // wheel is ONE element: the rotor carries the wedges and their names
+    // together, and the pointer and hub are not on it (see buildWheel).
+    // CONSTANT DECELERATION, which is what friction does to a real wheel:
+    // this bezier is exactly 1-(1-t)^2. The old curve launched at about seven
+    // turns a second and had only 25 degrees left with 30% of the time to
+    // run, so the last 1.2s was a crawl too small to see. This one is still
+    // visibly slowing at the end -- 72 degrees left at 80%, 18 at 90% -- so
+    // the last wedges tick past the pointer where the player can watch them.
     const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    wheel.style.transition = still ? 'none' : 'transform 4.1s cubic-bezier(0.12,0.72,0.10,1)';
-    wheel.style.transform = `rotate(${target}deg)`;
+    rotor.style.transition = still ? 'none' : 'transform 4.1s cubic-bezier(0.333,0.667,0.667,1)';
+    rotor.style.transform = `rotate(${target}deg)`;
     SFX.click();
 
     // bank the spin immediately, so a reload mid-animation cannot re-roll it
@@ -148,6 +183,15 @@
     await saveProfile();
 
     await new Promise(r => setTimeout(r, still ? 200 : 4250));
+
+    // The landing: light the wedge it stopped on. It lives on the rotor, so
+    // it is on that wedge by construction. A short pulse that settles to a
+    // faint glow; with reduced motion, just the glow.
+    const win = $('wheelWin');
+    win.style.background =
+      `conic-gradient(from ${idx*seg}deg, rgba(255,255,255,0.92) 0deg ${seg}deg, transparent ${seg}deg 360deg)`;
+    win.classList.toggle('still', !!still);
+    win.classList.add('on');
 
     if(prize.skin){
       const r = RARITY[prize.skin.rarity];

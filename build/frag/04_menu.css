@@ -159,7 +159,9 @@
     content:'\1F512';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:1.5rem;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.6));
   }
-  .shopCard .rlab{
+  /* the spin's prize card wears the same tier pill as the shop; it had no
+     rule of its own and rendered as a bare highlighted word */
+  .shopCard .rlab, #spinResult .rlab{
     font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;
     padding:3px 8px;border-radius:999px;border:2px solid var(--line);align-self:center;
   }
@@ -197,27 +199,76 @@
   .dailyBtn.ready{background:var(--gold);animation:dailyNudge 1.6s ease-in-out infinite;}
   @keyframes dailyNudge{0%,88%,100%{transform:none}92%{transform:rotate(-7deg)}96%{transform:rotate(7deg)}}
 
-  .wheelWrap{position:relative;width:232px;height:232px;margin:4px 0 2px;}
-  .wheel{
-    position:absolute;inset:0;border-radius:50%;border:5px solid var(--line);
-    box-shadow:0 6px 0 var(--line), inset 0 0 0 4px rgba(255,255,255,0.22);
+  /* THE WHEEL. --ws is its diameter and every part of it is a fraction of
+     that one number -- the hub, the pointer, the names' radius and their type
+     size -- so the wheel scales as one object instead of a 232px drawing whose
+     labels were placed in pixels. It stays inside a 360px phone with room for
+     its shadow, and it may not be squeezed by the column around it (it used to
+     be: at 360x640 the flex column shrank it to 232x114, an oval). Instead it
+     gives up size to the window's HEIGHT: the rest of the column is about
+     542px tall (title, subtitle, the prize slot, status, buttons, gaps and
+     the chrome row), so the wheel takes what is left, down to a floor. The
+     short-window layout in 04b_ui25.css re-derives this with its own number. */
+  .wheelWrap{
+    --ws:min(256px, 72vw, max(196px, calc(100vh - 542px)));
+    position:relative;flex:0 0 auto;width:var(--ws);height:var(--ws);margin:14px 0 0;
+    /* the drop shadow belongs to the FIXED frame: on the turning disc an
+       offset shadow turned with it and swung round the wheel as it spun */
+    border-radius:50%;box-shadow:0 6px 0 var(--line), 0 16px 30px rgba(10,4,30,0.45);
   }
+  /* the one thing that turns -- see #wheelRotor in the markup */
+  .wheelRotor{position:absolute;inset:0;border-radius:50%;}
+  .wheel{
+    position:absolute;inset:0;border-radius:50%;border:6px solid var(--line);overflow:hidden;
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.26);
+  }
+  /* thin dark lines on the wedge boundaries, centre to rim */
+  .wheelSeps{position:absolute;inset:0;}
+  .wsep{
+    position:absolute;left:50%;top:0;width:2px;height:50%;margin-left:-1px;
+    transform-origin:50% 100%;transform:rotate(var(--a));background:rgba(26,16,51,0.62);
+  }
+  /* the winning wedge, lit once the wheel stops (conic set by doSpin) */
+  .wheelWin{position:absolute;inset:0;border-radius:50%;opacity:0;pointer-events:none;}
+  .wheelWin.on{animation:wheelWin 1.3s ease-out forwards;}
+  .wheelWin.on.still{animation:none;opacity:0.2;}
+  @keyframes wheelWin{0%{opacity:0}18%{opacity:0.55}42%{opacity:0.12}64%{opacity:0.42}100%{opacity:0.2}}
   .wheelLabels{position:absolute;inset:0;pointer-events:none;}
+  /* A name sits in the middle of its wedge, tangential -- so the winner reads
+     level under the pointer -- centred on --ws*0.375 from the middle, which
+     keeps LEGENDARY and SUPER RARE clear of both boundaries and the rim. */
   .wlab{
-    position:absolute;left:50%;top:50%;margin-left:-42px;width:84px;text-align:center;
-    font-weight:700;font-size:0.58rem;letter-spacing:0.4px;text-transform:uppercase;
-    text-shadow:0 1px 2px rgba(0,0,0,0.35);
+    position:absolute;left:50%;top:50%;width:max-content;white-space:nowrap;
+    transform-origin:0 0;
+    transform:rotate(var(--a)) translateY(calc(var(--ws) * -0.375)) translate(-50%, -50%);
+    font-family:'Fredoka',sans-serif;font-weight:700;font-size:calc(var(--ws) * 0.042);
+    line-height:1;letter-spacing:0.3px;text-transform:uppercase;
+  }
+  .wlab.lt{text-shadow:0 1px 2px rgba(10,4,30,0.55);}
+  .wlab.dk{text-shadow:0 1px 0 rgba(255,255,255,0.4);}
+  /* fixed lighting over the disc: lit from above, shaded at the foot */
+  .wheelGloss{
+    position:absolute;inset:6px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.2), rgba(255,255,255,0) 46%);
+    box-shadow:inset 0 -10px 22px rgba(10,4,30,0.26);
   }
   .wheelHub{
-    position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
-    border-radius:50%;background:var(--cream);border:4px solid var(--line);
-    box-shadow:0 3px 0 var(--line);
+    position:absolute;inset:0;margin:auto;width:calc(var(--ws) * 0.19);height:calc(var(--ws) * 0.19);
+    border-radius:50%;border:4px solid var(--line);
+    background:radial-gradient(circle at 36% 30%, #ffffff 0, var(--cream) 42%, #eadcc3 100%);
+    box-shadow:0 3px 0 var(--line), 0 6px 12px rgba(10,4,30,0.35);
+  }
+  .wheelHub::after{
+    content:'';position:absolute;inset:22%;border-radius:50%;
+    border:2px solid rgba(26,16,51,0.16);
   }
   .wheelPin{
-    position:absolute;left:50%;top:-14px;margin-left:-12px;width:24px;height:28px;z-index:3;
-    background:var(--gold);border:3px solid var(--line);
-    clip-path:polygon(50% 100%, 0 0, 100% 0);
+    position:absolute;left:50%;top:calc(var(--ws) * -0.085);z-index:3;overflow:visible;
+    width:calc(var(--ws) * 0.14);height:calc(var(--ws) * 0.168);margin-left:calc(var(--ws) * -0.07);
+    filter:drop-shadow(0 3px 0 var(--line));
   }
+  .wheelPin path{fill:var(--gold);stroke:var(--line);stroke-width:3.5;stroke-linejoin:round;}
+  .wheelPin circle{fill:var(--cream);stroke:var(--line);stroke-width:2.5;}
   #spinResult{min-height:96px;display:flex;align-items:center;justify-content:center;}
   #spinResult .prize{
     display:flex;flex-direction:column;align-items:center;gap:5px;

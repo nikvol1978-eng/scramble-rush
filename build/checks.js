@@ -6303,6 +6303,324 @@
   }
 
 
+  // ---- [γ] one physical wheel: the words turn WITH the wedges -----------
+  // The defect: the coloured wedges spun and the rarity names did not. The
+  // names lived in #wheelLabels, a SIBLING of #wheel, and only #wheel was
+  // given the rotate transform -- so for 4.1 seconds "LEGENDARY" sat still
+  // while grey, green and gold slid underneath it, and the wheel landed with
+  // every word over the wrong colour. Neither [;] nor [,] could see it: [;]
+  // measures the controls around the wheel and [,] spins with reduced motion,
+  // where there is no "during" at all.
+  //
+  // So this one spins the REAL wheel for real -- the SPIN button, the real
+  // doSpin(), the real 4.1s transition, real time awaited -- and photographs
+  // the geometry while it turns. It asks the questions a player would:
+  //   - is there ONE rotating body, carrying the wedges and their names both?
+  //     (Two elements animated with copied timings would pass a single
+  //     sample and drift apart on a slow frame; one parent cannot.)
+  //   - does every name stay on its own wedge at every moment of the spin?
+  //   - do the pointer and the hub stay put, because they are not on it?
+  //   - does each name sit INSIDE its wedge, clear of the hub and the rim?
+  //   - when it stops, is the wedge under the pointer the tier you were
+  //     actually given, and is the name nearest the pointer that tier's name?
+  //   - and the same again with reduced motion, where it lands at once.
+  // Everything is measured from rendered boxes about the wheel's centre, so
+  // it holds whatever the markup is called; nothing here trusts a class name
+  // to mean "rotates" or "does not".
+  async function checkWheelOneBody(){
+    // geo: where the names sit on the wheel. Reported after the spin's own
+    // findings, so a layout nit can never crowd the headline out of the
+    // eight-line detail.
+    const bad = [], notes = [], geo = [];
+    const wasLastSpin = stats.lastSpin, wasOwned = (stats.owned || []).slice();
+    const snap = uiSnap();
+    const realMM = window.matchMedia;
+    const wait = (ms)=> new Promise(r => setTimeout(r, ms));
+    const seg = 360 / WHEEL.length;
+    let inflight = null;
+    const W = ()=> document.querySelector('#daily .wheelWrap');
+    const centre = ()=>{ const r = W().getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; };
+    // clockwise from 12 o'clock, which is the convention doSpin and the
+    // conic-gradient both use
+    const ang = (x, y, c)=> Math.atan2(x - c[0], c[1] - y) * 180 / Math.PI;
+    const norm = (d)=> ((d % 360) + 540) % 360 - 180;                 // (-180, 180]
+    const rotOf = (el)=>{ const t = getComputedStyle(el).transform;
+      if(!t || t === 'none') return 0;
+      const m = new DOMMatrixReadOnly(t); return Math.atan2(m.b, m.a) * 180 / Math.PI; };
+    // The wedges' effective rotation: every rotation between the disc and
+    // the fixed frame, composed. Structure-agnostic on purpose.
+    const discRot = ()=>{ let a = 0; const w = W();
+      for(let e = $('wheel'); e && e !== w; e = e.parentElement) a += rotOf(e);
+      return a; };
+    const labels = ()=> [...W().querySelectorAll('.wlab')];
+    const mid = (el)=>{ const r = el.getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; };
+    const live = ()=> [...document.querySelectorAll('.screen')]
+      .filter(e => !e.classList.contains('hidden') && e.offsetParent !== null).map(e => e.id);
+    const nameOf = (r)=> RARITY[r].name.toLowerCase();
+    const textOf = (el)=> el.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+    // Anything in #daily other than #spinStatus that is carrying the state.
+    const strayState = ()=>{ const d = $('daily').cloneNode(true);
+      const s = d.querySelector('#spinStatus'); if(s) s.remove();
+      const m = d.textContent.match(/spinning|next spin|back in/i); return m ? m[0] : ''; };
+    // The four corners of an element's border box, transformed, in client
+    // space: a zero-size marker at each corner rides every transform the
+    // element and its ancestors carry, which getBoundingClientRect alone
+    // (an axis-aligned box around a rotated one) does not report.
+    const corners = (el)=> [[0,0],[1,0],[1,1],[0,1]].map(([x,y])=>{
+      const m = document.createElement('i');
+      m.style.cssText = 'position:absolute;display:block;width:0;height:0;margin:0;padding:0;border:0;'
+                      + 'left:' + (x*100) + '%;top:' + (y*100) + '%';
+      el.appendChild(m); const r = m.getBoundingClientRect(); m.remove();
+      return [r.left, r.top]; });
+    const fixedParts = ()=> ['.wheelPin', '.wheelHub'].map(q => W().querySelector(q));
+    const sample = (when)=>{
+      const c = centre();
+      return { when, c, disc: discRot(),
+               labs: labels().map(l => { const p = mid(l); return ang(p[0], p[1], c); }),
+               tf: [...W().querySelectorAll('*')].map(e => getComputedStyle(e).transform),
+               fixed: fixedParts().map(e => { if(!e) return 'missing';
+                 const r = e.getBoundingClientRect();
+                 return [r.left, r.top, r.width, r.height].map(v => Math.round(v*2)/2).join(',')
+                        + ' ' + getComputedStyle(e).transform; }),
+               btn: $('spinBtn').textContent, status: $('spinStatus').textContent,
+               stray: strayState() };
+    };
+    // Where it stopped: the rotor-frame angle under the pointer gives the
+    // wedge, and so the tier, a player sees the pointer on.
+    const landing = (s)=>{
+      const pin = W().querySelector('.wheelPin');
+      const pinA = pin ? ang(mid(pin)[0], mid(pin)[1], s.c) : 0;
+      const at = ((pinA - s.disc) % 360 + 360) % 360;
+      const w = Math.floor(at / seg) % WHEEL.length;
+      const edge = Math.min(at - w*seg, (w+1)*seg - at);
+      // the label a player reads at the pointer
+      let near = -1, best = 1e9;
+      s.labs.forEach((a, i) => { const d = Math.abs(norm(a - pinA)); if(d < best){ best = d; near = i; } });
+      return { w, edge, near, pinA };
+    };
+    // The tier actually awarded, read from what the player now owns rather
+    // than from anything doSpin says about itself.
+    const awarded = (before)=>{
+      const got = (stats.owned || []).filter(id => before.indexOf(id) < 0);
+      if(got.length !== 1) return null;
+      const sk = SKINS.find(s => s.id === got[0]); return sk ? sk.rarity : null;
+    };
+    const judgeLanding = (tag, s, owned0)=>{
+      const tier = awarded(owned0);
+      if(!tier){ bad.push(tag + ': the spin awarded no single skin to compare against'); return; }
+      const L = landing(s);
+      if(Math.abs(norm(L.pinA)) > 1.5)
+        bad.push(tag + ': the pointer is at ' + L.pinA.toFixed(1) + ' deg, not straight up');
+      if(WHEEL[L.w] !== tier)
+        bad.push(tag + ': awarded ' + tier + ' but the pointer is on wedge ' + L.w + ' (' + WHEEL[L.w] + ')');
+      // doSpin's jitter keeps the pointer within 0.32 of a wedge's half-width
+      // of its middle; a stop on a boundary is a stop nobody can read
+      if(L.edge < seg * 0.15)
+        bad.push(tag + ': stopped ' + L.edge.toFixed(1) + ' deg from a wedge boundary');
+      const lab = labels()[L.near];
+      if(!lab || textOf(lab) !== nameOf(tier))
+        bad.push(tag + ': the name nearest the pointer reads "' + (lab ? lab.textContent : 'nothing')
+                 + '", the prize is ' + RARITY[tier].name);
+      const pill = $('spinResult').querySelector('.rlab');
+      if(pill && textOf(pill) !== nameOf(tier))
+        bad.push(tag + ': the prize card says ' + pill.textContent + ' for a ' + tier);
+      return { tier, L };
+    };
+    try{
+      state = 'menu';
+      stats.owned = [];                          // so every spin is a skin, never the 600-coin fallback
+
+      // ---- (6) the way in and out, from every tab ------------------------
+      for(const tab of ['play', 'locker', 'badges', 'shop', 'pass', 'settings']){
+        openLobbyTab(tab);
+        $('dailyBtn').click();
+        let up = live();
+        if(up.length !== 1 || up[0] !== 'daily')
+          bad.push('DAILY from ' + tab + ' left [' + up.join(', ') + '] live');
+        $('dailyBackBtn').click();
+        up = live();
+        if(up.length !== 1 || up[0] !== 'home')
+          bad.push('BACK from the wheel (opened from ' + tab + ') left [' + up.join(', ') + '] live');
+      }
+
+      // ---- the wheel at rest ------------------------------------------
+      stats.lastSpin = 0;                        // a spin is due
+      $('dailyBtn').click();
+      await wait(60);                            // a frame, as a player's click would have
+      const w0 = W();
+      if(!w0){ bad.push('no .wheelWrap on the daily screen'); throw new Error('no wheel'); }
+      const labs0 = labels();
+      if(labs0.length !== WHEEL.length)
+        bad.push(labs0.length + ' labels for ' + WHEEL.length + ' wedges');
+      const rest = sample('rest');
+      if(Math.abs(norm(rest.disc)) > 0.5) bad.push('at rest the wedges are turned ' + rest.disc.toFixed(1) + ' deg');
+      if(rest.btn !== 'SPIN') bad.push('at rest the button reads "' + rest.btn + '"');
+      const pin = w0.querySelector('.wheelPin'), hub = w0.querySelector('.wheelHub');
+      if(!pin) bad.push('no .wheelPin'); if(!hub) bad.push('no .wheelHub');
+      const hubR = hub ? hub.getBoundingClientRect().width / 2 : 0;
+      const rimR = $('wheel').clientWidth / 2;   // inside the disc's border
+      if(hub){ const h = mid(hub);
+        if(Math.hypot(h[0] - rest.c[0], h[1] - rest.c[1]) > 1) bad.push('the hub is off the centre of the wheel'); }
+
+      // ---- (3) every name inside its own wedge, clear of hub and rim ------
+      let worstIn = 1e9, worstOut = 1e9, worstAng = 1e9;
+      labs0.forEach((l, i) => {
+        const tier = WHEEL[i];
+        if(!tier) return;
+        if(textOf(l) !== nameOf(tier)) geo.push('label ' + i + ' reads "' + l.textContent + '" on a ' + tier + ' wedge');
+        const mid0 = i*seg + seg/2;
+        if(Math.abs(norm(rest.labs[i] - mid0)) > seg/2)
+          geo.push(RARITY[tier].name + ' (label ' + i + ') is centred at ' + rest.labs[i].toFixed(1)
+                   + ' deg, outside its wedge ' + (i*seg) + '..' + ((i+1)*seg));
+        if(l.scrollWidth > l.clientWidth + 1 || l.scrollHeight > l.clientHeight + 1)
+          geo.push(RARITY[tier].name + ' overflows its own box');
+        for(const [x, y] of corners(l)){
+          const r = Math.hypot(x - rest.c[0], y - rest.c[1]);
+          const off = Math.abs(norm(ang(x, y, rest.c) - mid0));
+          worstIn = Math.min(worstIn, r - hubR); worstOut = Math.min(worstOut, rimR - r);
+          worstAng = Math.min(worstAng, seg/2 - off);
+          if(r < hubR + 2){ geo.push(RARITY[tier].name + ' runs under the hub'); break; }
+          if(r > rimR - 2){ geo.push(RARITY[tier].name + ' runs into the rim'); break; }
+          if(off > seg/2 - 1){ geo.push(RARITY[tier].name + ' (label ' + i + ') crosses into the next wedge by '
+                                         + (off - seg/2 + 1).toFixed(1) + ' deg'); break; }
+        }
+      });
+
+      // ---- (1)(2)(7) the real spin, watched while it turns ---------------
+      const owned0 = stats.owned.slice();
+      const t0 = performance.now();
+      $('spinBtn').click();                      // the button a player presses; it calls doSpin()
+      const samples = [rest];
+      for(const at of [120, 450, 900, 1500, 2200, 3000, 3800]){
+        await wait(Math.max(0, at - (performance.now() - t0)));
+        samples.push(sample('t+' + Math.round(performance.now() - t0) + 'ms'));
+      }
+      const deadline = performance.now() + 9000;
+      while(spinning && performance.now() < deadline) await wait(50);
+      if(spinning) bad.push('the spin never settled');
+      await wait(60);
+      const fin = sample('landed');
+      samples.push(fin);
+      const during = samples.slice(1, -1);
+
+      // it has to have actually turned, or everything below is vacuous
+      const distinct = new Set(during.map(s => Math.round(norm(s.disc)))).size;
+      if(distinct < 4) bad.push('the wheel barely turned during the spin (' + distinct + ' distinct angles in '
+                                + during.length + ' samples)');
+
+      // (1) every name holds its rest angle in the wedges' frame, every sample
+      let drift = 0, driftAt = '';
+      for(const s of samples){
+        s.labs.forEach((a, i) => { const d = Math.abs(norm(a - s.disc - rest.labs[i]));
+          if(d > drift){ drift = d; driftAt = RARITY[WHEEL[i]].name + ' at ' + s.when; } });
+      }
+      if(drift > 1.5) bad.push('the names do not turn with the wedges: ' + driftAt + ' was '
+                               + drift.toFixed(1) + ' deg off its wedge');
+
+      // ONE rotating body, carrying the disc and every name, and not the
+      // pointer or the hub
+      const els = [...W().querySelectorAll('*')];
+      const movers = els.filter((e, k) => samples.some(s => s.tf[k] !== rest.tf[k]));
+      const desc = (e)=> e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + e.className;
+      if(movers.length !== 1){
+        bad.push(movers.length + ' elements rotate [' + movers.map(desc).join(', ') + '], wanted exactly one');
+      }
+      const rotor = movers[0];
+      if(rotor){
+        if(!rotor.contains($('wheel'))) bad.push(desc(rotor) + ' rotates but does not carry the wedges');
+        const orphans = labels().filter(l => !rotor.contains(l));
+        if(orphans.length) bad.push(orphans.length + ' of ' + labels().length + ' names are not on the rotating '
+                                    + desc(rotor) + ' (e.g. ' + orphans[0].textContent + ')');
+        for(const f of fixedParts()) if(f && rotor.contains(f)) bad.push(desc(f) + ' is ON the rotating ' + desc(rotor));
+      }
+
+      // (2) the pointer and the hub never moved
+      for(const s of samples){
+        s.fixed.forEach((f, k) => { if(f !== rest.fixed[k])
+          bad.push(['pointer', 'hub'][k] + ' moved at ' + s.when + ': ' + rest.fixed[k] + ' -> ' + f); });
+      }
+
+      // (7) the button says SPIN throughout; the state lives in #spinStatus
+      for(const s of samples){
+        if(s.btn !== 'SPIN') bad.push('the button read "' + s.btn + '" at ' + s.when);
+        if(s.stray) bad.push('"' + s.stray + '" appeared outside #spinStatus at ' + s.when);
+      }
+      if(!/spinning/i.test(during[0].status)) bad.push('mid spin the status reads "' + during[0].status + '"');
+      if(!/next spin in/i.test(fin.status)) bad.push('after the spin the status reads "' + fin.status + '"');
+      if(!$('spinBtn').disabled) bad.push('a spent spin is still offered');
+
+      // (4) it landed on what it gave you
+      const got = judgeLanding('animated', fin, owned0);
+      if(got) notes.push('animated: ' + got.tier + ' on wedge ' + got.L.w + ', ' + got.L.edge.toFixed(1)
+                         + ' deg in from its edge');
+      notes.push(during.length + ' samples, ' + distinct + ' angles, names within ' + drift.toFixed(2) + ' deg');
+      notes.push('clearances: hub ' + worstIn.toFixed(1) + 'px, rim ' + worstOut.toFixed(1) + 'px, wedge '
+                 + worstAng.toFixed(1) + ' deg');
+
+      // ---- (5) reduced motion: lands at once, and just as right ----------
+      window.matchMedia = (q)=> /prefers-reduced-motion/.test(String(q))
+        ? { matches:true, media:String(q), onchange:null, addListener(){}, removeListener(){},
+            addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } }
+        : realMM.call(window, q);
+      // EVERY TIER, not whichever the seed rolls. Nothing is stubbed to do
+      // it: owning every skin OUTSIDE tier T leaves pickSpinPrize nothing to
+      // give but a T skin, whatever it rolls -- its own "slide to a tier that
+      // still has something" rule -- so the real doSpin has to find a T wedge
+      // for it. That walks the landing maths onto every rarity, including
+      // the one-wedge tiers.
+      const tiers = new Set(), skipped = [];
+      for(const T of RARITY_ORDER){
+        const n = T;
+        stats.lastSpin = 0;
+        stats.owned = SKINS.filter(s => s.rarity !== T).map(s => s.id);
+        if(!SKINS.some(s => s.rarity === T && !ownedSkins().has(s.id))){ skipped.push(T); continue; }
+        openDaily();
+        await wait(30);
+        const r0 = sample('rm rest');
+        const o0 = stats.owned.slice();
+        inflight = doSpin();
+        const now = sample('rm at once');
+        await inflight; inflight = null;
+        const end = sample('rm landed');
+        if(Math.abs(norm(now.disc - end.disc)) > 0.5)
+          bad.push('reduced motion, ' + n + ': still turning after the press (' + now.disc.toFixed(1) + ' -> '
+                   + end.disc.toFixed(1) + ' deg)');
+        for(const s of [now, end]) s.labs.forEach((a, i) => {
+          const d = Math.abs(norm(a - s.disc - r0.labs[i]));
+          if(d > 1.5) bad.push('reduced motion, ' + n + ': ' + RARITY[WHEEL[i]].name + ' is ' + d.toFixed(1)
+                               + ' deg off its wedge');
+        });
+        if(end.btn !== 'SPIN') bad.push('reduced motion, ' + n + ': the button reads "' + end.btn + '"');
+        if(end.stray) bad.push('reduced motion, ' + n + ': "' + end.stray + '" outside #spinStatus');
+        const g = judgeLanding('reduced motion, ' + n, end, o0);
+        if(g && g.tier !== T) bad.push('reduced motion, ' + n + ': forced ' + T + ' but was awarded ' + g.tier);
+        if(g) tiers.add(g.tier);
+      }
+      if(tiers.size + skipped.length !== RARITY_ORDER.length)
+        bad.push('reduced motion landed only on ' + [...tiers].join('/'));
+      notes.push('reduced motion: instant landings on ' + [...tiers].join('/')
+                 + (skipped.length ? ' (no unowned skin to force: ' + skipped.join('/') + ')' : ''));
+    } catch(e){
+      if(e && e.message !== 'no wheel') bad.push('threw: ' + (e && e.message));
+    } finally {
+      try{ if(inflight) await inflight; }catch(_){ /* already reported */ }
+      { const until = performance.now() + 9000;
+        while(spinning && performance.now() < until) await wait(50); }
+      window.matchMedia = realMM;
+      stats.lastSpin = wasLastSpin; stats.owned = wasOwned;
+      uiRestore(snap);
+      $('spinResult').innerHTML = '';
+      try{ buildWheel(); }catch(_){ /* best effort */ }
+      try{ closeDaily(); }catch(_){ /* best effort */ }
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+      try{ refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    bad.push(...geo);
+    return { name:'γ daily spin: one wheel -- the names turn with their wedges, pointer and hub stay put',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+  }
+
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7265,7 +7583,7 @@
       ['?',checkCharacterFace],[':',checkCharacterSole],
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
-      [',',checkSpinRowStill],['-',checkStartup],
+      [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
