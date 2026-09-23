@@ -6,7 +6,7 @@
 //
 //   REAL PREPARATION   the gates in 39_startup.js actually doing work --
 //                      waiting on the CDN, loading the profile, building the
-//                      racer, warming the skin cache, building Mode Select.
+//                      racer, warming the skin cache, readying the lobby.
 //   PRESENTATION FLOOR BOOT_MIN_MS, currently 5,000 ms from navigationStart.
 //                      Deliberate. The loader is held there even when the work
 //                      finished early, because a loading screen that flashes

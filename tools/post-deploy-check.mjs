@@ -93,12 +93,15 @@ async function main() {
     const resp = await page.goto(BASE + GAME_PATH, { waitUntil: 'domcontentloaded', timeout: 120000 });
     ok('authenticated game document', resp.status() === 200, `HTTP ${resp.status()} in ${Date.now() - t0}ms`);
 
+    // The game starts on the lobby. The loader has to be GONE as well: goHome()
+    // puts the lobby together behind it before the startup sequence runs, so
+    // "#home is visible" alone can be true while the loader still covers it.
     let booted = true;
     try {
-      await page.waitForFunction(`(()=>{const e=document.querySelector('#modeSelect');return !!e&&!e.classList.contains('hidden')})()`,
+      await page.waitForFunction(`(()=>{const e=document.querySelector('#home');return !document.getElementById('bootScreen')&&!!e&&!e.classList.contains('hidden')})()`,
         { timeout: 120000, polling: 500 });
     } catch { booted = false; }
-    ok('boots through to Mode Select', booted, booted ? 'yes' : 'never reached #modeSelect');
+    ok('boots through to the lobby', booted, booted ? 'yes' : 'never reached #home with the loader gone');
 
     const page_ = await page.evaluate(() => ({
       io: typeof window.io,

@@ -147,12 +147,14 @@ async function oneRun(root, n) {
 
     const resp = await page.goto(BASE + GAME_PATH, { waitUntil: 'domcontentloaded', timeout: 120000 });
     ok('game document', resp.status() === 200, `HTTP ${resp.status()}`);
+    // The game starts on the lobby, and the loader has to be GONE too: the
+    // lobby is assembled behind it before the startup sequence runs.
     let booted = true;
     try {
-      await page.waitForFunction("(()=>{const e=document.querySelector('#modeSelect');return !!e&&!e.classList.contains('hidden')})()",
+      await page.waitForFunction("(()=>{const e=document.querySelector('#home');return !document.getElementById('bootScreen')&&!!e&&!e.classList.contains('hidden')})()",
         { timeout: 120000, polling: 250 });
     } catch { booted = false; }
-    ok('boots to Mode Select', booted, booted ? 'yes' : 'never reached #modeSelect');
+    ok('boots to the lobby', booted, booted ? 'yes' : 'never reached #home with the loader gone');
 
     // ---- what the page declares, and what the boot actually loaded ----------
     const declared = await page.evaluate(async () => {

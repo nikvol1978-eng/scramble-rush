@@ -9,7 +9,7 @@
 // that minified code does not have. That leaves exactly one thing the check
 // suite cannot see: whether MINIFICATION broke the file players download.
 // This is the gate for that, and it is deliberately small -- it asserts the
-// release boots all the way to Mode Select with nothing in the console,
+// release boots all the way to the lobby with nothing in the console,
 // which is the failure mode a minifier has.
 //
 // It also prints the startup breakdown, because the numbers are already there
@@ -95,15 +95,26 @@ try {
   await page.waitForFunction(() => !document.getElementById('bootScreen'),
     { timeout: 120000, polling: 250 });
 } catch {
-  problems.push('the loader never handed off to Mode Select');
+  problems.push('the loader never handed off to the lobby');
   ok = false;
 }
 
-const state = await page.evaluate(() => ({
-  modeSelect: !!document.querySelector('.modeBlurb'),
-  report: window.__srperf ? window.__srperf.report() : null,
-}));
-if (!state.modeSelect) { problems.push('Mode Select did not render (.modeBlurb missing)'); ok = false; }
+// THE LOBBY, AND ONLY THE LOBBY. The game starts on the home page; Mode Select
+// is one PLAY press away. The live-screen list is the whole answer -- a screen
+// left up behind the lobby is as much a failure as the lobby not arriving.
+const state = await page.evaluate(() => {
+  const play = document.getElementById('playBtn');
+  return {
+    live: [...document.querySelectorAll('.screen')]
+      .filter((e) => !e.classList.contains('hidden') && e.offsetParent !== null).map((e) => e.id),
+    play: !!play && play.getBoundingClientRect().height > 0,
+    report: window.__srperf ? window.__srperf.report() : null,
+  };
+});
+if (state.live.length !== 1 || state.live[0] !== 'home') {
+  problems.push(`booted to [${state.live.join(', ') || 'nothing'}], wanted [home]`); ok = false;
+}
+if (!state.play) { problems.push('the lobby has no visible PLAY button'); ok = false; }
 if (!state.report) { problems.push('window.__srperf missing — the instrumentation did not survive the build'); ok = false; }
 
 console.log(`release   ${file.replace(/^.*[\\/]/, '')}  ${html.length} bytes`);
