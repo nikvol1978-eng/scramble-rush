@@ -13,7 +13,8 @@
     "test:merge-gate": "node --test tools/ci/merge-gate.test.mjs",
     "perf:lighthouse": "node tools/prod-lighthouse.mjs",
     "perf:ttfb": "node tools/prod-ttfb.mjs",
-    "verify:production": "node tools/post-deploy-check.mjs"
+    "verify:production": "node tools/post-deploy-check.mjs",
+    "verify:fonts": "node tools/fonts-verify.mjs"
   },
   "devDependencies": {
     "puppeteer": "^25.11.0",
