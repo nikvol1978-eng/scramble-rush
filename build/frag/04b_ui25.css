@@ -143,6 +143,44 @@
     #menuChrome .homeBtn:active{ transform:translateY(3px); }
   }
 
+  /* ---- the chrome row FITS, at every width and every balance -----------
+     Measured before this block: on a phone the row is centred flex, and
+     centred overflow spills off BOTH edges. At 360 it was 421px of NIKCADE,
+     six pills, crowns and a 99,999 balance in 344px -- NIKCADE began 24px off
+     the left, squeezed from 38px to 26px, and the coin chip ran off the right
+     (at 360 and 375 even with no coins at all). Above 760 the strip was
+     centred and the chips pinned over its right end, so a five-figure balance
+     ran them onto the strip at 761-815 and, names on, at 1151-1235. [η] lays
+     the real row out at each width.
+
+     Above 760: three columns, 1fr auto 1fr. Whenever the sides fit, the strip
+     is dead centre exactly as before and NIKCADE and the chips keep their
+     places; when the chips need more than their half, the strip gives way to
+     the left instead of going under them. */
+  @media (min-width:761px){
+    #menuChrome{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; }
+    #menuChrome .homeBtn{ position:static; transform:none; grid-column:1; justify-self:start; }
+    #menuChrome .homeBtn:active{ transform:translateY(3px); }
+    #menuChrome .lobbyTabs{ grid-column:2; }
+    #menuChrome .lobbyCurrency{ position:static; grid-column:3; justify-self:end; margin-right:calc(22px - var(--gut)); }
+  }
+  /* Phones: nothing in the row may be squeezed. At 520 and below the pills and
+     gaps tighten (a six-figure balance ran off at 480), and at 413 and below
+     the crown chip gives up its place -- the lobby's name card carries the
+     same count. */
+  @media (max-width:760px){
+    #menuChrome .homeBtn, #menuChrome .lobbyTabs, #menuChrome .lobbyCurrency{ flex-shrink:0; }
+  }
+  @media (max-width:520px){
+    #menuChrome .homeBtn{ width:34px; margin-right:4px; }
+    #menuChrome .lobbyTabs{ gap:1px; padding:5px 4px; }
+    #menuChrome .tabPill{ width:31px; min-width:31px; }
+    #menuChrome .lobbyCurrency{ margin-left:4px; }
+  }
+  @media (max-width:413px){
+    #menuChrome .crownChip{ display:none; }
+  }
+
   /* ---- SYSTEM 2 of 2 --------------------------------------------------
      Card grids size their rows from the card, not from a min-height the card
      then outgrows. align-items:start is the whole fix: it stops the grid

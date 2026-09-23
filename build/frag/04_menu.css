@@ -767,8 +767,10 @@
      centred over a screen whose brand sits at the left and whose currency chips
      sit at the right, and at 960 the named strip ran under both of them -- PLAY
      and LOCKER disappeared behind the wordmark. 1150 is where the three stop
-     fitting side by side. */
-  @media (max-width: 1150px){
+     fitting side by side -- with a small balance. With a five- or six-figure
+     one the chips ran over the named strip up to 1235px, so the names come off
+     at 1200 and 04b_ui25.css lets the strip give way to the chips above that. */
+  @media (max-width: 1200px){
     #menuChrome .tabName{ display:none; }
     #menuChrome .tabPill{ padding:0; width:52px; min-width:52px; }
   }
@@ -781,7 +783,9 @@
   .tabPill.sel svg{stroke:var(--cream);fill:var(--cream);}
   .dailyBadge{position:absolute;top:-12px;right:-12px;width:26px;height:26px;border-radius:50%;background:var(--gold);border:2.5px solid var(--line);box-shadow:0 2px 0 var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
   .dailyBadge svg{width:14px;height:14px;fill:none;stroke:var(--line);stroke-width:2.2;}
-  .dailyBadge .pip{top:-6px;right:-6px;width:12px;height:12px;border-width:2px;}
+  /* -4, not -6: the badge hangs 12px above the pill, and at -6 the pip hung
+     past the top of the window by a pixel at every width above 760. */
+  .dailyBadge .pip{top:-4px;right:-4px;width:12px;height:12px;border-width:2px;}
 
   .lobbyCurrency{display:flex;gap:8px;justify-self:end;align-items:center;}
   .crownChip{display:inline-flex;align-items:center;gap:8px;background:var(--line);color:var(--gold);font-weight:700;font-size:1.05rem;padding:6px 16px 6px 10px;border-radius:999px;border:3px solid var(--line);box-shadow:0 4px 0 rgba(0,0,0,0.35);}

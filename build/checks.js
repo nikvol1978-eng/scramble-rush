@@ -6835,6 +6835,62 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'scrollX ' + seen.join(', ') };
   }
 
+  // ---- [η] the chrome row fits the window at every width --------------------
+  // On a phone the row is centred flex -- NIKCADE, six pills, the crown and
+  // coin chips -- and it is wider than a 360px or 390px window. Centred
+  // overflow spills off BOTH edges: NIKCADE started 11px off the left (24px
+  // with a five-figure balance) and squeezed to 26px, and the coin chip was
+  // cut at the right. At 768 and up the daily pip hung 1px above the window.
+  //
+  // The suite runs in one 1280px window, and media queries answer to the
+  // window, so this lays the REAL row out, with the REAL stylesheets, in
+  // frames of each width. Nothing is re-implemented; the frame only chooses the
+  // width and holds a long-time player's numbers in the chips.
+  async function checkChromeFits(){
+    const bad = [], notes = [];
+    const WIDTHS = [360, 375, 390, 414, 430, 431, 480, 520, 521, 600, 760, 761, 768, 800, 1024, 1151, 1180, 1201, 1280, 1920];
+    const css = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+    const row = $('menuChrome').cloneNode(true);
+    row.classList.remove('hidden');
+    row.querySelectorAll('.hidden').forEach(e => { if(e.id === 'dailyPip' || e.id === 'shopPip') e.classList.remove('hidden'); });
+    row.querySelectorAll('.coinNum').forEach(e => { e.textContent = fmtNum(999999); });
+    row.querySelectorAll('.crownNum').forEach(e => { e.textContent = '999'; });
+    const frames = [];
+    try{
+      for(const w of WIDTHS){
+        const f = document.createElement('iframe');
+        f.style.cssText = 'position:fixed;left:-20000px;top:0;height:700px;border:0;visibility:hidden;width:' + w + 'px';
+        frames.push(f);
+        await new Promise(ok => { f.onload = ok; f.srcdoc = '<!doctype html><html><head><style>' + css + '</style></head><body>' + row.outerHTML + '</body></html>'; document.body.appendChild(f); });
+        const d = f.contentDocument;
+        try{ await d.fonts.ready; }catch(_){ /* measured with whatever loaded */ }
+        const out = [];
+        const parts = [...d.querySelectorAll('#homeBtn, .tabPill, #dailyBtn, #dailyPip, .crownChip, .coinChip')]
+          .filter(e => e.getClientRects().length);
+        for(const e of parts){
+          const r = e.getBoundingClientRect(), nm = e.id || String(e.className).split(' ')[0];
+          if(r.left < -0.5 || r.right > w + 0.5 || r.top < -0.5) out.push(nm + ' at ' + Math.round(r.left) + '..' + Math.round(r.right) + ' y' + Math.round(r.top));
+        }
+        const hb = d.getElementById('homeBtn');
+        if(hb && hb.getClientRects().length){
+          const want = parseFloat(d.defaultView.getComputedStyle(hb).width), got = hb.getBoundingClientRect().width;
+          if(got < want - 1) out.push('NIKCADE squeezed to ' + Math.round(got) + 'px of ' + Math.round(want));
+          const first = d.querySelector('.lobbyTabs'), r1 = hb.getBoundingClientRect(), r2 = first && first.getBoundingClientRect();
+          if(r2 && r1.right > r2.left + 0.5 && r1.left < r2.right) out.push('NIKCADE overlaps the tab strip');
+        }
+        const tabs = d.querySelector('.lobbyTabs'), cur = d.querySelector('.lobbyCurrency');
+        if(tabs && cur){ const a = tabs.getBoundingClientRect(), b = cur.getBoundingClientRect();
+          if(a.right > b.left + 0.5 && a.left < b.right && a.bottom > b.top && a.top < b.bottom) out.push('the tab strip overlaps the chips'); }
+        if(out.length) bad.push(w + 'px: ' + out.join(', '));
+        notes.push(w);
+      }
+    } finally {
+      for(const f of frames) f.remove();
+    }
+    return { name:'η chrome: the NIKCADE button, pills, pip and chips fit the window at every width',
+             pass: bad.length===0, detail: bad.length ? bad.slice(0, 6).join('; ') : 'fits at ' + notes.join(', ') + 'px with 999,999 coins and 999 crowns' };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7798,7 +7854,7 @@
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
-      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],
+      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
