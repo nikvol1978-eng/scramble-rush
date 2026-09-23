@@ -6809,6 +6809,32 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---- [ζ] the page itself never scrolls sideways ---------------------------
+  // #menuRings is the slow turning background, absolutely positioned at
+  // inset:-30% and rotated -- so it hung 30% past the right edge and made the
+  // document 1700px wide at 1280. overflow:hidden stops a wheel, not a
+  // scrollTo, a scrollIntoView or a focus(): window.scrollTo(99999,0) moved
+  // the whole page 420px sideways with no way back for the player.
+  function checkNoSideScroll(){
+    const bad = [], seen = [];
+    try{
+      state = 'menu';
+      for(const tab of ['play', 'locker', 'shop', 'pass']){
+        openLobbyTab(tab);
+        window.scrollTo(99999, 0);
+        const x = window.scrollX, sl = document.scrollingElement.scrollLeft;
+        window.scrollTo(0, 0);
+        seen.push(tab + ' ' + x);
+        if(x || sl) bad.push(tab + ': the page scrolled ' + Math.max(x, sl) + 'px sideways (document ' + document.documentElement.scrollWidth + 'px wide in a ' + innerWidth + 'px window)');
+      }
+    } finally {
+      window.scrollTo(0, 0);
+      try{ openLobbyTab('play'); }catch(_){ /* best effort */ }
+    }
+    return { name:'ζ layout: the page cannot be scrolled sideways on any menu screen',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'scrollX ' + seen.join(', ') };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7772,7 +7798,7 @@
       // v25 meta-UI interaction rules. See the block above them.
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
-      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],
+      ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly

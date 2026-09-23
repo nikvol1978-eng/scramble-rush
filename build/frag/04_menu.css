@@ -714,9 +714,13 @@
   /* ---- v24 §5.1: the shell every menu screen sits in -------------------- */
   /* Rings, not a picture: one repeating gradient turning very slowly behind
      everything. Slow enough that it never competes with the thing in front of
-     it, and present enough that a flat panel is not floating on nothing. */
+     it, and present enough that a flat panel is not floating on nothing.
+     FIXED, not absolute: it overhangs the window by 30% on every side so the
+     corners stay covered as it turns, and an absolute box that does that
+     widens the document -- 1700px at 1280, so the page itself could be
+     scrolled 420px sideways. A fixed box paints the same and scrolls nothing. */
   #menuRings{
-    position:absolute; inset:-30%; z-index:1; pointer-events:none;
+    position:fixed; inset:-30%; z-index:1; pointer-events:none;
     background:repeating-radial-gradient(circle at 50% 50%,
       rgba(255,255,255,0.085) 0 44px, rgba(255,255,255,0) 44px 120px);
     animation:ringSpin 90s linear infinite;
