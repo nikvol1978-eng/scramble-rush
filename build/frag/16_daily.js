@@ -177,9 +177,13 @@
     rotor.style.transform = `rotate(${target}deg)`;
     SFX.click();
 
-    // bank the spin immediately, so a reload mid-animation cannot re-roll it
+    // bank the spin immediately, so a reload mid-animation cannot re-roll it --
+    // AND its prize in the same write. The all-owned coins used to be paid
+    // after the wait, so a reload in those four seconds kept the spent spin
+    // and lost the 600. The coin chip and the pop still wait for the landing.
     stats.lastSpin = Date.now();
     if(prize.skin){ stats.owned = stats.owned||[]; stats.owned.push(prize.skin.id); }
+    else stats.coins = (stats.coins||0) + prize.coins;
     await saveProfile();
 
     await new Promise(r => setTimeout(r, still ? 200 : 4250));
@@ -208,7 +212,9 @@
       };
       SFX.win();
     } else {
-      await addCoins(prize.coins, 'Daily spin');
+      // already banked above; this is only the pop addCoins() would show
+      coinPops.push({ n:prize.coins, why:'Daily spin', t:0 });
+      while(coinPops.length > 3) coinPops.shift();
       $('spinResult').innerHTML =
         `<div class="prize"><div class="pname">You own every colourway!</div>
          <div class="cost">+${fmtNum(prize.coins)} coins instead</div></div>`;

@@ -6918,6 +6918,48 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'ready nudges' + (reduce ? ' (reduced motion: still)' : '') + ', spent is still' };
   }
 
+  // ---- [ι] the all-owned daily prize is banked with the spin ---------------
+  // The spin is saved the moment it starts, so a reload cannot re-roll it. The
+  // 600-coin prize for owning every colourway was paid AFTER the 4.25 s
+  // animation -- so a reload, a closed tab or a crash in that window kept the
+  // spent spin and lost the coins. It has to be saved in the same write.
+  async function checkSpinBanksCoins(){
+    const bad = [], notes = [];
+    const was = { lastSpin:stats.lastSpin, owned:(stats.owned||[]).slice(), coins:stats.coins };
+    let raw0 = null; try{ raw0 = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    const realMM = window.matchMedia, pops0 = coinPops.length;
+    let spun = null;
+    try{
+      state = 'menu';
+      window.matchMedia = (q)=> /prefers-reduced-motion/.test(String(q))
+        ? { matches:true, media:String(q), onchange:null, addListener(){}, removeListener(){},
+            addEventListener(){}, removeEventListener(){}, dispatchEvent(){ return false; } }
+        : realMM.call(window, q);
+      stats.owned = SKINS.map(s => s.id); stats.lastSpin = 0; stats.coins = 100;
+      openDaily();
+      spun = doSpin();
+      // What a reload at this instant would load.
+      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}').stats || {};
+      if(!(saved.lastSpin > 0)) bad.push('the spin was not saved as spent');
+      if(saved.coins !== 700) bad.push('mid-spin the save holds ' + saved.coins + ' coins -- a reload now spends the spin and loses the 600');
+      if(coinPops.slice(pops0).some(p => /daily/i.test(p.why))) bad.push('the coin pop shows before the wheel has landed');
+      await spun; spun = null;
+      if(stats.coins !== 700) bad.push('after the spin the balance is ' + stats.coins + ', not 100 + 600');
+      if(!coinPops.slice(pops0).some(p => p.n === 600 && /daily/i.test(p.why))) bad.push('no +600 pop once the wheel landed');
+      notes.push('saved mid-spin: ' + saved.coins + ' coins; after: ' + stats.coins);
+    } finally {
+      try{ if(spun) await spun; }catch(_){ /* reported */ }
+      window.matchMedia = realMM;
+      stats.lastSpin = was.lastSpin; stats.owned = was.owned; stats.coins = was.coins;
+      coinPops.length = Math.min(coinPops.length, pops0);
+      try{ if(raw0 === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, raw0); }catch(_){ /* none */ }
+      $('spinResult').innerHTML = '';
+      try{ closeDaily(); openLobbyTab('play'); refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'ι daily spin: the all-owned coin prize is saved with the spin, not 4 s later',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7882,7 +7924,7 @@
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
       ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
-      ['θ',checkDailyNudge],
+      ['θ',checkDailyNudge],['ι',checkSpinBanksCoins],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly
