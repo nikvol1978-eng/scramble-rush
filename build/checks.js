@@ -5674,6 +5674,75 @@
              detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
   }
 
+  // How many of `meshes` cut the line from the lens to the racer's body while
+  // drawing opaque (a faded one does not count: it is what a fade is for).
+  function _opaqueBetween(meshes, r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const dir = g.clone().sub(camera.position), len = dir.length();
+    const ray = new THREE.Raycaster(camera.position.clone(), dir.normalize(), 0, len);
+    return ray.intersectObjects(meshes, false).filter(h=>{
+      for(let v=h.object; v; v=v.parent) if(!v.visible) return false;
+      const mt = h.object.material;
+      return !mt.transparent || mt.opacity > 0.5;
+    }).length;
+  }
+
+  // ---------- phi: a floor above you does not hide you ----------
+  // Panel Drop and Last Rung are floors stacked over floors. Drop through one
+  // and the chase camera, which sits up and behind, looks down at you THROUGH
+  // the floor you fell out of: the tile a row back cuts the lens-to-body line.
+  // Measured at the default framing, 13% of frames on each map. Nothing faded
+  // them -- the occlusion fade only knew the course's registered fadeables.
+  function checkFieldLayersFade(){
+    const bad = [], notes = [];
+    for(const key of ['tiles','lastrung']){
+      begin(key);
+      const p = player();
+      const f = obstacles.find(o=>o.type==='tilefield' || o.type==='hexfield');
+      if(!f){ bad.push(key+': no tile or hex field on the course'); continue; }
+      for(const b of racers) if(!b.isPlayer) b.y = -3000;      // nobody else arms the floor
+      const cells = f.type==='tilefield' ? f.tiles : f.cells;
+      const meshes = [];
+      for(const c of cells){
+        c.gone = false; c.touched = false; c.fuse = -1; c.drop = 0; c.back = 0;
+        if(!c.mesh) continue;
+        // put back the way the game rebuilds one (09_minigames.js)
+        c.mesh.visible = true; c.mesh.position.y = c.baseY;
+        if(f.type==='tilefield') c.mesh.rotation.z = 0; else c.mesh.rotation.x = 0;
+        c.mesh.traverse(o=>{ if(o.isMesh) meshes.push(o); });
+      }
+      // a column well inside the field, with its top floor gone
+      const midY = f.yStart + (f.yEnd - f.yStart)*0.4;
+      let col = null, bd = 1e9;
+      // One floor down on Panel Drop (90 apart), two on Last Rung, whose rungs
+      // are only 42-46 apart: one rung down, the line still clears the one above.
+      const down = f.type==='tilefield' ? 1 : 2;
+      for(const c of f.columns){ const d = Math.hypot(c.x - TRACK_W/2, c.y - midY); if(c.tiers.length > down && d < bd){ bd = d; col = c; } }
+      for(let i=0;i<down;i++){ const t = col.tiers[i]; t.gone = true; t.drop = 1; t.back = Infinity; t.mesh.visible = false; }
+      const floor = col.tiers[down];
+      window.__dbg.hold('w', false);
+      window.__dbg.warp(col.y, col.x);
+      let blocked = 0, sampled = 0;
+      for(const yaw of [0, 0.5, -0.5]){
+        window.__dbg.look(yaw, CAM.PITCH);
+        for(let i=0;i<50;i++){
+          floor.touched = true; floor.fuse = 1e9;              // the floor you are on holds
+          p.x = col.x; p.y = col.y; p.vx = 0; p.vy = 0;
+          window.__dbg.tick(1);
+          if(i < 20) continue;                                 // the view settles
+          sampled++;
+          if(_opaqueBetween(meshes, p)) blocked++;
+        }
+      }
+      if(Math.abs((p.floorH||0) - floor.hy) > 0.5) bad.push(key+': the racer is not on the lower floor (floorH '+(p.floorH||0)+')');
+      if(blocked) bad.push(key+': an opaque floor above hid the racer on '+blocked+' of '+sampled+' frames');
+      notes.push(key+' on floor '+floor.hy+': blocked '+blocked+'/'+sampled);
+    }
+    return { name:'φ a tile or hex floor above the racer fades out of the shot', pass: bad.length===0,
+             detail: bad.length ? bad.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8748,7 +8817,7 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut],['υ',checkFallFadeWhole]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

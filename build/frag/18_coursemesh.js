@@ -107,14 +107,19 @@
     const stripeMat = (i)=>{ const m = new THREE.MeshLambertMaterial({map:stripeTexture('#ffffff', accents[i%3])}); m.userData.hazard = accents[i%3]; return m; };
     courseLook = { accents, floorHex, paleWall, hazardMat, stripeMat, softMat:(i)=>new THREE.MeshLambertMaterial({color:softAccent(accents[i%3])}) };
 
-    function addGround(x0,x1,z0,z1,sunken){
+    // voidY: how deep a sunken floor sits. -62 unless something stands lower
+    // than that -- Panel Drop's bottom floor is at -180 and Last Rung's at
+    // -126, and a void drawn at -62 over them is a dark sheet between the
+    // chase camera and anyone who has dropped that far.
+    function addGround(x0,x1,z0,z1,sunken,voidY){
       const w=x1-x0, d=z1-z0; if(w<=0||d<=0) return;
+      const vy = voidY===undefined ? -62 : voidY;
       let mat;
       if(sunken){ mat=voidMat; }
       else { const tex=mapGroundTex.clone(); tex.needsUpdate=true; tex.repeat.set(w/190, d/190); tex.offset.set(x0/190, z0/190); mat=new FloorMat({map:tex}); }
       if(!coursePath){
         const mesh=new THREE.Mesh(THREE.RoundedBox(w,sunken?4:12,d), mat);
-        mesh.position.set(toSceneX((x0+x1)/2), sunken?-62:-6, (z0+z1)/2);
+        mesh.position.set(toSceneX((x0+x1)/2), sunken?vy:-6, (z0+z1)/2);
         mesh.receiveShadow=true; courseGroup.add(mesh);
         if(!sunken){
           const skirt=new THREE.Mesh(THREE.RoundedBox(w+2,40,d+2), skirtMat);
@@ -123,7 +128,7 @@
         return;
       }
       // swept along the path
-      const yTop = sunken ? -62 : -6;
+      const yTop = sunken ? vy : -6;
       const surf = ribbonStrip(z0, z1,
         s=>[toWorld(x0,s,yTop), toWorld(x1,s,yTop)],
         sunken ? null : s=>[[x0/190, s/190],[x1/190, s/190]]);
@@ -206,7 +211,9 @@
           }
         });
       } else if(o.type==='tilefield'||o.type==='hexfield'||o.type==='discField'||o.type==='plank'){
-        addGround(0,TRACK_W,o.yStart,o.yEnd,true);
+        const floors = o.type==='tilefield' ? o.tiles : o.type==='hexfield' ? o.cells : [];
+        const lowest = floors.reduce((m, c)=>Math.min(m, c.hy||0), 0);
+        addGround(0,TRACK_W,o.yStart,o.yEnd,true, Math.min(-62, lowest-62));
         addWall(0,o.yStart,o.yEnd); addWall(TRACK_W,o.yStart,o.yEnd);
       }
       cursor=o.yEnd;

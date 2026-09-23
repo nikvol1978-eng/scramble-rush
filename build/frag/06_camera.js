@@ -350,7 +350,7 @@
     chaseAim(camPos.x, camPos.y, camPos.z, look.yaw + pathAngle(p.y), _camAim);
     camera.lookAt(_camAim.x, _camAim.y, _camAim.z);
     _camPivot.set(camPos.x, camPos.y, camPos.z);
-    updateOcclusion(_camPivot);
+    updateOcclusion(_camPivot, p);
     const lightAt = toWorld(p.x, p.y, 0);
     dirLight.position.set(lightAt.x+220, lightAt.y+420, lightAt.z-160);
     dirLight.target.position.set(lightAt.x, lightAt.y, lightAt.z+150);

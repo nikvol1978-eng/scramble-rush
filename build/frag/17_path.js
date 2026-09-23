@@ -202,7 +202,7 @@
   let fadeables = [], camBlockers = [];
   const _occRay = new THREE.Raycaster();
   const _occDir = new THREE.Vector3();
-  function clearFadeables(){ fadeables = []; camBlockers = []; }
+  function clearFadeables(){ fadeables = []; camBlockers = []; _fieldFaded.clear(); }
   function registerFadeable(mesh){
     if(!mesh || !mesh.material) return mesh;
     mesh.material = mesh.material.clone();
@@ -217,7 +217,66 @@
     if(mesh) camBlockers.push(mesh);
     return mesh;
   }
-  function updateOcclusion(target){
+  // ---- floors above the racer ---------------------------------------------
+  // Panel Drop and Last Rung stack floors over floors. Once the racer has
+  // dropped through one, the chase camera -- up and behind -- looks down at
+  // them THROUGH it, and the tile a row back cut the lens-to-body line on 13%
+  // of frames at the default framing. Registering the field as fadeables
+  // would put a thousand tiles through the raycast every frame, so this tests
+  // only what can be in the way: cells on a floor ABOVE the racer's, near
+  // them (or falling past them), against the line to the BODY. A cell gets
+  // its own material the
+  // first time it has to fade -- Last Rung's cells share one per rung -- and
+  // its topMat is pointed at the copy so the fuse flash still lands on it.
+  const _fieldFaded = new Map();                 // cell group -> cell
+  const _fieldBody = new THREE.Vector3();
+  function fadeFieldAbove(r){
+    const hitNow = new Map();
+    const fh = r ? (r.floorH||0) : 0;
+    if(r && r.mesh && fh < -1){
+      const f = obstacles.find(o=>(o.type==='tilefield' || o.type==='hexfield') && r.y > o.yStart-60 && r.y < o.yEnd+60);
+      if(f){
+        const near = CAM.DIST*settings.camDist*1.3 + 120;
+        const cand = [], owner = new Map();
+        for(const c of (f.type==='tilefield' ? f.tiles : f.cells)){
+          // A gone cell still counts while it is visible: it is falling past
+          // you, which is exactly when it is between the lens and the racer.
+          if(!c.mesh || !c.mesh.visible || c.hy <= fh + 1) continue;
+          if(Math.abs(c.y - r.y) > near || Math.abs(c.x - r.x) > near) continue;
+          owner.set(c.mesh, c);
+          for(const m of c.mesh.children) if(m.isMesh) cand.push(m);
+        }
+        if(cand.length){
+          r.mesh.group.getWorldPosition(_fieldBody);
+          _occDir.subVectors(_fieldBody, camera.position);
+          const d = _occDir.length();
+          if(d > 1){
+            _occRay.set(camera.position, _occDir.normalize()); _occRay.far = d;
+            for(const h of _occRay.intersectObjects(cand, false)) hitNow.set(h.object.parent, owner.get(h.object.parent));
+          }
+        }
+      }
+    }
+    for(const [g, c] of hitNow) _fieldFaded.set(g, c);
+    for(const [g, c] of _fieldFaded){
+      const want = hitNow.has(g) ? 0.20 : 1;
+      let settled = true;
+      for(const m of g.children){
+        if(!m.isMesh || !m.material) continue;
+        if(!m.userData.ownFade){
+          const was = m.material; m.material = was.clone(); m.userData.ownFade = true;
+          if(c && c.topMat === was) c.topMat = m.material;
+        }
+        const mt = m.material;
+        mt.opacity += (want - mt.opacity)*0.22;
+        if(want === 1 && mt.opacity > 0.985) mt.opacity = 1; else settled = false;
+        mt.transparent = mt.opacity < 0.985;
+      }
+      if(settled) _fieldFaded.delete(g);
+    }
+  }
+  function updateOcclusion(target, subject){
+    fadeFieldAbove(subject);
     if(!fadeables.length) return;
     _occDir.subVectors(target, camera.position);
     const dist = _occDir.length();
