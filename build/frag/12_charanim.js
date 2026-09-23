@@ -220,6 +220,34 @@
     breathe(br*0.013);
   }
 
+  // ---- the fade, applied to the WHOLE racer ----------------------------
+  // A fall or a knockout fades the racer, and a racer is several meshes: the
+  // body, the trim (limbs, hat and eyes merged onto one material), the
+  // player's marker and, on some skins, a glow shell. Fading bodyMat alone
+  // left the trim at full strength -- a crown, two mitts and a pair of eyes
+  // hanging over the hole. Every one of these materials is this racer's own
+  // (makeCharacter and buildRacerMeshes build them per call), so writing them
+  // fades nobody else. An opaque one is made transparent only while it is
+  // faded, so a racer on its feet draws exactly as it always did. The aura is
+  // left to animateAura, which rewrites it every frame; see syncRacers.
+  function fadeRacer(m, a){
+    m.bodyMat.opacity = a; m.outMat.opacity = a*0.55;
+    if(!m._fade){
+      const skip = new Set([m.bodyMat, m.outMat]);
+      if(m.aura) m.aura.traverse(o=>{ if(o.material) skip.add(o.material); });
+      m._fade = [];
+      m.group.traverse(o=>{
+        if(!o.isMesh || !o.material || skip.has(o.material)) return;
+        m._fade.push({ mat:o.material, base:o.material.opacity, trans:o.material.transparent });
+      });
+    }
+    for(const f of m._fade){
+      f.mat.opacity = f.base*a;
+      const tr = f.trans || a < 1;
+      if(f.mat.transparent !== tr){ f.mat.transparent = tr; f.mat.needsUpdate = true; }
+    }
+  }
+
   function syncRacers(t){
     for(const r of racers){
       const m=r.mesh; if(!m) continue;
@@ -316,11 +344,18 @@
         for(let i=0;i<2;i++){ m.pupils[i].scale.set(1,1,1); m.scleras[i].scale.set(1,1,1); }
       }
 
-      m.bodyMat.opacity=opacity; m.outMat.opacity=opacity*0.55;
+      fadeRacer(m, opacity);
       m.outline.visible = r.invuln>0 && (Math.floor(t*14)%2===0);
       if(m.hatGroup.userData.spin) m.hatGroup.userData.spin.rotation.y=t*12;
       if(m.hatGroup.userData.float) m.hatGroup.position.y=(m.hatGroup.userData.floatBase||0)+Math.sin(t*3)*2;
       if(m.arrow) m.arrow.position.y=RADIUS+34+Math.sin(t*4)*3;
       animateAura(m, t);
+      // animateAura sets the aura's opacities outright each frame, so the fade
+      // goes on after it; the next frame on your feet puts them back.
+      if(m.aura && opacity < 1){
+        const au = m.aura.userData;
+        au.shell.material.opacity *= opacity;
+        for(const mo of au.motes) mo.material.opacity *= opacity;
+      }
     }
   }

@@ -5603,6 +5603,77 @@
              detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
   }
 
+  // What each visible mesh of a racer actually draws at: a material that is
+  // not transparent draws opaque whatever its opacity number says.
+  function _racerOpacities(m){
+    const out = [];
+    m.group.traverse(o=>{
+      if(!o.isMesh || o === m.outline) return;
+      for(let v=o; v; v=v.parent) if(!v.visible) return;
+      const mt = o.material; if(!mt || mt.visible === false) return;
+      const what = o===m.body ? 'body' : o===m.trim ? 'trim' : o===m.arrow ? 'arrow'
+                 : (m.aura && m.aura.children.includes(o)) ? 'aura' : 'shell';
+      out.push({ what, op: mt.transparent ? mt.opacity : 1 });
+    });
+    return out;
+  }
+
+  // ---------- upsilon: a falling racer fades as one thing ----------
+  // syncRacers faded bodyMat and nothing else. The limbs, the hat and the eyes
+  // are one merged `trim` mesh on its own material, so a fall showed a body at
+  // 20% with a full-strength crown, mitts and eyes hanging in the air over the
+  // hole -- and the player's marker, and a special's aura, with them.
+  function checkFallFadeWhole(){
+    const bad = [], notes = [];
+    const was = { skin:custom.skin, hat:custom.hat };
+    try{
+      for(const [skin, hat] of [[was.skin, 'crown'], ['gold', 'prop'], ['toxic', 'halo']]){
+        custom.skin = skin; custom.hat = hat;
+        begin('sunny');
+        const p = player(), m = p.mesh;
+        window.__dbg.warp(2200, 260); window.__dbg.tick(20);
+        fallDown(p);
+        while(p.falling && p.fallT > 217) window.__dbg.tick(1);
+        const mid = _racerOpacities(m);
+        const body = mid.find(e=>e.what==='body');
+        if(!body || body.op > 0.5) bad.push(skin+': the body is not fading mid-fall ('+(body && body.op.toFixed(2))+')');
+        for(const e of mid){
+          if((e.what==='trim' || e.what==='arrow') && Math.abs(e.op - body.op) > 0.02)
+            bad.push(skin+': mid-fall the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+body.op.toFixed(2));
+          if(e.op > body.op + 0.02)
+            bad.push(skin+': a '+e.what+' mesh is more solid ('+e.op.toFixed(2)+') than the fading body');
+        }
+        // nobody else faded with them: no material is shared between racers
+        for(const o of racers){
+          if(o === p || o.falling || o.lavaOut || !o.mesh) continue;
+          for(const e of _racerOpacities(o.mesh))
+            if((e.what==='body' || e.what==='trim') && e.op < 0.999)
+              { bad.push(skin+': '+o.name+' faded with the player ('+e.what+' '+e.op.toFixed(2)+')'); break; }
+        }
+        notes.push(skin+' mid-fall '+[...new Set(mid.map(e=>e.what+' '+e.op.toFixed(2)))].join('/'));
+        // ...and all of it comes back after the respawn
+        let n = 0; while(p.falling && n++ < 120) window.__dbg.tick(1);
+        window.__dbg.tick(30);
+        for(const e of _racerOpacities(m)){
+          if((e.what==='body' || e.what==='trim' || e.what==='arrow') && e.op < 0.999)
+            bad.push(skin+': after the respawn the '+e.what+' is still at '+e.op.toFixed(2));
+          if(e.op < 0.05) bad.push(skin+': after the respawn a '+e.what+' mesh stayed faded out');
+        }
+      }
+      // knocked out stays faded, as one thing
+      custom.skin = was.skin; custom.hat = 'crown';
+      begin('sunny');
+      const q = player();
+      window.__dbg.warp(2200, 260); window.__dbg.tick(5);
+      q.lavaOut = true; window.__dbg.tick(1);
+      const ko = _racerOpacities(q.mesh), kb = ko.find(e=>e.what==='body');
+      for(const e of ko) if(e.op > kb.op + 0.02) bad.push('knocked out: the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+kb.op.toFixed(2));
+      q.lavaOut = false;
+    } finally { custom.skin = was.skin; custom.hat = was.hat; }
+    return { name:'υ a falling or knocked-out racer fades whole', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8677,7 +8748,7 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
