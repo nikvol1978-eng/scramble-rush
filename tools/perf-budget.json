@@ -6,6 +6,6 @@
   "threeBundleRawBytes": 821056,
   "threeBundleBrotliBytes": 219116,
   "startupTransferBrotliBytes": 357604,
-  "thirdPartyOrigins": 2,
+  "thirdPartyOrigins": 0,
   "parserBlockingScriptsInHead": 0
 }

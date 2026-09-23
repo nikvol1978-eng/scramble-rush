@@ -504,16 +504,104 @@ sub('<script src="https://unpkg.com/peerjs/dist/peerjs.min.js"></script>',
     "socket.io client (minified), peerjs goes on demand")
 
 # ---------------------------------------------------------------- fonts
-# gstatic was never preconnected. The stylesheet comes from fonts.googleapis.com
-# -- which IS preconnected -- and every face it names comes from a SECOND
-# origin, fonts.gstatic.com, whose DNS, TCP and TLS could not even begin until
-# that stylesheet had been parsed. `crossorigin` is not optional here: font
-# fetches are CORS requests, so a preconnect without it opens a connection the
-# font cannot use and the browser opens a second one.
+# FREDOKA IS SERVED FROM THIS ORIGIN, not from Google.
+#
+# What this replaces: a stylesheet link to fonts.googleapis.com, which is
+# render-blocking, and every face it named came from a SECOND origin,
+# fonts.gstatic.com, whose DNS, TCP and TLS could not even begin until that
+# stylesheet had been fetched and parsed. Two cross-origin round trips in front
+# of the first paint, for three files that never change.
+#
+#   document -> fonts.googleapis.com (CSS) -> fonts.gstatic.com (WOFF2)
+#   document -> ./fredoka-<hash>.woff2
+#
+# ONE FILE PER SUBSET, AND THE WEIGHTS ARE A RANGE. Google's own stylesheet
+# declares weights 500, 600 and 700 against the SAME url for each subset,
+# because Fredoka v17 is a variable font with a wght axis -- `font-stretch:100%`
+# in its output is the giveaway. So `font-weight: 500 700` on one face per
+# subset delivers exactly the binary Google was delivering, for all three
+# weights, rather than approximating it. That was verified against the live
+# stylesheet before any of this was written; see tools/fetch-fredoka.mjs.
+#
+# THE UNICODE RANGES ARE COPIED VERBATIM from that stylesheet, and all three
+# subsets are kept. Trimming to the characters the UI happens to show today
+# would quietly drop Fredoka from any player name carrying an accent, and the
+# ranges are what stop a browser fetching latin-ext or hebrew unless a
+# character needs them -- an English startup still pulls only latin.
+FONT_DIR = os.path.join(ROOT, "assets", "fonts", "fredoka")
+FONT_RANGES = {
+    "latin": ("U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, "
+              "U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, "
+              "U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"),
+    "latin-ext": ("U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, "
+                  "U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, "
+                  "U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, "
+                  "U+2113, U+2C60-2C7F, U+A720-A7FF"),
+    "hebrew": ("U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, "
+               "U+FB1D-FB4F"),
+}
+
+# The hash is the asset's own bytes, so a font that changes gets a new URL and
+# one that does not keeps its cache entry. Twelve hex characters, matching the
+# three bundle's convention and the server route that serves both.
+import hashlib as _hl
+_faces, _font_assets = [], []
+for _name in ("latin", "latin-ext", "hebrew"):
+    _src = os.path.join(FONT_DIR, "fredoka-%s.woff2" % _name)
+    if not os.path.exists(_src):
+        print("FAILED: missing font asset %s -- run tools/fetch-fredoka.mjs" % _src)
+        sys.exit(1)
+    with open(_src, "rb") as _f:
+        _bytes = _f.read()
+    if _bytes[:4] != b"wOF2":
+        print("FAILED: %s is not a WOFF2" % _src)
+        sys.exit(1)
+    _hash = _hl.sha256(_bytes).hexdigest()[:12]
+    _out = "fredoka-%s.woff2" % _hash
+    with open(os.path.join(ROOT, _out), "wb") as _f:
+        _f.write(_bytes)
+    _font_assets.append((_name, _out, len(_bytes)))
+    _faces.append(
+        "@font-face{font-family:'Fredoka';font-style:normal;font-weight:500 700;"
+        "font-stretch:100%%;font-display:swap;src:url('./%s') format('woff2');"
+        "unicode-range:%s}" % (_out, FONT_RANGES[_name]))
+    print("font asset: %s (%s, %d bytes)" % (_out, _name, len(_bytes)))
+
+# PRELOAD THE LATIN SUBSET ONLY.
+#
+# Every above-the-fold string in this game -- the boot screen, Mode Select, the
+# HUD -- is ASCII, so latin is the one subset a startup always needs and the
+# other two are fetched only if a character calls for them. Preloading all
+# three would put 13 KB of font on the wire that a normal English session never
+# uses, which is the opposite of the point. `crossorigin` is still required on
+# a font preload even same-origin: fonts are fetched in CORS mode, and without
+# it the browser preloads into a different cache partition and fetches twice.
+_latin_asset = [a for (n, a, _sz) in _font_assets if n == "latin"][0]
 sub('<link rel="preconnect" href="https://fonts.googleapis.com">',
-    '<link rel="preconnect" href="https://fonts.googleapis.com">' + chr(10)
-    + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-    "preconnect to the origin the fonts actually come from")
+    '<link rel="preload" href="./' + _latin_asset + '" as="font" type="font/woff2" crossorigin>',
+    "preload the latin Fredoka subset, locally")
+# INTO THE EXISTING STYLE ELEMENT, NOT A NEW ONE.
+#
+# build/minify.mjs matches the FIRST <style> block in the document and minifies
+# that one. A second <style> carrying these faces therefore became the first,
+# the minifier spent itself on 1.2 KB of @font-face, and the game's real
+# stylesheet went out unminified -- the release grew by 41,332 bytes and nobody
+# would have noticed except as a number in a size budget. So the faces are
+# prepended INSIDE the stylesheet that is already there, and the document still
+# has exactly one <style>.
+sub('<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">',
+    '', "the Google Fonts stylesheet link goes")
+sub('<style>', '<style>' + "".join(_faces), "local @font-face, inside the one stylesheet")
+
+# AND PROVE IT LEFT. A substitution that silently matched nothing would ship a
+# release still asking Google for the font while every local asset sat beside
+# it unused, and the only symptom would be a network panel nobody was looking
+# at. build/checks.js asserts the same thing about the built file; this is the
+# earlier of the two, so the build fails rather than the suite.
+for _gone in ("fonts.googleapis.com", "fonts.gstatic.com"):
+    if _gone in src:
+        print("FAILED: %s is still referenced after the font substitution" % _gone)
+        sys.exit(1)
 
 # ---------------------------------------------------------------- LOADING 2 markup
 sub('<div id="mapIntro" class="hidden" style="position:absolute;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;background:rgba(0,0,0,0.28);">\n  <div id="mapIntroName" style="font-family:\'Fredoka\',sans-serif;font-weight:700;font-size:clamp(1.8rem,7vw,3rem);color:#fff;-webkit-text-stroke:2px var(--line);text-shadow:0 5px 0 var(--line);"></div>\n  <div id="mapIntroTip" style="font-family:\'Fredoka\',sans-serif;font-weight:600;font-size:1rem;color:#fff8ec;margin-top:12px;max-width:80vw;text-shadow:0 2px 0 rgba(0,0,0,0.4);"></div>\n</div>',

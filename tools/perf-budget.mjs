@@ -108,5 +108,43 @@ if (blockingScripts.length) {
   console.log(`\nparser-blocking <script src> in <head>:\n  ${blockingScripts.join('\n  ')}`);
 }
 console.log(`\nthird-party origins (${origins.length}): ${origins.join(' ') || 'none'}`);
+
+// ---- Fredoka is served from this origin, and must stay that way -----------
+//
+// The font used to come from fonts.googleapis.com, whose stylesheet then named
+// faces on fonts.gstatic.com: two cross-origin round trips in front of the
+// first paint. Restoring either is a one-line mistake with no visible symptom
+// -- the font still renders -- so the built release is asserted against it
+// rather than trusted.
+const text = html.toString('utf8');
+const fontFails = [];
+for (const gone of ['fonts.googleapis.com', 'fonts.gstatic.com']) {
+  if (text.includes(gone)) fontFails.push(`the release still references ${gone}`);
+}
+const faces = [...text.matchAll(/@font-face\{[^}]*?font-family:\s*['"]?Fredoka['"]?[^}]*\}/g)].map((m) => m[0]);
+if (faces.length !== 3) fontFails.push(`${faces.length} local Fredoka @font-face rule(s), wanted 3 (latin, latin-ext, hebrew)`);
+if (faces.length && !faces.every((f) => /font-weight:\s*500 700/.test(f))) {
+  fontFails.push('a Fredoka face does not declare font-weight: 500 700');
+}
+// Every hashed asset the release names has to be on disk beside it, or the
+// page ships a 404 for its own font.
+const refs = [...new Set([...text.matchAll(/fredoka-[0-9a-f]{12}\.woff2/g)].map((m) => m[0]))];
+if (refs.length !== 3) fontFails.push(`${refs.length} distinct hashed Fredoka asset(s) referenced, wanted 3`);
+let fontBytes = 0;
+for (const r of refs) {
+  try { fontBytes += (await readFile(join(ROOT, r))).length; }
+  catch { fontFails.push(`referenced ${r} is not on disk`); }
+}
+// Exactly one preload. Preloading all three would put the latin-ext and hebrew
+// subsets on the wire for an English session that never needs either.
+const preloads = [...text.matchAll(/<link[^>]+rel=["']?preload["']?[^>]*>/g)]
+  .map((m) => m[0]).filter((t) => /as=["']?font/.test(t));
+if (preloads.length !== 1) fontFails.push(`${preloads.length} font preload(s), wanted exactly 1 (latin only)`);
+else if (!/fredoka-[0-9a-f]{12}\.woff2/.test(preloads[0])) fontFails.push('the font preload does not name a hashed Fredoka asset');
+else if (!/crossorigin/.test(preloads[0])) fontFails.push('the font preload is missing crossorigin (fonts are fetched in CORS mode)');
+console.log(`fredoka: ${faces.length} faces, ${refs.length} assets, ${fontBytes} bytes on disk, ${preloads.length} preload`);
+for (const f of fontFails) console.log(`FAIL  ${f}`);
+failed += fontFails.length;
+
 console.log(failed ? `\nPERF BUDGET: ${failed} over` : '\nPERF BUDGET: PASS');
 process.exit(failed ? 1 : 0);
