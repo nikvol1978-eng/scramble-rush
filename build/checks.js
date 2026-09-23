@@ -5881,10 +5881,17 @@
 
       // 5. ONE CATEGORY AT A TIME. Choosing PATTERN must leave no colourway
       //    tile behind it.
+      //    Every tile must be one of the owned patterns, by name, and there
+      //    must be exactly as many tiles as owned patterns. (This filtered on
+      //    a tile property nothing ever set, so it could not fail.)
       openLocker('pattern');
-      const stray = [...document.querySelectorAll('#lkGrid .uiCard')]
-        .filter(c => c.__lkKind && c.__lkKind !== 'pattern');
+      const want = lkInventory().map(it => it.name), wantSet = new Set(want);
+      const tiles = [...document.querySelectorAll('#lkGrid .uiCard')];
+      const stray = tiles.filter(c => { const n = c.querySelector('.uiCardName');
+        return !n || !wantSet.has(n.textContent.trim()); });
       if(stray.length) bad.push(stray.length + ' tiles from another category are still in the grid');
+      if(tiles.length !== want.length)
+        bad.push('the PATTERN grid holds ' + tiles.length + ' tiles for ' + want.length + ' owned patterns');
       const tabs = [...document.querySelectorAll('.lkTab.sel')].map(b=>b.dataset.lk);
       if(tabs.length !== 1) bad.push('the category tabs show ' + tabs.length + ' selected, not 1');
       else if(tabs[0] !== 'pattern') bad.push('PATTERN was opened but ' + tabs[0] + ' is the selected tab');
