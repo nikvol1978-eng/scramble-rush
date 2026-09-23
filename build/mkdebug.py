@@ -193,8 +193,12 @@ hook = """
         // Same guard as the shipped loop: an obstacle list that genCourse has
         // replaced has no meshes until buildCourseMeshes runs, and syncing it
         // in between reads it.mesh.pivot on a hammer that does not have one.
+        // And the same clock: the shipped loop draws obstacles at
+        // obsTime(t+mp.tOffset), which is the clock checkObstacles hits with.
+        // Drawn at the raw t here, every debug render after a speed event had
+        // the hazards somewhere other than where they collide.
         if(state==='menu'){ syncPreview(t,dt); }
-        else if(!(pm.open && pm.phase === 'preparing')){ syncObstacles(t); syncRacers(t); syncCamera(false,dt); }
+        else if(!(pm.open && pm.phase === 'preparing')){ syncObstacles(obsTime(t+mp.tOffset)); syncRacers(t); syncCamera(false,dt); }
         updateSkinMaterials(t);
         window.__T += dt;
       }

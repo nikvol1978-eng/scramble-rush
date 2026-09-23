@@ -7800,6 +7800,121 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : JSON.stringify(rep) };
   }
 
+  // ---------- ρ: the moving hazards are drawn where they hit ----------
+  // Check B puts every obstacle's ORIGIN where collision thinks it is. These
+  // four are right at the origin and wrong everywhere else, because what
+  // matters about them is how they turn:
+  //   the hammer's mace swung along world X from its pivot rather than across
+  //   the track, so on a bend it hung up to 80 units from the head that hits;
+  //   a disc's arm was drawn mirrored (three.js turns local +X to -Z for a
+  //   positive rotation.y) and its deck spun against the carry;
+  //   a tilt deck leant the opposite way on both axes to the floor you stand on;
+  //   a log turned its group by l.ang and its pegs by l.ang again, the other
+  //   way, so the pegs stood still while the ones that hit you went round, and
+  //   the barrel turned against the carry.
+  // And the debug tick drew obstacles at the raw clock where the shipped loop
+  // draws them at obsTime(), so a speed event put every debug render out.
+  function checkHazardMeshes(){
+    const bad = [], worst = { hammer:0, arm:0, spin:0, deck:0, peg:0, tick:0 }, seen = {};
+    const TS = [0.37, 1.21, 2.08, 3.3, 4.75];
+    const V = new THREE.Vector3(), V2 = new THREE.Vector3(), Q = new THREE.Quaternion();
+    const wrap = (a)=>{ while(a>Math.PI) a-=Math.PI*2; while(a<-Math.PI) a+=Math.PI*2; return a; };
+    const maceErr = (o, it, t)=>{
+      const ang = hammerAngle(it, t);
+      const want = toWorld(it.pivotX + Math.sin(ang)*it.armLen, o.y, 96 - 76*Math.cos(ang));
+      it.mesh.mace.getWorldPosition(V);
+      return Math.hypot(V.x-want.x, V.y-want.y, V.z-want.z);
+    };
+    for(const key of ['sunny','tiltdeck']){
+      begin(key);
+      for(const t of TS){
+        syncObstacles(t);
+        for(const o of obstacles) if(o.type==='hammer') for(const it of o.items){
+          seen.hammer = (seen.hammer||0)+1;
+          worst.hammer = Math.max(worst.hammer, maceErr(o, it, t));
+        }
+      }
+    }
+    for(const key of ['sunny','neon']){
+      begin(key);
+      for(const t of TS){
+        syncObstacles(t);
+        for(const o of obstacles) if(o.type==='discField') for(const c of o.cells){
+          if(!c.mesh) continue;
+          seen.disc = (seen.disc||0)+1;
+          // the deck: its local +X, in the disc's own frame (x across, z along)
+          V.set(1,0,0).applyQuaternion(c.spin.quaternion);
+          worst.spin = Math.max(worst.spin, Math.abs(wrap(Math.atan2(V.z, V.x) - discAng(c,t))));
+          if(c.noArm) continue;
+          const arm = c.armPivot.children[0];
+          arm.getWorldPosition(V2); c.mesh.worldToLocal(V2);
+          const a = discArmAng(c,t), rr = c.r*0.47;
+          worst.arm = Math.max(worst.arm, Math.hypot(V2.x - Math.cos(a)*rr, V2.z - Math.sin(a)*rr));
+        }
+      }
+    }
+    begin('tiltdeck');
+    for(const o of obstacles) if(o.type==='tiltdeck') o.decks.forEach((dk,i)=>{
+      const m = o.meshes && o.meshes[i]; if(!m) return;
+      const tx0 = dk.tx, ty0 = dk.ty;
+      for(const [tx,ty] of [[0.8,0],[0,-0.8],[0.6,0.5],[-0.5,-0.6]]){
+        dk.tx = tx; dk.ty = ty;
+        syncObstacles(window.__T||0);
+        m.updateMatrixWorld(true);
+        m.getWorldQuaternion(Q); V.set(0,1,0).applyQuaternion(Q);
+        const pa = pathAngle(dk.y);
+        const ux = V.x*Math.cos(pa) - V.z*Math.sin(pa), uz = V.x*Math.sin(pa) + V.z*Math.cos(pa);
+        for(const [fx,fy] of [[0.45,0.45],[-0.45,0.45],[0.45,-0.45],[-0.45,-0.45]]){
+          const ox = fx*dk.w, oy = fy*dk.d;
+          seen.deck = (seen.deck||0)+1;
+          worst.deck = Math.max(worst.deck, Math.abs(-(ux*ox + uz*oy)/V.y - (-(tx*ox + ty*oy)*o.maxTilt)));
+        }
+      }
+      dk.tx = tx0; dk.ty = ty0;
+    });
+    begin('logjam');
+    for(const o of obstacles) if(o.type==='logroll') o.logs.forEach((l,i)=>{
+      const g = o.meshes && o.meshes[i]; if(!g || !l.pegMeshes) return;
+      const ang0 = l.ang, pa = pathAngle((l.a+l.b)/2), rho = o.R + o.pegLen*0.2;
+      for(const L of [0, 0.9, 2.2, -1.4, 3.6]){
+        l.ang = L;
+        syncObstacles(window.__T||0);
+        g.updateMatrixWorld(true); g.getWorldPosition(V2);
+        l.pegs.forEach((peg,k)=>{
+          l.pegMeshes[k].getWorldPosition(V);
+          const across = (V.x-V2.x)*Math.cos(pa) - (V.z-V2.z)*Math.sin(pa), up = V.y-V2.y;
+          const a = peg.a + L;
+          seen.peg = (seen.peg||0)+1;
+          worst.peg = Math.max(worst.peg, Math.hypot(across - Math.sin(a)*rho, up - Math.cos(a)*rho));
+        });
+      }
+      l.ang = ang0;
+    });
+    // the debug tick draws at the clock the obstacles collide at
+    begin('sunny');
+    const hm = obstacles.find(o=>o.type==='hammer');
+    const boost0 = obsBoost;
+    try {
+      obsBoost = 1.37;                 // as though a speed event had run them ahead
+      const t0 = window.__T;
+      window.__dbg.tick(1);
+      for(const it of hm.items){
+        seen.tick = (seen.tick||0)+1;
+        worst.tick = Math.max(worst.tick, maceErr(hm, it, obsTime(t0)));
+      }
+    } finally { obsBoost = boost0; }
+    const LIM = { hammer:1, arm:1, spin:0.02, deck:1, peg:1, tick:1 };
+    for(const k in LIM){
+      if(!seen[k === 'spin' ? 'disc' : k === 'arm' ? 'disc' : k]) bad.push('nothing to measure for '+k);
+      else if(!(worst[k] <= LIM[k])) bad.push(k+' drawn '+worst[k].toFixed(k==='spin'?3:1)+(k==='spin'?' rad':'')+' from its collider');
+    }
+    return { name:'ρ hammer, disc arm and deck, tilt deck and log pegs are drawn where they collide',
+             pass: bad.length===0,
+             detail: (bad.length ? bad.join('; ')+' | ' : '')
+                   + Object.entries(worst).map(([k,v])=>k+' '+v.toFixed(2)).join(', ')
+                   + ' over '+JSON.stringify(seen) };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7813,8 +7928,8 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
-      // Solids stay solid, and the eliminated are not bodies.
-      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],
+      // Solids stay solid, the eliminated are not bodies, hazards are drawn where they hit.
+      ['ο',checkSolidsStaySolid],['π',checkEliminatedNotSolid],['ρ',checkHazardMeshes],
       // These two used to be pinned to the end of the registry as a WORKAROUND:
       // the suite shared one Math.random stream and one accumulating clock, [~]
       // steps ninety simulated seconds of lobby into that clock, and putting it
