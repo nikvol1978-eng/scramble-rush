@@ -5670,8 +5670,59 @@
       for(const e of ko) if(e.op > kb.op + 0.02) bad.push('knocked out: the '+e.what+' draws at '+e.op.toFixed(2)+' against a body at '+kb.op.toFixed(2));
       q.lavaOut = false;
     } finally { custom.skin = was.skin; custom.hat = was.hat; }
-    return { name:'υ a falling or knocked-out racer fades whole', pass: bad.length===0,
+    _checkPoseKeyframes(bad, notes);
+    return { name:'υ a racer\'s transient looks read true: a fall fades it whole, a landing bends once, a pressed wall does not squash', pass: bad.length===0,
              detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
+  // Two keyframes that did not end when they should (folded into [υ]: the
+  // same question -- does a racer's transient look read true -- and the
+  // audit had six ids for seven items).
+  //   * A STANDING landing: the idle pose eases its joints from wherever they
+  //     were, and the landing adds its bend on top every frame, so each
+  //     frame's bend was eased from the last one's and they compounded -- the
+  //     knee peaked near 2 rad for fifteen frames against ~1 for five.
+  //   * PRESSING into a gate: the stop re-armed a 0.3 squash every frame the
+  //     racer leaned on it, so the bean stayed squashed for as long as you
+  //     held forward.
+  function _checkPoseKeyframes(bad, notes){
+    begin('sunny');
+    const p = player(), m = p.mesh;
+    for(const b of racers) if(!b.isPlayer) b.y = -3000;
+    window.__dbg.hold('w', false);
+    window.__dbg.warp(2200, TRACK_W/2);
+    for(let i=0;i<60;i++){ p.x = TRACK_W/2; p.y = 2200; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    const rest = m.kneePivots[0].rotation.x;
+    window.__dbg.press('jump');
+    let n = 0; while(p.h > 0 || n < 2){ window.__dbg.tick(1); if(++n > 200) break; }
+    let peak = rest, bent = 0;
+    for(let i=0;i<40;i++){
+      const k = m.kneePivots[0].rotation.x;
+      peak = Math.max(peak, k); if(k > rest + 0.1) bent++;
+      window.__dbg.tick(1);
+    }
+    if(peak > rest + 0.95) bad.push('a standing landing bent the knee to '+peak.toFixed(2)+' (rest '+rest.toFixed(2)+')');
+    if(bent > 10) bad.push('a standing landing held the knee bent for '+bent+' frames');
+    notes.push('landing knee '+rest.toFixed(2)+' -> '+peak.toFixed(2)+' for '+bent+' frames');
+
+    const gt = obstacles.find(o=>o.type==='gate');
+    if(!gt){ bad.push('no gate on this course, so pressing into one is unproven'); return; }
+    // a wall section between the doors, well away from both
+    let wx = null, far = -1;
+    for(let x=40; x<=TRACK_W-40; x+=10){ const d = Math.min(...gt.xs.map(gx=>Math.abs(x-gx))); if(d > far){ far = d; wx = x; } }
+    window.__dbg.warp(gt.y - gt.d/2 - RADIUS - 30, wx);
+    for(let i=0;i<10;i++){ p.x = wx; p.vx = 0; p.vy = 0; window.__dbg.tick(1); }
+    window.__dbg.hold('w', true);
+    let worst = 0, pressed = 0;
+    for(let i=0;i<60;i++){
+      window.__dbg.tick(1);
+      const atFace = Math.abs(p.y - (gt.y - gt.d/2 - RADIUS)) < 1;
+      if(i >= 25 && atFace){ pressed++; worst = Math.max(worst, p.squash||0); }
+    }
+    window.__dbg.hold('w', false);
+    if(!pressed) bad.push('the racer never stood pressed against the gate, so it is unproven');
+    if(worst > 0.1) bad.push('pressing into a gate kept the racer squashed at '+worst.toFixed(2));
+    notes.push('pressed into a gate '+pressed+' frames, squash '+worst.toFixed(2));
   }
 
   // How many of `meshes` cut the line from the lens to the racer's body while

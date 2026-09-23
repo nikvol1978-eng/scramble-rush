@@ -1103,7 +1103,8 @@
       if(Math.abs(dx) < minD){
         const sgn = Math.sign(dx) || (Math.sign(r.vx) || 1);
         r.x = fk.cx + sgn*minD;
-        if(sgn*r.vx < 0){ r.vx = 0; r.squash = Math.max(r.squash, 0.3); }
+        // squash on a real impact only: leaning on it re-armed this every frame
+        if(sgn*r.vx < 0){ if(-sgn*r.vx > 1.5) r.squash = Math.max(r.squash, 0.3); r.vx = 0; }
       }
     }
 
@@ -1114,7 +1115,7 @@
       if(!through){
         const side = Math.sign(r.y - gt.y) || -1;
         r.y = gt.y + side*(gt.d/2 + RADIUS);
-        if(side*r.vy < 0){ r.vy = 0; r.squash = Math.max(r.squash, 0.3); }
+        if(side*r.vy < 0){ if(-side*r.vy > 1.5) r.squash = Math.max(r.squash, 0.3); r.vy = 0; }
         // slide toward the nearer door rather than standing there pressing into it
         let best = gt.xs[0];
         for(const gx of gt.xs) if(Math.abs(gx-r.x) < Math.abs(best-r.x)) best = gx;

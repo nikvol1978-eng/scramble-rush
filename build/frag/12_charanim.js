@@ -206,7 +206,11 @@
     const br = Math.sin(t*1.9);                   // the breath, about a third of a hertz
     const sw = Math.sin(t*0.77);                  // the weight shift, slower still
     const lag = Math.sin(t*1.9 - 0.6);            // arms trail the breath
-    const ease=(o,axis,to)=>{ o.rotation[axis] += (to-o.rotation[axis])*0.18; };
+    // On the frames of a landing the stance is taken at once, as the running
+    // pose takes its own: easing out of the air tuck while the landing's bend
+    // was added on top folded a standing landing's knee well past a running one's.
+    const EK = r.landT > 0 ? 1 : 0.18;
+    const ease=(o,axis,to)=>{ o.rotation[axis] += (to-o.rotation[axis])*EK; };
     ease(L[0],'x', 0.03 + sw*0.02); ease(L[1],'x', 0.03 - sw*0.02);
     ease(K[0],'x', KNEE_REST + 0.05 + Math.max(0, sw)*0.07);
     ease(K[1],'x', KNEE_REST + 0.05 + Math.max(0,-sw)*0.07);
@@ -281,6 +285,19 @@
       r.lastFacing = r.renderFacing||0;
       m.head.rotation.y = r.headTurn;
 
+      // Take last frame's landing bend back out first. The idle pose EASES its
+      // joints from where they are, so a bend left in fed the next frame's
+      // ease and the bends compounded: a standing landing folded the knee to
+      // 2 rad for fifteen frames. The poses that set joints outright are
+      // unaffected -- they overwrite this either way.
+      if(r.landGive){
+        for(let i=0;i<2;i++){
+          m.kneePivots[i].rotation.x -= r.landGive;
+          m.footPivots[i].rotation.x += r.landGive*0.45;
+          m.elbowPivots[i].rotation.x += r.landGive*0.30;
+        }
+        r.landGive = 0;
+      }
       poseCharacter(m, r, t, moving, speed);
 
       // ---- THE LANDING, ABSORBED ---------------------------------------
@@ -298,6 +315,7 @@
           m.footPivots[i].rotation.x -= give*0.45;     // ankle rolls under the load
           m.elbowPivots[i].rotation.x -= give*0.30;    // arms come up as it sinks
         }
+        r.landGive = give;                             // taken back out next frame
         m.tilt.rotation.x -= give*0.10;
       }
 
