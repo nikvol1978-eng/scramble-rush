@@ -6960,6 +6960,36 @@
              pass: bad.length===0, detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---- [κ] a saved look the game does not know falls back on load ----------
+  // loadProfile validated the skin and the pattern and nothing else. A saved
+  // hat or eyes id that is not in HATS / EYES -- a renamed item, an edited
+  // save -- loaded as-is: the character wore nothing, and the locker's HAT and
+  // EYES tabs showed no tile equipped at all.
+  async function checkOrphanLook(){
+    const bad = [], snap = uiSnap();
+    let raw0 = null; try{ raw0 = localStorage.getItem(SAVE_KEY); }catch(_){ /* none */ }
+    try{
+      state = 'menu';
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ custom:Object.assign({}, custom, { hat:'nonexistent', eyes:'bogus' }), stats }));
+      await loadProfile();
+      if(!HATS.some(h => h[0] === custom.hat)) bad.push('loaded hat "' + custom.hat + '" is not a hat');
+      if(!EYES.some(e => e[0] === custom.eyes)) bad.push('loaded eyes "' + custom.eyes + '" are not eyes');
+      openLobbyTab('locker');
+      for(const tab of ['hat', 'eyes']){
+        openLocker(tab);
+        const n = document.querySelectorAll('#lkGrid .lkTile.equipped').length;
+        if(n !== 1) bad.push(tab.toUpperCase() + ' tab shows ' + n + ' equipped tiles');
+      }
+    } finally {
+      try{ if(raw0 === null) localStorage.removeItem(SAVE_KEY); else localStorage.setItem(SAVE_KEY, raw0); }catch(_){ /* none */ }
+      uiRestore(snap);
+      try{ openLobbyTab('play'); refreshPreview(); }catch(_){ /* best effort */ }
+    }
+    return { name:'κ profile: an unknown saved hat or eyes id falls back to the default on load',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'hat and eyes fell back; one tile equipped in each tab' };
+  }
+
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7924,7 +7954,7 @@
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
       ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
-      ['θ',checkDailyNudge],['ι',checkSpinBanksCoins],
+      ['θ',checkDailyNudge],['ι',checkSpinBanksCoins],['κ',checkOrphanLook],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly

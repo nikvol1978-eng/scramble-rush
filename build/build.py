@@ -647,6 +647,10 @@ cut("  async function loadProfile(){",
     }catch(e){ /* first run, or storage blocked \u2014 just play unsaved */ }
     if(!SKIN_BY_ID[custom.skin]) custom.skin='pink';
     if(!PATTERN_BY_ID[custom.pattern]) custom.pattern='none';
+    // The hat and the eyes too: an id the game does not know rendered nothing
+    // and left no tile equipped in the locker. Same defaults as `custom`.
+    if(!HATS.some(h=>h[0]===custom.hat)) custom.hat='crown';
+    if(!EYES.some(e=>e[0]===custom.eyes)) custom.eyes='round';
     stats.owned  = stats.owned  || [];
     stats.patterns = stats.patterns || [];
     stats.badges = stats.badges || [];
