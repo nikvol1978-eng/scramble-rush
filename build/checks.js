@@ -7555,6 +7555,209 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---------- ο: a solid is solid to a racer who cannot be hurt ----------
+  // A dive makes the diver invulnerable for as long as it is in the air, and
+  // checkObstacles returned on invulnerability BEFORE the pillars, the solid
+  // doors, the hoop's rim, the Wall Rush walls and the bumpers. So a dive was a
+  // way through all of them -- and once a centre was past a slab's middle line
+  // the push-out chose the far face and finished the job. An audit sweep put
+  // between 68 and 151 of every 730 approaches straight through a solid, and
+  // plain running none. Invulnerability is immunity from being HIT; it was
+  // never meant to be a licence to stand inside a pillar.
+  //
+  // Every solid is approached at speed from more than one angle and at both
+  // frame lengths, doing nothing, diving at each frame of the run-up, jumping,
+  // and jumping with a dive on top. A trial fails if the racer's centre crossed
+  // the solid's middle line inside its footprint while low enough to be
+  // stopped by it -- measured at the crossing itself, so a racer that went
+  // over the top of the gate is over the top of the gate. Two controls keep
+  // "nothing got through" from being passed by a racer that never arrived: a
+  // plain run reaches every solid, and the open way past each one -- round the
+  // pillar, through the gate's door, the paper door, the hole in the hoop, the
+  // gap in the wall -- still lets a racer through.
+  function checkSolidsStaySolid(){
+    const bad = [], rep = {};
+    const DTS = [1/60, 0.033];
+    // Actions in 60 Hz frames, turned into ticks for the longer step.
+    const ACTS = [null];
+    for(let k=0;k<=12;k++) ACTS.push({[k]:'dive'});
+    ACTS.push({0:'jump'}, {0:'jump',3:'dive'}, {0:'jump',5:'dive'}, {0:'jump',8:'dive'},
+              {2:'jump',6:'dive'}, {4:'jump',9:'dive'});
+    const FRAMES60 = 40;
+    let p = null;                  // a new round makes new racers: re-read after every begin()
+    const input0 = computeInputVec;
+    let steer = null;
+    // Steer straight down the approach, whatever the camera is doing.
+    computeInputVec = function(){ return steer ? {ix:steer.ix, iy:steer.iy} : input0(); };
+    const run = (T, sx, sy, ang, dt, acts)=>{
+      if(T.before) T.before();
+      timeLimit = raceTime + 900;
+      Object.assign(p, { x:sx, y:sy, h:0, vh:0, floorH:0, onRamp:null, onShortcut:null, onMover:null,
+        onCrumble:null, onLog:null, onDeck:null, invuln:0, diveT:0, diveCd:0, stumbleT:0, getUpT:0,
+        tumbleT:0, tumbleSpin:0, respawnFreeze:0, airDive:false, falling:false, slideT:0, landT:0,
+        jumpBuf:0, coyote:0, windT:0, squash:0, platVX:0, finished:false, lavaOut:false,
+        facing:ang, vx:Math.cos(ang)*T.spd, vy:Math.sin(ang)*T.spd });
+      steer = { ix:Math.cos(ang), iy:Math.sin(ang) };
+      const n = Math.ceil(FRAMES60/(dt*60));
+      const at = {};
+      if(acts) for(const k in acts) at[Math.round(k/(dt*60))] = acts[k];
+      const tr = [[p.x, p.y, p.h, T.line()]];
+      for(let i=0;i<n;i++){
+        if(at[i]==='jump') doJump(p); else if(at[i]==='dive') doDive(p);
+        window.__dbg.tick(1, dt);
+        tr.push([p.x, p.y, p.h, T.line()]);
+        if(p.falling || state!=='racing') break;
+      }
+      steer = null;
+      return tr;
+    };
+    // The first place a trace crossed the solid's middle line going the way it
+    // was sent, interpolated: where along the line, and how high the feet were.
+    const cross = (T, tr)=>{
+      const ax = T.axis==='x' ? 0 : 1, o = 1-ax, s = T.sign||1;
+      for(let i=1;i<tr.length;i++){
+        const a = (tr[i-1][ax]-tr[i-1][3])*s, b = (tr[i][ax]-tr[i][3])*s;
+        if(a < 0 && b >= 0){
+          const k = a/(a-b);
+          return { along: tr[i-1][o] + (tr[i][o]-tr[i-1][o])*k, h: tr[i-1][2] + (tr[i][2]-tr[i-1][2])*k };
+        }
+      }
+      return null;
+    };
+    const actName = (a)=> a ? Object.keys(a).map(k=>a[k]+'@'+k).join('+') : 'run';
+    const parkRace = ()=>{ for(const r of racers) if(!r.isPlayer){
+      r.x = TRACK_W/2; r.y = -9000; r.vx = 0; r.vy = 0; r.lavaOut = true; } };
+
+    const TARGETS = [
+      ['sunny', ()=>{
+        const o = obstacles.find(x=>x.type==='pillars' && x.items.length); if(!o) return null;
+        const it = o.items[0];
+        return { tag:'pillar', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:it.r+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.r*0.7]],
+          through:(c)=>Math.abs(c.along-it.x) < it.r,
+          touched:(q)=>Math.hypot(q[0]-it.x, q[1]-o.y) < it.r+RADIUS,
+          open:{ aim:[it.x-(it.r+RADIUS+12), o.y], ang:Math.PI/2 } };
+      }],
+      ['sunny', ()=>{
+        const o = obstacles.find(x=>x.type==='bumper' && x.items.length); if(!o) return null;
+        const it = o.items[0];
+        return { tag:'bumper', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:it.r+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.r*0.7]],
+          through:(c)=>Math.abs(c.along-it.x) < it.r*0.86 && c.h < 40,
+          touched:(q)=>Math.hypot(q[0]-it.x, q[1]-o.y) < it.r+RADIUS && q[2] < 46 };
+      }],
+      ['sunny', ()=>{
+        const g = obstacles.find(x=>x.type==='gate'); if(!g) return null;
+        const inGap = (x)=>g.xs.some(gx=>Math.abs(x-gx) < g.gapW/2);
+        return { tag:'gate', axis:'y', line:()=>g.y, aim:[(g.xs[0]+g.xs[1])/2, g.y], clear:g.d/2+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2-0.6,0]],
+          through:(c)=>!inGap(c.along) && c.h < g.h,
+          touched:(q)=>Math.abs(q[1]-g.y) < g.d/2+RADIUS+1 && !inGap(q[0]) && q[2] < g.h,
+          open:{ aim:[g.xs[0], g.y], ang:Math.PI/2 } };
+      }],
+      ['sunny', ()=>{
+        const fk = obstacles.find(x=>x.type==='fork'); if(!fk) return null;
+        // from the flat side, so the approach is on the floor and not on the catwalk
+        const base = fk.risk > 0 ? 0 : Math.PI, s = fk.risk > 0 ? 1 : -1;
+        // Past the far end of the divider, or in front of where it starts, is
+        // round it rather than through it.
+        return { tag:'fork', axis:'x', sign:s, line:()=>fk.cx, aim:[fk.cx, fk.wallFrom+120], clear:8+RADIUS+40,
+          approaches:[[base,0],[base+0.5,0],[base-0.5,0]],
+          through:(c)=>c.h < 44 && c.along > fk.wallFrom && c.along < fk.yEnd,
+          touched:(q)=>Math.abs(q[0]-fk.cx) < 8+RADIUS+1 && q[2] < 44 };
+      }],
+      ['doors', ()=>{
+        const o = obstacles.find(x=>x.type==='doors' && x.items.some(i=>!i.fake)); if(!o) return null;
+        const it = o.items.find(i=>!i.fake), paper = o.items.find(i=>i.fake);
+        return { tag:'door', axis:'y', line:()=>o.y, aim:[it.x, o.y], clear:o.d/2+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0],[Math.PI/2,it.w/2-6]],
+          through:(c)=>Math.abs(c.along-it.x) < it.w/2 && c.h < 62,
+          touched:(q)=>Math.abs(q[1]-o.y) < o.d/2+RADIUS+1 && Math.abs(q[0]-it.x) < it.w/2+RADIUS-8 && q[2] < 62,
+          open: paper ? { aim:[paper.x, o.y], ang:Math.PI/2 } : null };
+      }],
+      ['slide', ()=>{
+        const o = obstacles.find(x=>x.type==='hoop'); if(!o) return null;
+        const rim = (x,h)=>Math.abs(Math.hypot(x-o.cx, h+RADIUS-o.hc) - o.r);
+        return { tag:'hoop', axis:'y', line:()=>o.y, aim:[o.cx-o.r+12, o.y], clear:o.tube+RADIUS+40,
+          approaches:[[Math.PI/2,0],[Math.PI/2,-8]],
+          through:(c)=>rim(c.along, c.h) < o.tube,
+          touched:(q)=>Math.abs(q[1]-o.y) < o.tube+RADIUS+1 && rim(q[0], q[2]) < o.tube+RADIUS*0.55,
+          open:{ aim:[o.cx, o.y], ang:Math.PI/2 } };
+      }],
+      ['walls', ()=>{
+        const walls = obstacles.filter(x=>x.type==='blockwall' && x.travel);
+        const plate = obstacles.find(x=>x.type==='plate');
+        if(!walls.length || !plate) return null;
+        const o = walls[0], W0 = (plate.yNear+plate.yFar)/2, travel0 = o.travel;
+        const it = o.items[Math.floor(o.items.length/2)];
+        const hi = o.hi || 70;
+        const onBlock = (x)=>o.items.some(b=>Math.abs(x-b.x) < b.w/2);
+        return { tag:'wall', axis:'y', line:()=>o.wy, aim:[it.x, W0], clear:o.d/2+RADIUS+40,
+          // one wall, put back where it was for every approach; the others far
+          // off; and the field stood behind it, where it is going away from them
+          before:()=>{
+            o.wy = W0; o.travel = travel0;
+            for(const w of walls) if(w!==o) w.wy = 1e5;
+            racers.filter(r=>!r.isPlayer).forEach((r,i)=>{
+              Object.assign(r, { x:plate.x0+30+(i%8)*((plate.x1-plate.x0-60)/7), y:W0+140+Math.floor(i/8)*40,
+                vx:0, vy:0, h:0, vh:0, falling:false, respawnFreeze:1e9, lavaOut:false }); });
+          },
+          approaches:[[Math.PI/2,0],[Math.PI/2+0.6,0]],
+          through:(c)=>onBlock(c.along) && c.h < hi,
+          touched:(q)=>Math.abs(q[1]-q[3]) < o.d/2+RADIUS+1 && o.items.some(b=>Math.abs(q[0]-b.x) < b.w/2+RADIUS-6) && q[2] < hi,
+          open:{ aim:[wallGapX(o), W0], ang:Math.PI/2 } };
+      }],
+    ];
+
+    try {
+      let map = null;
+      for(const [key, make] of TARGETS){
+        if(map !== key){ begin(key); map = key; p = player(); if(key!=='walls') parkRace(); }
+        const T = make();
+        if(!T){ bad.push(key+': nothing of this kind generated'); continue; }
+        T.spd = speedCap();
+        const R = rep[T.tag] = { trials:0, through:0, reached:0, runs:0 };
+        const eg = [];
+        for(const [ang, off] of T.approaches) for(const dt of DTS){
+          const dx = Math.cos(ang), dy = Math.sin(ang);
+          const ax = T.aim[0] - dy*off, ay = T.aim[1] + dx*off;
+          const seen = new Set();
+          for(const acts of ACTS){
+            // the same ticks twice is the same trial
+            const sig = acts ? Object.keys(acts).map(k=>acts[k]+Math.round(k/(dt*60))).join() : '';
+            if(seen.has(sig)) continue; seen.add(sig);
+            const tr = run(T, ax - dx*T.clear, ay - dy*T.clear, ang, dt, acts);
+            R.trials++;
+            if(!acts){ R.runs++; if(tr.some(T.touched)) R.reached++; }
+            const c = cross(T, tr);
+            if(c && T.through(c)){
+              R.through++;
+              if(eg.length < 3) eg.push(actName(acts)+' dt'+dt.toFixed(3)+' ang'+ang.toFixed(1)
+                                        +' at '+c.along.toFixed(0)+' h'+c.h.toFixed(0));
+            }
+          }
+        }
+        if(R.through) bad.push(T.tag+': '+R.through+'/'+R.trials+' went through ('+eg.join('; ')+')');
+        if(!R.reached) bad.push(T.tag+': no plain run ever reached it, so nothing was tested');
+        if(T.open){
+          const tr = run(T, T.open.aim[0] - Math.cos(T.open.ang)*T.clear,
+                            T.open.aim[1] - Math.sin(T.open.ang)*T.clear, T.open.ang, 1/60, null);
+          R.open = !!cross(T, tr);
+          if(!R.open) bad.push(T.tag+': the open way past it did not let a racer through');
+        }
+      }
+    } finally {
+      computeInputVec = input0;
+      steer = null;
+    }
+    return { name:'ο a dive, a jump or both never carries a racer through a solid',
+             pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,8).join('; ')
+                   : Object.entries(rep).map(([k,v])=>k+' '+v.trials+' trials, '+v.runs+' plain runs reached it '
+                       +v.reached+'x'+(v.open===undefined?'':', open way '+(v.open?'passes':'BLOCKED'))).join('; '),
+             rep };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -7568,6 +7771,8 @@
       ['y',checkCameraFrame],['@',checkCameraIndependence],['#',checkCameraBlockSpectate],
       ['%',checkMovement],['=',checkOccluders],
       ['I',()=>checkI(!!opts.full)],['r',checkBendNotStall],['c',checkRenderer],['h',checkNoLooping],['k',checkSurfaces],['j',checkReach],['g',checkCourseGaps],['i',checkBotDives],['x',checkComb],['w',checkWalls],['m',checkBeam],['n',checkLastRung],['t',checkTiltDeck],['l',checkLogJam],['f',checkRacerFields],['o',checkHoop],['q',checkPools],['z',checkHitTest],
+      // Solids stay solid.
+      ['ο',checkSolidsStaySolid],
       // These two used to be pinned to the end of the registry as a WORKAROUND:
       // the suite shared one Math.random stream and one accumulating clock, [~]
       // steps ninety simulated seconds of lobby into that clock, and putting it

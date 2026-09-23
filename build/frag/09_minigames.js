@@ -117,6 +117,50 @@
   // pusher in the same place every run, which turned that into check Q failing
   // half the time instead of once in a while.
   function surfaceH(r){ return (r.floorH||0) + r.h; }
+  // ---- which side of a solid a racer is put back on ----
+  // The physics loop notes where each racer was before this tick moved it
+  // (mvX, mvY, mvH, good while mvOk), and a solid pushes a racer back out the
+  // side it came in by. Deciding that from where the centre is NOW is what made
+  // the old dive a way through: once anything had carried the centre past a
+  // slab's middle line, the push-out chose the far face and finished the
+  // crossing for it. A centre that crossed the line in THIS tick has got
+  // through only if the point where it crossed was open -- a gap, or over the
+  // top -- and is otherwise put back where it came from. Nothing but the
+  // physics loop records a start, so a check or a teleport that calls
+  // checkObstacles on its own gets the plain answer, as does a jump in position
+  // no tick of movement could make.
+  function moveKnown(r){
+    return r.mvOk === true && Math.abs(r.x - r.mvX) + Math.abs(r.y - r.mvY) < 80;
+  }
+  // The side (sign) of the line x=c (axisX) or y=c the racer belongs on; 0 only
+  // for a centre exactly on the line. open(along, h) is whether the solid
+  // leaves room at that point of its middle line, `along` being the other
+  // coordinate and h the height of the feet.
+  function sideOf(r, axisX, c, open){
+    const cur = axisX ? r.x : r.y, from = axisX ? r.mvX : r.mvY;
+    const now = Math.sign(cur - c);
+    if(!moveKnown(r)) return now;
+    const was = Math.sign(from - c);
+    if(!was || was === now) return now;
+    const k = (c - from)/(cur - from);
+    const along = axisX ? r.mvY + (r.y - r.mvY)*k : r.mvX + (r.x - r.mvX)*k;
+    return open(along, r.mvH + (r.h - r.mvH)*k) ? now : was;
+  }
+  // The way out of a round solid: straight out from its centre, from where the
+  // racer is -- unless this tick took the centre past the solid's own (the
+  // offsets before and after point apart) while it was low enough to be
+  // stopped, in which case back out along the side it came from. `top` is the
+  // solid's height over the course surface (Infinity for a pillar).
+  let outNX = 0, outNY = 0;
+  function roundOut(r, cx, cy, top){
+    let nx = r.x - cx, ny = r.y - cy;
+    if(moveKnown(r)){
+      const px = r.mvX - cx, py = r.mvY - cy;
+      if(nx*px + ny*py < 0 && (r.floorH||0) + r.mvH < top){ nx = px; ny = py; }
+    }
+    const d = Math.hypot(nx, ny) || 1;
+    outNX = nx/d; outNY = ny/d;
+  }
   // checkObstacles is handed a racer and a clock, not the frame's step, and a
   // surface that pushes every frame needs the step or it pushes harder on a
   // slow machine. The physics loop leaves it here.
@@ -1106,7 +1150,9 @@
     if(fk && r.h < 44){
       const dx = r.x - fk.cx, minD = 8 + RADIUS;
       if(Math.abs(dx) < minD){
-        const sgn = Math.sign(dx) || (Math.sign(r.vx) || 1);
+        // over it, or round either end of it, is a fair way across
+        const sgn = sideOf(r, true, fk.cx, (y,h)=> h >= 44 || y < fk.wallFrom-RADIUS || y > fk.yEnd)
+                 || (Math.sign(r.vx) || 1);
         r.x = fk.cx + sgn*minD;
         if(sgn*r.vx < 0){ r.vx = 0; r.squash = Math.max(r.squash, 0.3); }
       }
@@ -1117,7 +1163,10 @@
     if(gt && r.h < gt.h){
       const through = gt.xs.some(gx => Math.abs(r.x-gx) < gt.gapW/2 - RADIUS*0.35);
       if(!through){
-        const side = Math.sign(r.y - gt.y) || -1;
+        // A racer whose feet were over the top where they crossed its middle
+        // went over it, and comes down on the far side; anyone else goes back.
+        const side = sideOf(r, false, gt.y, (x,h)=> h >= gt.h
+                       || gt.xs.some(gx => Math.abs(x-gx) < gt.gapW/2 - RADIUS*0.35)) || -1;
         r.y = gt.y + side*(gt.d/2 + RADIUS);
         if(side*r.vy < 0){ r.vy = 0; r.squash = Math.max(r.squash, 0.3); }
         // slide toward the nearer door rather than standing there pressing into it
@@ -1364,7 +1413,19 @@
       }
     }
 
-    if(r.invuln>0) return;
+    // ---- solids ----------------------------------------------------------
+    // Above the invulnerability gate, not behind it. A racer who cannot be hurt
+    // -- in a dive, just up off the floor, just back from a fall -- is still a
+    // body, and a pillar is still a pillar. The gate used to sit above all of
+    // these, so every dive was a pass through any of them: the audit sweep put
+    // up to one approach in five through a pillar that way. What being
+    // untouchable still buys is the HIT -- the stumble off a pillar, the bounce
+    // off a door or the rim, a bumper's fling, a wall's knockdown -- so those
+    // stay behind it, which is also what stops a racer held against a solid
+    // being hit by it again on every frame of the invulnerability its first hit
+    // handed out. `inv` is read once, as the gate did, so a hit here does not
+    // spare the racer something further down the list this same frame.
+    const inv = r.invuln > 0;
     for(const o of obstacles){
       if(r.y<o.y0-40||r.y>o.y1+40) continue;
 
@@ -1372,11 +1433,12 @@
         for(const it of o.items){
           const dx=r.x-it.x, dy=r.y-o.y; const d=Math.hypot(dx,dy);
           if(d<it.r+RADIUS-4){
-            const nx=dx/(d||1), ny=dy/(d||1); const pen=it.r+RADIUS-4-d;
-            r.x+=nx*pen; r.y+=ny*pen;
+            roundOut(r, it.x, o.y, Infinity);
+            const nx=outNX, ny=outNY;
+            r.x = it.x + nx*(it.r+RADIUS-4); r.y = o.y + ny*(it.r+RADIUS-4);
             const vn=r.vx*nx+r.vy*ny;
             if(vn<0){ r.vx-=vn*nx*1.4; r.vy-=vn*ny*1.4;
-              if(-vn>4){ r.stumbleT=320; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
+              if(-vn>4 && !inv){ r.stumbleT=320; spawnBurst3D(r.x,r.y,0xffffff,5); if(r.isPlayer) SFX.bump(); } }
             r.vx += (nx>=0?1:-1)*0.8;
           }
         }
@@ -1387,21 +1449,27 @@
             const it=o.items[i];
             if(Math.abs(r.x-it.x) > it.w/2 + RADIUS - 8) continue;
             if(it.fake){
+              // Paper tears whoever goes through it -- a diver used to pass
+              // through an intact panel. Being slowed by it is the hit.
               if(!it.broken){
                 it.broken=true;
                 const m=o.meshes && o.meshes[i];
                 if(m){ m.panel.visible=false; }
                 spawnBurst3D(it.x, o.y, 0xfff1c9, 14);
-                r.vy *= 0.62; r.stumbleT=Math.max(r.stumbleT,120);
+                if(!inv){ r.vy *= 0.62; r.stumbleT=Math.max(r.stumbleT,120); }
                 if(r.isPlayer){ SFX.bump(); camShake=3; }
               }
             } else {
-              const side = Math.sign(r.y-o.y)||-1;
+              const side = sideOf(r, false, o.y, (x,h)=> h >= 62 || !o.items.some(q=>!q.fake
+                             && Math.abs(x-q.x) <= q.w/2 + RADIUS - 8)) || -1;
               r.y = o.y + side*(o.d/2 + RADIUS);
-              if(side<0 && r.vy>0){ r.vy = -Math.abs(r.vy)*0.35 - 1; r.stumbleT=340; r.invuln=260;
-                spawnBurst3D(r.x, o.y, 0x5b3aa8, 8);
-                if(r.isPlayer){ SFX.hit(); camShake=5; } }
-              r.vx += (r.x < it.x ? -1 : 1)*5.2;   // deflect toward a gap instead of sticking
+              if(inv){ if(side*r.vy < 0) r.vy = 0; }
+              else {
+                if(side<0 && r.vy>0){ r.vy = -Math.abs(r.vy)*0.35 - 1; r.stumbleT=340; r.invuln=260;
+                  spawnBurst3D(r.x, o.y, 0x5b3aa8, 8);
+                  if(r.isPlayer){ SFX.hit(); camShake=5; } }
+                r.vx += (r.x < it.x ? -1 : 1)*5.2;   // deflect toward a gap instead of sticking
+              }
             }
           }
         }
@@ -1415,16 +1483,20 @@
           const dx = r.x - o.cx, dh = (r.h + RADIUS) - o.hc;
           const d = Math.hypot(dx, dh);
           if(Math.abs(d - o.r) < o.tube + RADIUS*0.55){
-            const side = Math.sign(r.y - o.y) || -1;
+            const side = sideOf(r, false, o.y, (x,h)=>
+                           Math.abs(Math.hypot(x - o.cx, h + RADIUS - o.hc) - o.r) >= o.tube + RADIUS*0.55) || -1;
             r.y = o.y + side*(o.tube + RADIUS);
-            if(side < 0 && r.vy > 0){
-              r.vy = -Math.abs(r.vy)*0.40 - 1;
-              r.stumbleT = Math.max(r.stumbleT, 380); r.invuln = Math.max(r.invuln, 320);
-              spawnBurst3D(r.x, o.y, 0xffd54f, 10);
-              if(r.isPlayer){ SFX.hit(); camShake = Math.max(camShake, 5); }
+            if(inv){ if(side*r.vy < 0) r.vy = 0; }
+            else {
+              if(side < 0 && r.vy > 0){
+                r.vy = -Math.abs(r.vy)*0.40 - 1;
+                r.stumbleT = Math.max(r.stumbleT, 380); r.invuln = Math.max(r.invuln, 320);
+                spawnBurst3D(r.x, o.y, 0xffd54f, 10);
+                if(r.isPlayer){ SFX.hit(); camShake = Math.max(camShake, 5); }
+              }
+              // and shoved back toward the hole, which is always inward
+              r.vx -= Math.sign(dx)*2.2;
             }
-            // and shoved back toward the hole, which is always inward
-            r.vx -= Math.sign(dx)*2.2;
           }
         }
 
@@ -1434,12 +1506,14 @@
         // one: a standing jump tops out within a unit or two of it, so the
         // round's whole premise -- a wall you cannot jump -- came down to
         // rounding. The race sections keep the 70 they were built against.
-        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < (o.hi || 70)){
+        const hi = o.hi || 70;
+        if(Math.abs(r.y-wy) < o.d/2 + RADIUS && r.h < hi){
           const shift=blockShift(o,t);
           for(const it of o.items){
             const bx=it.x+shift;
             if(Math.abs(r.x-bx) > it.w/2 + RADIUS - 6) continue;
-            const side = Math.sign(r.y-wy)||-1;
+            const side = sideOf(r, false, wy, (x,h)=> h >= hi || !o.items.some(q=>
+                           Math.abs(x-(q.x+shift)) <= q.w/2 + RADIUS - 6)) || -1;
             r.y = wy + side*(o.d/2 + RADIUS);
             if(o.travel){
               // A wall that is coming for you carries you. Knocking you down
@@ -1454,7 +1528,8 @@
               // pinned at the far side of the wall slid to the gap on its own
               // in under two seconds, and nobody was ever swept off.
               r.vx += (r.x < bx ? -1 : 1)*0.30;
-            } else {
+            } else if(inv){ if(side*r.vy < 0) r.vy = 0; }
+            else {
               if(side<0 && r.vy>0){ r.vy=-Math.abs(r.vy)*0.3-1;
                 sendTumbling(r, 6, 0, -1); r.invuln=520;
                 spawnBurst3D(r.x,wy,0xff8a5c,8); }
@@ -1464,7 +1539,37 @@
           }
         }
 
-      } else if(o.type==='laserbar'){
+      } else if(o.type==='bumper'){
+        for(const it of o.items){
+          const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
+          if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
+            roundOut(r, it.x, o.y, 46);
+            const nx=outNX, ny=outNY;
+            r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
+            // Untouchable, it does not fling you; it is still in the way.
+            if(inv){ const vn = r.vx*nx + r.vy*ny; if(vn < 0){ r.vx -= vn*nx; r.vy -= vn*ny; } continue; }
+            // Pinball: fling outward, harder the faster you hit it -- but
+            // only the part of your speed that was actually going into it.
+            // Brushing past one at full tilt used to fling you as hard as
+            // running straight at it.
+            const closing = Math.max(0, -(r.vx*nx + r.vy*ny));
+            const kick = 6.2 + closing*0.75;
+            r.vx = nx*kick; r.vy = ny*kick;
+            r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
+            spawnBurst3D(r.x,r.y,0xff4fa3,8);
+            if(r.isPlayer){ SFX.bump(); camShake=4; }
+            return;
+          }
+        }
+      }
+    }
+
+    // ---- hazards: these only HIT, so being untouchable is a pass ----
+    if(inv) return;
+    for(const o of obstacles){
+      if(r.y<o.y0-40||r.y>o.y1+40) continue;
+
+      if(o.type==='laserbar'){
         const by=laserY(o,t);
         if(Math.abs(r.y-by) < 12 + RADIUS*0.60){
           // Measured from the surface underfoot, not from the racer's own h.
@@ -1484,26 +1589,6 @@
         }
 
       //<<shelved:hit-roller>>
-      } else if(o.type==='bumper'){
-        for(const it of o.items){
-          const dx=r.x-it.x, dy=r.y-o.y, d=Math.hypot(dx,dy);
-          if(d < it.r+RADIUS-2 && surfaceH(r) < 46){
-            const nx=dx/(d||1), ny=dy/(d||1);
-            r.x = it.x + nx*(it.r+RADIUS); r.y = o.y + ny*(it.r+RADIUS);
-            // Pinball: fling outward, harder the faster you hit it -- but
-            // only the part of your speed that was actually going into it.
-            // Brushing past one at full tilt used to fling you as hard as
-            // running straight at it.
-            const closing = Math.max(0, -(r.vx*nx + r.vy*ny));
-            const kick = 6.2 + closing*0.75;
-            r.vx = nx*kick; r.vy = ny*kick;
-            r.squash = 0.9; r.stumbleT = 200; r.invuln = 240; it.hit = 1;
-            spawnBurst3D(r.x,r.y,0xff4fa3,8);
-            if(r.isPlayer){ SFX.bump(); camShake=4; }
-            return;
-          }
-        }
-
       } else if(o.type==='boost'){
         if(surfaceH(r) < 30 && Math.abs(r.y-o.y) < o.len/2 + RADIUS && Math.abs(r.x-o.cx) < o.w/2 + RADIUS - 8){
           // a speed floor rather than an impulse, so it does not depend on frame rate

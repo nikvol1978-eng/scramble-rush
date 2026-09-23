@@ -858,6 +858,7 @@ cut("""    const p=racers.find(r=>r.isPlayer);
 sub("  function baseRacer(){ return {x:0,y:-60,",
     "  function baseRacer(){ return {getUpT:0,coyote:0,jumpBuf:0,slideT:0,airDive:false,airSpeed0:0,cpIndex:-1,floorH:0,"
     + "tumbleT:0,tumbleSpin:0,tumbleAng:0,getUpTotal:0,landT:0,respawnFreeze:0,tileGraceUntil:0,holeWait:0,skidLean:0,platVX:0,"
+    + "mvOk:false,mvX:0,mvY:-60,mvH:0,"
     + "x:0,y:-60,",
     "baseRacer fields")
 

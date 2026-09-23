@@ -86,6 +86,11 @@
 
       if(r.falling){ r.fallT-=dt*1000; if(r.fallT<=0) respawnAfterFall(r); continue; }
 
+      // Where this racer starts the tick, so a solid can put it back on the
+      // side it came from rather than the side its centre ends up on. Good
+      // until checkObstacles has used it, below. See sideOf in 09_minigames.js.
+      r.mvX = r.x; r.mvY = r.y; r.mvH = r.h; r.mvOk = true;
+
       if(r.remoteId){
         const inp=mp.remoteInput[r.remoteId];
         if(inp){
@@ -214,7 +219,7 @@
       r.x = arenaMode() ? clamp(r.x, TRACK_W/2-1400, TRACK_W/2+1400) : clamp(r.x,4,TRACK_W-4);
       r.y = arenaMode() ? Math.max(r.y,-1400) : Math.max(r.y,-120);
       if(currentMap.knockout && arenaEnd && r.y>arenaEnd){ r.y=arenaEnd; if(r.vy>0) r.vy=0; }
-      frameK = f; checkObstacles(r, obsTime(t));
+      frameK = f; checkObstacles(r, obsTime(t)); r.mvOk = false;
       // §2.9: the flag you last went past is where you come back to. Lighting
       // it is the player's business only -- a bot passing one should not tell
       // you that you have banked it.
