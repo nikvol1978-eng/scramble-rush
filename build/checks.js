@@ -6891,6 +6891,33 @@
              pass: bad.length===0, detail: bad.length ? bad.slice(0, 6).join('; ') : 'fits at ' + notes.join(', ') + 'px with 999,999 coins and 999 crowns' };
   }
 
+  // ---- [θ] a spin that is ready says so ------------------------------------
+  // refreshDailyChip() puts .ready on #dailyBtn and the stylesheet has a nudge
+  // for it -- written against .dailyBtn, which is the class of a button that no
+  // longer exists. The chip is .dailyBadge, so the rule never matched and the
+  // "spin ready" wiggle never played.
+  function checkDailyNudge(){
+    const bad = [];
+    const was = stats.lastSpin;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try{
+      state = 'menu';
+      openLobbyTab('play');
+      stats.lastSpin = 0; refreshDailyChip();
+      const b = $('dailyBtn'), on = getComputedStyle(b).animationName;
+      if(!b.classList.contains('ready')) bad.push('a due spin did not mark the chip ready');
+      if(!reduce && on !== 'dailyNudge') bad.push('the chip is marked ready and does not move (animation: ' + on + ')');
+      stats.lastSpin = Date.now(); refreshDailyChip();
+      const off = getComputedStyle(b).animationName;
+      if(off !== 'none') bad.push('a spent spin still nudges (' + off + ')');
+    } finally {
+      stats.lastSpin = was;
+      try{ refreshDailyChip(); }catch(_){ /* best effort */ }
+    }
+    return { name:'θ daily chip: a ready spin nudges, a spent one does not',
+             pass: bad.length===0, detail: bad.length ? bad.join('; ') : 'ready nudges' + (reduce ? ' (reduced motion: still)' : '') + ', spent is still' };
+  }
+
   // ---- [-] the startup loader --------------------------------------------
   // THE RULE IS `ready && elapsed >= minimum`, AND BOTH HALVES ARE TESTED.
   // A loader that transitions on a timer is the failure worth guarding
@@ -7855,6 +7882,7 @@
       ['<',checkUiLocker],['α',checkLockerNames],['β',checkDeadMediaRules],['>',checkUiShop],['/',checkUiPass],[';',checkUiDaily],["'",checkCatalogue],['\"',checkOneScreen],
       [',',checkSpinRowStill],['γ',checkWheelOneBody],['-',checkStartup],
       ['δ',checkMenuHotkeys],['ε',checkShopBuyBox],['ζ',checkNoSideScroll],['η',checkChromeFits],
+      ['θ',checkDailyNudge],
       // v27 SS1 pre-match. The rules that keep the loader from going back
       // to being decoration: readiness is earned, the countdown is derived,
       // nothing moves before the instant, the server owns it, and exactly

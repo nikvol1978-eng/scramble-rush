@@ -196,8 +196,12 @@
   .dailyBtn svg{width:24px;height:24px;fill:none;stroke:var(--line);stroke-width:1.9;stroke-linejoin:round;}
   .dailyBtn:hover{filter:brightness(1.08);}
   .dailyBtn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--line);}
-  .dailyBtn.ready{background:var(--gold);animation:dailyNudge 1.6s ease-in-out infinite;}
+  /* The spin-ready nudge. It was written as .dailyBtn.ready, but #dailyBtn is
+     the .dailyBadge on the PLAY pill now (already gold), so it never matched
+     and a ready spin never moved. */
+  .dailyBadge.ready{animation:dailyNudge 1.6s ease-in-out infinite;}
   @keyframes dailyNudge{0%,88%,100%{transform:none}92%{transform:rotate(-7deg)}96%{transform:rotate(7deg)}}
+  @media (prefers-reduced-motion: reduce){ .dailyBadge.ready{animation:none;} }
 
   /* THE WHEEL. --ws is its diameter and every part of it is a fraction of
      that one number -- the hub, the pointer, the names' radius and their type
