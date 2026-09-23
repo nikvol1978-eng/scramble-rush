@@ -5542,6 +5542,67 @@
                : 'covered '+JSON.stringify(seen)+', peak fadeables '+maxFadeables };
   }
 
+  // ================= CAMERA AUDIT (tau..omega) =================
+  // Where the camera and the character are drawn, measured against where the
+  // simulation says they are. Each of these reproduced as a defect first.
+
+  // Where a racer's body is, relative to the lens: on screen, and in front.
+  function _racerOnScreen(r){
+    scene.updateMatrixWorld(); camera.updateMatrixWorld();
+    const g = r.mesh.group.getWorldPosition(new THREE.Vector3());
+    const inFront = g.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+    const n = g.clone().project(camera);
+    return { ok: inFront && Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1, inFront, x:n.x, y:n.y };
+  }
+
+  // ---------- tau: a respawn is a cut, not a pan ----------
+  // respawnAfterFall puts a racer back as much as 2400 units down the course in
+  // one frame. The pivot follows at FOLLOW_XZ, so for eight to eleven frames
+  // after every section-back respawn the lens was still out where the fall
+  // happened -- with the player behind it, off screen, and on Super Slide
+  // under the course. A teleport is a cut: the frame after it must already
+  // show the racer, in front of the lens.
+  function checkRespawnCut(){
+    const bad = [], notes = [];
+    let far = 0, worstFrames = 0;
+    for(const key of ['slide','neon']){
+      withSeed(1, ()=>beginSeeded(key, 1));
+      const p = player();
+      for(const frac of [0.2, 0.35, 0.5, 0.65, 0.8]){
+        if(state !== 'racing' || p.finished || p.lavaOut) break;
+        window.__dbg.look(0, CAM.PITCH); window.__dbg.hold('w', true);
+        window.__dbg.warp(Math.round(trackLength*frac), TRACK_W/2);
+        window.__dbg.tick(40);
+        if(p.finished || p.lavaOut) break;
+        const y0 = p.y; p.x = -80;                         // off the left edge
+        let n = 0; while(!p.falling && n < 30){ window.__dbg.tick(1); n++; }
+        if(!p.falling) continue;
+        n = 0; while(p.falling && n < 200){ window.__dbg.tick(1); n++; }
+        if(p.falling) continue;
+        const back = y0 - p.y;
+        if(back < 600) continue;                           // not a section-back respawn
+        far++;
+        // Frame 0 is the tick the respawn happened on; one more is allowed.
+        let offFrames = 0;
+        for(let f=0; f<12; f++){
+          const s = _racerOnScreen(p);
+          if(!s.ok) offFrames++;
+          if(f === 1 && !s.ok)
+            bad.push(key+' @'+Math.round(y0)+': respawned '+Math.round(back)+' back and the racer is '
+                     +(s.inFront ? 'off screen' : 'behind the lens')+' a frame later (ndc '+s.x.toFixed(2)+','+s.y.toFixed(2)+')');
+          window.__dbg.tick(1);
+        }
+        worstFrames = Math.max(worstFrames, offFrames);
+        notes.push(key+'@'+Math.round(y0)+' back '+Math.round(back)+': off '+offFrames);
+      }
+      window.__dbg.hold('w', false);
+    }
+    if(!far) bad.push('no section-back respawn was exercised, so the cut is unproven');
+    if(worstFrames > 1) bad.push('racer off screen for up to '+worstFrames+' frames after a respawn');
+    return { name:'τ a respawn cuts the camera to the racer', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0,4).join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8614,7 +8675,9 @@
       ['|',checkPrematchHiddenTab],
       // ...and the other half of the same feature: the JOINER's path, which
       // until now nothing in this suite had ever run.
-      ['{',checkJoinerPrepares],['}',checkJoinerFrames]
+      ['{',checkJoinerPrepares],['}',checkJoinerFrames],
+      // the camera and visual audit
+      ['τ',checkRespawnCut]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

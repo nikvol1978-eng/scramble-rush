@@ -32,6 +32,13 @@
   // While it is running the pivot follows on a much slacker weight, which turns
   // a cut across the whole course into a glide.
   let camSwitchT = 0;
+  // Set when the racer the camera is on is TELEPORTED rather than moved: a
+  // respawn puts them up to a whole section back in one frame. Followed at
+  // FOLLOW_XZ that is eight to eleven frames of the lens hanging where the
+  // fall happened with the racer behind it -- on Super Slide, under the
+  // course. A teleport is a cut, so the next syncCamera snaps. Consumed there.
+  let camCutPending = false;
+  function cutCameraTo(r){ if(r && typeof camSubject === 'function' && camSubject() === r) camCutPending = true; }
   const _camRay = new THREE.Raycaster();
   // Scratch. The camera runs every frame; allocating here would hand the GC a
   // steady drip for the whole race.
@@ -248,6 +255,7 @@
       dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true); flyCamera(); return;
     }
     dt = dt||0.016;
+    if(camCutPending){ camCutPending = false; snap = true; }
     // the profile stage dims these; put them back for play
     dirLight.intensity=KEY_LIGHT; hemi.intensity=FILL_LIGHT; showSky(true);
 
