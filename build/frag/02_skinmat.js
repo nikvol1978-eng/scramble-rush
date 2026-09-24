@@ -137,6 +137,42 @@
     return mat;
   }
 
+  // THE BODY'S CANVAS WRAPS ROUND IT ONCE, AND THE WRAP HAS NO SEAM COLUMN.
+  // The bean closes its circle on shared vertices, so one strip of triangles
+  // runs from u = 0.98 back to u = 0 and would squeeze the whole canvas into
+  // it. Duplicating that column would fix it at the cost of 96 vertices and a
+  // second copy of every normal on the line; this fixes it in the sampling
+  // instead (Tarini's seamless cylindrical mapping). Each fragment carries u
+  // twice -- as stored, which breaks at the front, and shifted half a turn,
+  // which breaks at the back -- and reads whichever is not breaking where it
+  // is, judged by which one changes least across its own pixel quad. Both
+  // name the same texel, so the choice is invisible; the mip level comes from
+  // the continuous one, so the join does not show as a line either.
+  function wrapAroundUv(mat){
+    const prev = mat.onBeforeCompile, prevKey = mat.customProgramCacheKey;
+    mat.onBeforeCompile = (shader, r)=>{
+      if(prev) prev(shader, r);
+      const decl = '#ifdef USE_MAP\nvarying vec2 vMapUvB;\n#endif\n'
+                 + '#ifdef USE_EMISSIVEMAP\nvarying vec2 vEmissiveMapUvB;\n#endif\n';
+      shader.vertexShader = decl + shader.vertexShader.replace('#include <uv_vertex>',
+        '#include <uv_vertex>\n'
+        + '#ifdef USE_MAP\nvMapUvB = ( mapTransform * vec3( fract( MAP_UV.x + 0.5 ) - 0.5, MAP_UV.y, 1.0 ) ).xy;\n#endif\n'
+        + '#ifdef USE_EMISSIVEMAP\nvEmissiveMapUvB = ( emissiveMapTransform * vec3( fract( EMISSIVEMAP_UV.x + 0.5 ) - 0.5, EMISSIVEMAP_UV.y, 1.0 ) ).xy;\n#endif\n');
+      // Read the chunk through a renamed varying rather than copying it, so
+      // three's own map code stays in charge of everything after the lookup.
+      // fwidth is core in WebGL2; a WebGL1 context keeps the plain lookup.
+      const wrap = (flag, a, chunk)=>'\n#ifdef ' + flag + '\n#if __VERSION__ >= 300\n'
+        + 'vec2 ' + a + 'W = fwidth( ' + a + '.x ) <= fwidth( ' + a + 'B.x ) ? ' + a + ' : ' + a + 'B;\n'
+        + '#else\nvec2 ' + a + 'W = ' + a + ';\n#endif\n#define ' + a + ' ' + a + 'W\n#endif\n'
+        + '#include <' + chunk + '>\n#ifdef ' + flag + '\n#undef ' + a + '\n#endif\n';
+      shader.fragmentShader = decl + shader.fragmentShader
+        .replace('#include <map_fragment>', wrap('USE_MAP', 'vMapUv', 'map_fragment'))
+        .replace('#include <emissivemap_fragment>', wrap('USE_EMISSIVEMAP', 'vEmissiveMapUv', 'emissivemap_fragment'));
+    };
+    mat.customProgramCacheKey = ()=>(prevKey ? prevKey.call(mat) : '') + '|wrapuv';
+    return mat;
+  }
+
   // Materials that need per-frame work (scrolling rainbow, pulsing neon).
   let animatedMats=[];
   function updateSkinMaterials(t){
@@ -199,6 +235,7 @@
       }
     }
     addRim(bodyMat, 0xbfe6ff, 0.35);
+    wrapAroundUv(bodyMat);
     const limbMat = new THREE.MeshToonMaterial({color:limb, gradientMap:toonRamp()});
     return { bodyMat, limbMat };
   }
