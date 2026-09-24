@@ -150,6 +150,8 @@
 
   // type: solid | gradient | neon | metal | oil | rainbow | rainbowneon | galaxy
   // unlock: {kind:'default'} | {kind:'coins',cost} | {kind:'badge',badge} | {kind:'wins',count}
+  // Spectrum's seven bands: its painting (02_skinmat.js) and its swatch.
+  const SPECTRUM = ['#ff2140','#ff8a00','#ffd600','#2fd65a','#00c8ff','#2f5bff','#9d2bff'];
   const SKINS = [
     // ---- COMMON: flat colours, the starting wardrobe ----
     {id:'pink',   name:'Bubblegum',   rarity:'common', type:'solid', color:'#ff4fa3', unlock:{kind:'default'}},
@@ -229,13 +231,26 @@
     {id:'obsidian', name:'Obsidian',     rarity:'epic', type:'metal', color:'#2a2a35', shine:200, unlock:{kind:'coins',cost:820}},
     {id:'rosegold', name:'Rose Gold',    rarity:'epic', type:'metal', color:'#f0a89a', shine:190, unlock:{kind:'coins',cost:860}},
     {id:'titanium', name:'Titanium',     rarity:'epic', type:'metal', color:'#9fb3c8', shine:210, unlock:{kind:'coins',cost:860}},
-    {id:'peacock',  name:'Peacock',      rarity:'epic', type:'oil',   unlock:{kind:'badge',badge:'podium'}},
+    // Peacock, Spectrum and Prismatic Void were bare copies of another type's
+    // defaults, so they drew Oil Slick's, Rainbow's and Solar Flare's canvas.
+    // Each keeps its type -- that is its material and its draw calls -- and
+    // gets its own painting (`art`, 02_skinmat.js), a limb colour (`color`),
+    // a swatch, and `scroll:0`, because a painted motif that scrolled would
+    // slide over the body. Prismatic Void's `glow` lifts its emissive: only
+    // its light is lit, so it can burn brighter than an all-over glow.
+    {id:'peacock',  name:'Peacock',      rarity:'epic', type:'oil', art:'peacock', color:'#22b39c', scroll:0,
+      swatch:'radial-gradient(ellipse 34% 44% at 50% 58%,#081236 20%,#1d3fc4 38%,#16c6bd 56%,#2fb36b 74%,#c08a1c 88%,#0f7a6c 89%)',
+      unlock:{kind:'badge',badge:'podium'}},
 
     {id:'glacier',  name:'Glacier',      rarity:'legendary', type:'galaxy',  colors:['#04283d','#0ea5e9','#e0f2fe'], unlock:{kind:'coins',cost:1450}},
     {id:'supernova',name:'Supernova',    rarity:'legendary', type:'galaxy',  colors:['#1a0330','#f43f5e','#fde047'], unlock:{kind:'coins',cost:1500}},
-    {id:'spectrum', name:'Spectrum',     rarity:'legendary', type:'rainbow', unlock:{kind:'badge',badge:'twenty_wins'}},
+    {id:'spectrum', name:'Spectrum',     rarity:'legendary', type:'rainbow', art:'spectrum', color:'#4c3fc4', scroll:0,
+      swatch:'repeating-linear-gradient(135deg,'+SPECTRUM.map((c,i)=>c+' '+i*8+'% '+(i*8+7)+'%,#1b1440 0 '+(i*8+8)+'%').join()+')',
+      unlock:{kind:'badge',badge:'twenty_wins'}},
 
-    {id:'prismvoid',name:'Prismatic Void', rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}},
+    {id:'prismvoid',name:'Prismatic Void', rarity:'special', type:'rainbowneon', art:'prismvoid', color:'#2e1065', scroll:0, glow:0.95,
+      swatch:'linear-gradient(135deg,#06030d 0 38%,#ff3d9a 42%,#ffd23a 46%,#3dffa8 50%,#3dd6ff 54%,#9d5bff 58%,#06030d 62%)',
+      unlock:{kind:'coins',cost:1999}},
 
     // ---- v25: fourteen more colourways --------------------------------
     // All of them are the EXISTING procedural material system -- solid,
@@ -279,6 +294,7 @@
   // CSS background used for shop tiles, HUD dots, roster rows and result rows.
   function skinSwatch(s){
     if(!s) return '#ff4fa3';
+    if(s.swatch) return s.swatch;
     if(s.type==='rainbow'||s.type==='rainbowneon') return 'linear-gradient(90deg,#ff004d,#ffcb3d,#3cff8a,#26d5ff,#b026ff,#ff004d)';
     if(s.type==='galaxy') return 'linear-gradient(135deg,'+s.colors[0]+','+s.colors[1]+','+(s.colors[2]||s.colors[1])+')';
     if(s.type==='gradient') return 'linear-gradient(160deg,'+s.colors[0]+','+s.colors[1]+')';
@@ -297,8 +313,25 @@
   // ============================================================
   // PATTERNS (a second cosmetic layer, painted over the skin)
   // ============================================================
-  // Each draw(g,w,h) paints onto a 256x256 canvas; the result multiplies over
-  // the skin, so ink darkens and white lifts.
+  // Each draw(g,w,h) paints onto a 256x256 canvas over the skin's canvas. On a
+  // flat skin that canvas is white and the material multiplies it by the skin
+  // colour, so ink can only DARKEN: white ink there is a no-op, which is how
+  // four patterns vanished on every flat skin. A pattern with light parts says
+  // `lift:true`, and skinTexture paints it over the skin's own colour instead,
+  // so its light and coloured parts show as themselves (see 02_skinmat.js).
+  //
+  // A motif drawn at x is drawn again half a turn round, and at the copies that
+  // reach the canvas from either side, so the pattern repeats exactly every
+  // 128 px. wrapSeamless's half-turn roll then lands on the same image: no
+  // ghost at the back, and no seam at the front on the skins it skips.
+  function halfTurns(x, w, fn){ const hw = w/2; for(const dx of [-hw, 0, hw, w]) fn(x+dx); }
+  // Motif centres on a staggered grid over one half turn: `rows` rows kept
+  // clear of the pinched crown and hem, `per` motifs a row, alternate rows
+  // shifted half a step, a small fixed jitter so it does not read as a grid.
+  function staggered(w, h, rows, per, fn){ const step=w/2/per, top=h*0.13, dy=h*0.74/(rows-1);
+    for(let r=0, i=0; r<rows; r++) for(let k=0; k<per; k++, i++)
+      fn((k+(r%2)*0.5)*step + ((i*7)%9-4), top + r*dy + ((i*5)%7-3), i); }
+
   const PATTERNS = [
     {id:'none', name:'Plain', rarity:'common', unlock:{kind:'default'}, draw:()=>{}},
 
@@ -321,11 +354,19 @@
       draw:(g,w,h)=>{ for(let i=0;i<20;i++){ const x=(i*83)%w, y=(i*127)%h;
         g.beginPath(); g.ellipse(x,y,18+((i*29)%22),12+((i*17)%16),(i*0.7),0,Math.PI*2); g.fill(); } }},
 
-    {id:'stars', name:'Starfield', rarity:'superrare', unlock:{kind:'coins',cost:480}, alpha:0.75, ink:'rgba(255,255,255,1)',
-      draw:(g,w,h)=>{ const star=(cx,cy,r)=>{ g.beginPath();
-        for(let i=0;i<10;i++){ const a=i*Math.PI/5-Math.PI/2, rr=i%2?r*0.45:r;
-          g.lineTo(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr); } g.closePath(); g.fill(); };
-        for(let i=0;i<22;i++) star((i*101)%w,(i*61)%h, 6+((i*13)%9)); }},
+    // White stars with a dark keyline, and pale-gold glints between them. The
+    // keyline is what shows on a light skin, the white on a dark one; a medium
+    // skin shows both.
+    {id:'stars', name:'Starfield', rarity:'superrare', unlock:{kind:'coins',cost:480}, alpha:1, lift:true,
+      // n points, inner radius k*r; five fat ones are stars, four thin ones glints
+      draw:(g,w,h)=>{ const star=(cx,cy,r,n,k,lw,fill)=>{ g.beginPath();
+          for(let i=0;i<2*n;i++){ const a=i*Math.PI/n-Math.PI/2, rr=i%2?r*k:r;
+            g.lineTo(cx+Math.cos(a)*rr*0.8, cy+Math.sin(a)*rr); } g.closePath();
+          g.strokeStyle='rgba(14,12,34,0.9)'; g.lineWidth=lw; g.stroke(); g.fillStyle=fill; g.fill(); };
+        g.lineJoin='round';
+        staggered(w, h, 6, 3, (x,y,i)=>{
+          halfTurns(x, w, X=>star(X, y, 8+(i%3)*3, 5, 0.46, 3.6, i%4 ? '#ffffff' : '#fff0b0'));
+          halfTurns(x+21, w, X=>star(X, y+15, 4+i%3, 4, 0.3, 1.7, '#ffd86b')); }); }},
 
     {id:'hearts', name:'Hearts', rarity:'superrare', unlock:{kind:'coins',cost:480}, alpha:0.55,
       draw:(g,w,h)=>{ const heart=(cx,cy,s)=>{ g.beginPath(); g.moveTo(cx,cy+s*0.7);
@@ -333,16 +374,34 @@
         g.bezierCurveTo(cx+s*0.4,cy-s*1.2,cx+s*1.3,cy-s*0.4,cx,cy+s*0.7); g.fill(); };
         for(let i=0;i<18;i++) heart((i*113)%w,(i*71)%h, 8+((i*11)%6)); }},
 
-    {id:'bubbles', name:'Bubbles', rarity:'superrare', unlock:{kind:'coins',cost:500}, alpha:0.5, ink:'rgba(255,255,255,1)',
-      draw:(g,w,h)=>{ g.lineWidth=4; for(let i=0;i<24;i++){ const x=(i*89)%w, y=(i*137)%h, r=7+((i*23)%16);
-        g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.stroke(); } }},
+    // Soap bubbles: a pale film, a dark rim, a light inner ring and a white
+    // highlight -- the rim reads on light skins, the light parts on dark ones.
+    {id:'bubbles', name:'Bubbles', rarity:'superrare', unlock:{kind:'coins',cost:500}, alpha:1, lift:true,
+      draw:(g,w,h)=>{ g.lineCap='round';
+        staggered(w, h, 5, 3, (x,y,i)=>{ const r=8+((i*5)%4)*3;
+          halfTurns(x, w, X=>{ g.save(); g.translate(X,y); g.scale(0.8,1);
+            g.beginPath(); g.arc(0,0,r,0,Math.PI*2);
+            g.fillStyle='rgba(175,238,255,0.32)'; g.fill();
+            g.lineWidth=3; g.strokeStyle='rgba(16,28,58,0.88)'; g.stroke();
+            g.beginPath(); g.arc(0,0,r-2.6,0,Math.PI*2); g.lineWidth=1.5; g.strokeStyle='rgba(255,255,255,0.9)'; g.stroke();
+            g.beginPath(); g.arc(0,0,r*0.62,Math.PI*1.08,Math.PI*1.52); g.lineWidth=Math.max(2,r*0.2); g.strokeStyle='#ffffff'; g.stroke();
+            g.beginPath(); g.arc(r*0.34,r*0.38,Math.max(1.3,r*0.1),0,Math.PI*2); g.fillStyle='#ffffff'; g.fill();
+            g.restore(); }); }); }},
 
-    {id:'circuit', name:'Circuit', rarity:'epic', unlock:{kind:'coins',cost:850}, alpha:0.55, ink:'rgba(255,255,255,1)',
-      draw:(g,w,h)=>{ g.lineWidth=3;
-        for(let i=0;i<26;i++){ const x=(i*67)%w, y=(i*103)%h, len=24+((i*31)%48);
-          g.beginPath(); if(i%2){ g.moveTo(x,y); g.lineTo(x+len,y); g.lineTo(x+len,y+18); }
-          else { g.moveTo(x,y); g.lineTo(x,y+len); g.lineTo(x+18,y+len); } g.stroke();
-          g.beginPath(); g.arc(x,y,4,0,Math.PI*2); g.fill(); } }},
+    // A board, not a scribble: traces cased in dark round a bright core, pads
+    // at their ends, and one chip per half turn.
+    {id:'circuit', name:'Circuit', rarity:'epic', unlock:{kind:'coins',cost:850}, alpha:1, lift:true,
+      draw:(g,w,h)=>{ g.lineJoin='round'; g.lineCap='round';
+        const traces=[];
+        staggered(w, h, 6, 2, (x,y,i)=>{ const len=16+((i*7)%3)*8, d=i%2?1:-1;
+          traces.push([[x-20,y],[x-20+len,y],[x-8+len,y+12*d],[x-8+len,y+(24+(i%3)*8)*d]]); });
+        const DARK='rgba(8,16,24,0.93)', dot=(x,y,r,col)=>{ g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fillStyle=col; g.fill(); };
+        for(const [col,lw] of [[DARK,6.5],['#6dffd2',2.3]]) for(const t of traces) halfTurns(0, w, X=>{
+          g.beginPath(); t.forEach(([px,py])=>g.lineTo(px+X,py)); g.strokeStyle=col; g.lineWidth=lw; g.stroke(); });
+        for(const t of traces) for(const [px,py] of [t[0], t[3]]) halfTurns(px, w, X=>{ dot(X,py,5.2,DARK); dot(X,py,2.7,'#fff0a6'); });
+        const cy=h*0.52; halfTurns(96, w, X=>{ g.fillStyle=DARK; g.fillRect(X-10,cy-9,20,18);
+          g.fillStyle='#6dffd2'; g.fillRect(X-5,cy-4,10,8);
+          g.fillStyle='#fff0a6'; for(let k=-1;k<=1;k++){ g.fillRect(X-14,cy+k*5-1,4,2.4); g.fillRect(X+10,cy+k*5-1,4,2.4); } }); }},
 
     {id:'scales', name:'Dragon Scales', rarity:'epic', unlock:{kind:'coins',cost:900}, alpha:0.42,
       draw:(g,w,h)=>{ const s=26; g.lineWidth=3;
@@ -355,10 +414,19 @@
         g.quadraticCurveTo(x-10, base-60-((i*17)%50), x, base-90-((i*23)%60));
         g.quadraticCurveTo(x+10, base-60-((i*13)%50), x+16, base); g.closePath(); g.fill(); } }},
 
-    {id:'lightning', name:'Lightning', rarity:'legendary', unlock:{kind:'coins',cost:1600}, alpha:0.7, ink:'rgba(255,255,255,1)',
-      draw:(g,w,h)=>{ g.lineWidth=6; g.lineJoin='round';
-        for(let i=0;i<9;i++){ let x=(i*97)%w, y=0; g.beginPath(); g.moveTo(x,y);
-          while(y<h){ y+=26+((i*7)%14); x+=((y/13|0)%2?22:-22); g.lineTo(x,y); } g.stroke(); } }},
+    // Comic bolts: a soft yellow glow, a dark casing, a yellow body and a
+    // white-hot core. Each layer reads on some skin; together they read on all.
+    {id:'lightning', name:'Lightning', rarity:'legendary', unlock:{kind:'coins',cost:1600}, alpha:1, lift:true,
+      draw:(g,w,h)=>{ g.lineJoin='miter'; g.miterLimit=3; g.lineCap='round';
+        const bolts=[];
+        for(let i=0;i<2;i++){ let x=18+i*64, y=20; const pts=[[x,y]];
+          for(let k=0;k<6;k++){ y+=26+((i*7+k*5)%12); x+= k%2 ? -15 : 21; pts.push([x,y]); }
+          bolts.push(pts);
+          const [bx,by]=pts[3]; bolts.push([[bx,by],[bx+15,by+17],[bx+7,by+25],[bx+20,by+42]]); }
+        const line=(pts,X,col,lw)=>{ g.beginPath(); pts.forEach(([px,py],k)=>k?g.lineTo(px+X,py):g.moveTo(px+X,py));
+          g.strokeStyle=col; g.lineWidth=lw; g.stroke(); };
+        for(const [col,lw] of [['rgba(255,214,70,0.24)',17],['rgba(20,14,40,0.93)',10.5],['#ffd23a',6],['#ffffff',2.1]])
+          for(const b of bolts) halfTurns(0, w, X=>line(b,X,col,lw)); }},
 
     {id:'glitch', name:'Glitch', rarity:'special', unlock:{kind:'coins',cost:1999}, alpha:0.6,
       draw:(g,w,h)=>{ for(let i=0;i<40;i++){ const y=(i*53)%h, hh=3+((i*11)%9), x=(i*137)%w;

@@ -6054,10 +6054,11 @@
   //     and triangle counts -- a wrap fixed by duplicating a seam column fails
   //   * every pattern changes the body, and no two patterns look alike, on a
   //     base every ink can show on (a gradient: white ink lightens it, dark
-  //     ink darkens it). On a flat light skin, every pattern with a dark or
-  //     coloured ink must show; white-ink ones cannot (white multiplied over
-  //     white is white) and are reported, not failed -- that is the canvas's
-  //     design, not a coordinate
+  //     ink darkens it). On the lightest flat skin AND a dark one, every
+  //     pattern must show. Four used to be excused here: their white ink was
+  //     multiplied onto a flat skin and could not show. They are drawn with
+  //     dark and light parts over the skin's own colour now (`lift`), and a
+  //     lift pattern must leave most of a plain body its exact colour
   //   * 'none' adds nothing: same pixels as no pattern layer at all
   //   * everything that is NOT the body -- face plate, eyes, hands, limbs,
   //     feet -- is pixel-identical whatever the pattern
@@ -6137,30 +6138,30 @@
     // step anyone could see (any channel > 6 of 255). A motif pattern covers a
     // few percent of the body, so a mean over all of it says "barely there"
     // about hearts that are plainly there; the share of pixels it touched
-    // does not.
+    // does not. `kept` is the share that did not move at all (every channel
+    // within 2): the plain body a motif leaves alone.
     const compare = (A, B, withOther)=>{
-      let sum = 0, n = 0, other = 0, nOther = 0, moved = 0;
+      let sum = 0, n = 0, other = 0, nOther = 0, moved = 0, kept = 0;
       for(let v=0; v<A.length; v++){
         const a = A[v], b = B[v];
         for(let i=0;i<a.img.length;i+=4){
           const bodyA = a.id[i+3] && a.id[i] > 127, bodyB = b.id[i+3] && b.id[i] > 127;
           const d = Math.abs(a.img[i]-b.img[i]) + Math.abs(a.img[i+1]-b.img[i+1]) + Math.abs(a.img[i+2]-b.img[i+2]);
           const dm = Math.max(Math.abs(a.img[i]-b.img[i]), Math.abs(a.img[i+1]-b.img[i+1]), Math.abs(a.img[i+2]-b.img[i+2]));
-          if(bodyA && bodyB){ sum += d/3; n++; if(dm > 6) moved++; }
+          if(bodyA && bodyB){ sum += d/3; n++; if(dm > 6) moved++; if(dm <= 2) kept++; }
           else if(withOther){
             const x = (i/4) % PX, y = Math.floor(i/4/PX);
             if(trimOnly(a.id, x, y) && trimOnly(b.id, x, y)){ nOther++; other = Math.max(other, d); }
           }
         }
       }
-      return { body: n ? sum/n : 0, changed: n ? moved/n : 0, bodyPx: n, other, otherPx: nOther };
+      return { body: n ? sum/n : 0, changed: n ? moved/n : 0, kept: n ? kept/n : 0, bodyPx: n, other, otherPx: nOther };
     };
     // Shares of body pixels. The weakest real pattern (hearts: eighteen small
     // motifs) moves about 3% of the body; a pattern that does nothing moves 0.
     const VIS = 0.01, PAIR = 0.01;
     try{
       renderer.toneMapping = THREE.NoToneMapping;
-      const white_ink = (p)=>p.ink === 'rgba(255,255,255,1)';
       // A. every ink shows, and no two alike: a gradient base
       const GRAD = SKIN_BY_ID.deepocean ? 'deepocean' : SKINS.find(s=>s.type==='gradient').id;
       const plain = shots(GRAD, null), none = shots(GRAD, patternOf('none'));
@@ -6186,18 +6187,36 @@
         if(c.changed < PAIR) bad.push(ids[i] + ' and ' + ids[j] + ' look alike on ' + GRAD + ' (' + (c.changed*100).toFixed(1) + '% of the body differs)');
       }
       notes.push('body changed vs none on ' + GRAD + ': ' + vis.join(', ') + '; closest pair ' + (worst ? worst.a + '/' + worst.b + ' ' + (worst.d*100).toFixed(0) + '%' : '-'));
-      // B. a flat light skin: every dark/coloured ink must show
-      const cNone = shots('cream', patternOf('none')), hidden = [], creamVis = [];
-      for(const p of PATTERNS){
-        if(p.id === 'none') continue;
-        const c = compare(cNone, shots('cream', p), true);
-        if(c.other > 0) bad.push(p.id + ' on cream changes ' + c.otherPx + ' non-body pixels by up to ' + c.other);
-        creamVis.push(p.id + ' ' + (c.changed*100).toFixed(0) + '%');
-        if(white_ink(p)){ if(c.changed < VIS) hidden.push(p.id); continue; }
-        if(c.changed < VIS) bad.push(p.id + ' does not show on a cream body (' + (c.changed*100).toFixed(1) + '% of it changed)');
+      // B. flat skins, the lightest and a dark one. Every dark or coloured ink
+      // must show on the light one, as before. A lift pattern has light AND
+      // dark parts, so it must show plainly on both -- a tenth of the body --
+      // and no two may look alike on either. It is painted over the skin's
+      // own colour, not multiplied onto it, so it must also leave most of the
+      // body exactly the colour it was: a baked colour that did not match the
+      // material's would move every pixel, and a motif that covered the bean
+      // would stop being a pattern. Dark ink on the dark skin is reported
+      // only: a darker mark on Midnight is faint by nature (hearts ~1%).
+      const KEEP = 0.4, LIFT_VIS = 0.1;
+      for(const flat of ['cream', 'ink'].filter(id=>SKIN_BY_ID[id])){
+        const fNone = shots(flat, patternOf('none')), seen = [], lifted = {};
+        for(const p of PATTERNS){
+          if(p.id === 'none') continue;
+          const s = shots(flat, p), c = compare(fNone, s, true);
+          if(c.other > 0) bad.push(p.id + ' on ' + flat + ' changes ' + c.otherPx + ' non-body pixels by up to ' + c.other);
+          seen.push(p.id + ' ' + (c.changed*100).toFixed(0) + '%' + (p.lift ? '/kept ' + (c.kept*100).toFixed(0) + '%' : ''));
+          if(p.lift){
+            lifted[p.id] = s;
+            if(c.changed < LIFT_VIS) bad.push(p.id + ' barely shows on a ' + flat + ' body (' + (c.changed*100).toFixed(1) + '% of it changed)');
+            if(c.kept < KEEP) bad.push(p.id + ' repaints a plain ' + flat + ' body: only ' + (c.kept*100).toFixed(0) + '% of it kept its colour');
+          } else if(flat === 'cream' && c.changed < VIS) bad.push(p.id + ' does not show on a cream body (' + (c.changed*100).toFixed(1) + '% of it changed)');
+        }
+        const L = Object.keys(lifted);
+        for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){
+          const c = compare(lifted[L[i]], lifted[L[j]], false);
+          if(c.changed < PAIR) bad.push(L[i] + ' and ' + L[j] + ' look alike on ' + flat);
+        }
+        notes.push('on ' + flat + ': ' + seen.join(', '));
       }
-      notes.push('on cream: ' + creamVis.join(', '));
-      if(hidden.length) notes.push('white-ink patterns that cannot show on a flat skin (canvas design, not uv): ' + hidden.join(', '));
       // C. nothing failed on the way
       const gl = renderer.getContext(), err = gl.getError();
       if(err) bad.push('GL error 0x' + err.toString(16));
@@ -6208,6 +6227,102 @@
       rt.dispose(); white.dispose(); black.dispose();
     }
     return { name:'Π every pattern is on the body, distinct, and nowhere else', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0, 12).join('; ') + (bad.length > 12 ? '; +' + (bad.length-12) + ' more' : '')
+                                  + ' | ' + notes.join('; ') : notes.join('; ') };
+  }
+
+  // ---------- Σ: a painted skin looks like nothing else in the wardrobe ----------
+  // Peacock, Spectrum and Prismatic Void shipped as bare copies of Oil Slick,
+  // Rainbow and Solar Flare -- the same canvas, the same material -- and [λ]'s
+  // pixel hash could only list them as known look-alikes. A hash only says
+  // "not identical"; one level of difference passes it. This renders every
+  // skin in the wardrobe the same way and holds each painted one (`art`)
+  // apart from every other skin, two ways:
+  //   * colour: the mean difference over the body is large -- not a near-copy
+  //     that happens to differ by a few levels
+  //   * picture: the body's light and dark, with each render's own mean and
+  //     spread taken out, does not match -- the same picture in another
+  //     colour is not another design
+  // Any other pair that renders near-identical is reported, not failed: those
+  // are older catalogue entries this does not change.
+  function checkSkinDistinct(){
+    const bad = [], notes = [];
+    // delta E 10 is a difference anyone sees at a glance (2.3 is the least
+    // one can); every flat skin correlates ~1 with every other, being the
+    // same shading. Measured when the three were painted: nearest colour
+    // 20.9 (Prismatic Void/Obsidian), highest structure 0.71 (Peacock/Violet
+    // Drift); as copies they were 0.0 and 1.00.
+    const PX = 128, DIFF = 10, CORR = 0.8;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(40, 80, 90); scene.add(key);
+    const cam = new THREE.PerspectiveCamera(30, 1, 1, 1000);
+    cam.position.set(Math.sin(0.35)*120, 8, Math.cos(0.35)*120); cam.lookAt(0, 1, 0);
+    const rt = new THREE.WebGLRenderTarget(PX, PX);
+    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
+    const white = new THREE.MeshBasicMaterial({color:0xffffff}), black = new THREE.MeshBasicMaterial({color:0x000000});
+    const read = ()=>{ renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(scene, cam); const px = new Uint8Array(PX*PX*4); renderer.readRenderTargetPixels(rt, 0, 0, PX, PX, px); return px; };
+    const R = {};
+    try{
+      renderer.toneMapping = THREE.NoToneMapping;
+      for(const s of SKINS){
+        const m = makeCharacter({ skin:s, pattern:patternOf('none'), hat:'none', eyes:'round' });
+        m.neutral(); m.group.rotation.y = 0.3; m.group.updateMatrixWorld(true); scene.add(m.group);
+        const img = read(), was = [m.body.material, m.trim.material];
+        m.body.material = white; m.trim.material = black;
+        const id = read();
+        m.body.material = was[0]; m.trim.material = was[1];
+        scene.remove(m.group); disposeCharacter(m);
+        R[s.id] = { img, id };
+      }
+    } finally {
+      renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
+      rt.dispose(); white.dispose(); black.dispose();
+    }
+    // Over the body pixels both renders share: the mean colour difference as
+    // CIE76 delta E -- an RGB mean calls dark teal and dark grey neighbours,
+    // Lab does not -- and the correlation of their lightness. The target
+    // holds linear values (no tone mapping, no output encoding).
+    const lab = (p, i)=>{
+      const r = p[i]/255, g = p[i+1]/255, b = p[i+2]/255;
+      const f = (t)=>t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+      const x = f((0.4124*r + 0.3576*g + 0.1805*b)/0.9505), y = f(0.2126*r + 0.7152*g + 0.0722*b), z = f((0.0193*r + 0.1192*g + 0.9505*b)/1.089);
+      return [116*y - 16, 500*(x - y), 200*(y - z)];
+    };
+    const pair = (A, B)=>{
+      const la = [], lb = []; let sum = 0;
+      for(let i=0;i<A.img.length;i+=4){
+        if(!(A.id[i+3] && A.id[i] > 127 && B.id[i+3] && B.id[i] > 127)) continue;
+        const a = lab(A.img, i), b = lab(B.img, i);
+        sum += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+        la.push(a[0]); lb.push(b[0]);
+      }
+      const n = la.length; if(!n) return { n, diff:0, corr:1 };
+      const ma = la.reduce((a,b)=>a+b)/n, mb = lb.reduce((a,b)=>a+b)/n;
+      let sab = 0, saa = 0, sbb = 0;
+      for(let k=0;k<n;k++){ const a = la[k]-ma, b = lb[k]-mb; sab += a*b; saa += a*a; sbb += b*b; }
+      return { n, diff: sum/n, corr: saa && sbb ? sab/Math.sqrt(saa*sbb) : 1 };
+    };
+    const ids = SKINS.map(s=>s.id), painted = SKINS.filter(s=>s.art).map(s=>s.id), twins = [];
+    const nearest = new Map(), likest = new Map();   // per painted skin: least colour difference, most structure
+    if(!painted.length) bad.push('no skin has a painting');
+    for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++){
+      const a = ids[i], b = ids[j], c = pair(R[a], R[b]);
+      if(c.n < 1000){ bad.push(a + '/' + b + ': only ' + c.n + ' body pixels compared'); continue; }
+      for(const [p, o] of [[a, b], [b, a]]){
+        if(!painted.includes(p)) continue;
+        if(!nearest.has(p) || c.diff < nearest.get(p).diff) nearest.set(p, { o, ...c });
+        if(!likest.has(p) || c.corr > likest.get(p).corr) likest.set(p, { o, ...c });
+      }
+      if(painted.includes(a) || painted.includes(b)){
+        if(c.diff < DIFF || c.corr > CORR) bad.push(a + ' and ' + b + ' look alike (delta E ' + c.diff.toFixed(1) + ', structure ' + c.corr.toFixed(2) + ')');
+      } else if(c.diff < 3) twins.push(a + '=' + b);
+    }
+    const f = (x)=>x.o + ' (delta E ' + x.diff.toFixed(1) + ', structure ' + x.corr.toFixed(2) + ')';
+    for(const p of painted) if(nearest.has(p)) notes.push(p + ': nearest in colour ' + f(nearest.get(p)) + ', nearest in structure ' + f(likest.get(p)));
+    if(twins.length) notes.push('older pairs that render near-identical (not changed here): ' + twins.join(' '));
+    return { name:'Σ a painted skin looks like no other skin', pass: bad.length===0,
              detail: bad.length ? bad.slice(0, 12).join('; ') + (bad.length > 12 ? '; +' + (bad.length-12) + ' more' : '')
                                   + ' | ' + notes.join('; ') : notes.join('; ') };
   }
@@ -8214,30 +8329,16 @@
       // renderer that is judged. A tile identical to another of its kind is
       // an item the player cannot tell apart from that one.
       //
-      // KNOWN, REPORTED, AND NOT FIXED HERE. Each of these is pixel-identical
-      // to the item beside it -- in the tile and in the race:
-      //   * The skins share a material outright: skinCanvas caches one canvas
-      //     per TYPE ('oil', 'rb'), and nothing else about them differs.
-      //     Aurora differs from Rainbow only in how fast it cycles, which a
-      //     still cannot show.
-      //     They are the same DATA: Peacock is `type:'oil'` with nothing else
-      //     set, Spectrum is Rainbow's entry under another name, Prismatic
-      //     Void is Solar Flare's. A per-skin cache key would only reshuffle
-      //     Oil's random blobs; telling them apart needs a design change.
-      //   * The four white-ink patterns (stars, bubbles, circuit, lightning)
-      //     cannot show on the cream tile, or on any flat skin: a flat skin's
-      //     canvas is white and multiplies to the skin colour, and white ink
-      //     on white is white. That is the canvas's design, not a coordinate;
-      //     on a gradient or galaxy skin they show. [Π] asserts both halves.
-      // The other patterns used to be here too, because the bean had no uv.
-      // It has one now, so any of them coming out identical fails.
-      // Anything else that comes out identical fails.
-      const KNOWN_SAME = {
-        'skin:aurora':'skin:rainbow', 'skin:spectrum':'skin:rainbow', 'skin:peacock':'skin:oil',
-        'skin:prismvoid':'skin:solarflare',
-        'pattern:stars':'pattern:none', 'pattern:bubbles':'pattern:none', 'pattern:circuit':'pattern:none',
-        'pattern:lightning':'pattern:none'
-      };
+      // KNOWN, REPORTED, AND NOT FIXED HERE: Aurora is Rainbow's canvas and
+      // material, and differs only in how fast it cycles, which a still
+      // cannot show. It is pixel-identical in the tile.
+      // Peacock, Spectrum and Prismatic Void were here as copies of Oil
+      // Slick, Rainbow and Solar Flare, and the four white-ink patterns as
+      // copies of 'none' on the cream tile. They have their own paintings and
+      // light-and-dark inks now ([Σ], [Π]), and before that every other
+      // pattern left when the bean got its uv, so any of them coming out
+      // identical fails. Anything else that comes out identical fails.
+      const KNOWN_SAME = { 'skin:aurora':'skin:rainbow' };
       const same = [];
       for(const [kind, list] of Object.entries(KINDS)){
         const seen = new Map();
@@ -10028,8 +10129,8 @@
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
       ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins],
-      // a pattern is on the body, and only on the body
-      ['Π',checkPatternUv]
+      // a pattern is on the body, and only on the body; a painted skin is its own
+      ['Π',checkPatternUv],['Σ',checkSkinDistinct]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
