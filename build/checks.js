@@ -6040,6 +6040,178 @@
              detail: bad.length ? bad.join('; ') : notes.join('; ') };
   }
 
+  // ---------- Π: a pattern is ON the body, and only on the body ----------
+  // (capital pi, for Pattern.) v34 replaced the lathe with a sweep that wrote
+  // no `uv`, so every skin canvas and every pattern sampled one texel for the
+  // whole bean. Eight patterns vanished outright, the other five tinted the
+  // bean flat, and every gradient, galaxy, oil and rainbow skin drew as one
+  // colour. [λ] saw the identical tiles but could only list them as known
+  // look-alikes; nothing asserted that a pattern lands on a body. This does,
+  // through the real makeCharacter and the real materials, drawn by the
+  // game's renderer into a target:
+  //   * the bean carries a uv: finite, u in [0,1), v in [0,1], v climbing
+  //     ring by ring, u going round exactly once, and the sweep's own vertex
+  //     and triangle counts -- a wrap fixed by duplicating a seam column fails
+  //   * every pattern changes the body, and no two patterns look alike, on a
+  //     base every ink can show on (a gradient: white ink lightens it, dark
+  //     ink darkens it). On a flat light skin, every pattern with a dark or
+  //     coloured ink must show; white-ink ones cannot (white multiplied over
+  //     white is white) and are reported, not failed -- that is the canvas's
+  //     design, not a coordinate
+  //   * 'none' adds nothing: same pixels as no pattern layer at all
+  //   * everything that is NOT the body -- face plate, eyes, hands, limbs,
+  //     feet -- is pixel-identical whatever the pattern
+  //   * no program failed to compile and GL reports no error
+  function checkPatternUv(){
+    const bad = [], notes = [];
+    const PX = 192;
+    const geo = beanGeometry(), pos = geo.attributes.position, uv = geo.attributes.uv;
+    // ---- the coordinates themselves -------------------------------------
+    const nV = BEAN_RINGS*BEAN_SEG, nT = (BEAN_RINGS-1)*BEAN_SEG*2;
+    if(pos.count !== nV) bad.push('the bean has ' + pos.count + ' vertices, the sweep makes ' + nV);
+    if((geo.index ? geo.index.count/3 : pos.count/3) !== nT) bad.push('the bean has ' + (geo.index ? geo.index.count/3 : '?') + ' triangles, the sweep makes ' + nT);
+    if(!uv) bad.push('the bean has no uv attribute (' + Object.keys(geo.attributes).join(', ') + '), so every pattern samples one texel');
+    else {
+      if(uv.itemSize !== 2 || uv.count !== pos.count) bad.push('uv is ' + uv.itemSize + ' x ' + uv.count + ' for ' + pos.count + ' vertices');
+      let off = 0, nonMono = 0, badWrap = 0;
+      for(let i=0;i<uv.count;i++){
+        const u = uv.getX(i), v = uv.getY(i);
+        if(!isFinite(u) || !isFinite(v) || u < 0 || u >= 1 || v < 0 || v > 1) off++;
+        if(!isFinite(pos.getX(i)) || !isFinite(pos.getY(i)) || !isFinite(pos.getZ(i))) off++;
+      }
+      for(let r=0;r<BEAN_RINGS;r++){
+        if(r && uv.getY(r*BEAN_SEG) < uv.getY((r-1)*BEAN_SEG)) nonMono++;
+        // once round: summed signed steps of u around the ring = one turn
+        let turn = 0;
+        for(let k=0;k<BEAN_SEG;k++){
+          let d = uv.getX(r*BEAN_SEG + (k+1)%BEAN_SEG) - uv.getX(r*BEAN_SEG + k);
+          d -= Math.round(d); turn += d;
+        }
+        if(Math.abs(Math.abs(turn) - 1) > 1e-4) badWrap++;
+      }
+      if(off) bad.push(off + ' uv or position values are NaN, infinite or out of range');
+      if(nonMono) bad.push('v falls between ' + nonMono + ' pairs of rings');
+      if(badWrap) bad.push(badWrap + ' rings do not go round the canvas exactly once');
+    }
+    // ---- renders ----------------------------------------------------------
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(40, 80, 90); scene.add(key);
+    const cam = new THREE.PerspectiveCamera(30, 1, 1, 1000);
+    const rt = new THREE.WebGLRenderTarget(PX, PX);
+    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
+    const VIEWS = [0, Math.PI*0.8];                      // yaw: front 3/4-ish, rear 3/4-ish
+    const white = new THREE.MeshBasicMaterial({color:0xffffff}), black = new THREE.MeshBasicMaterial({color:0x000000});
+    const draw = (m, yaw, id)=>{
+      m.group.rotation.y = yaw; m.group.updateMatrixWorld(true);
+      cam.position.set(Math.sin(0.35)*120, 8, Math.cos(0.35)*120); cam.lookAt(0, 1, 0);
+      let was;
+      if(id){ was = [m.body.material, m.trim.material]; m.body.material = white; m.trim.material = black; }
+      renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(scene, cam);
+      const px = new Uint8Array(PX*PX*4);
+      renderer.readRenderTargetPixels(rt, 0, 0, PX, PX, px);
+      if(id){ m.body.material = was[0]; m.trim.material = was[1]; }
+      return px;
+    };
+    const shots = (skinId, pat)=>{
+      const m = makeCharacter({ skin:skinOf(skinId), pattern:pat, hat:'none', eyes:'round' });
+      m.neutral(); scene.add(m.group);
+      const out = VIEWS.map((yaw)=>({ img:draw(m, yaw, false), id:draw(m, yaw, true) }));
+      scene.remove(m.group); disposeCharacter(m);
+      return out;
+    };
+    // Mean |difference| over pixels where BOTH renders show the body (id
+    // white), and the largest difference where the front surface is NOT the
+    // body. "Not the body" is taken one pixel in from any body pixel, so a
+    // plate edge lying on the shell cannot be counted as the plate in one
+    // render and the shell in the other.
+    const trimOnly = (id, x, y)=>{
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        const xx = x+dx, yy = y+dy; if(xx<0 || yy<0 || xx>=PX || yy>=PX) return false;
+        const j = (yy*PX + xx)*4; if(!id[j+3] || id[j] > 127) return false;
+      }
+      return true;
+    };
+    // `changed` is the share of those body pixels that moved by more than a
+    // step anyone could see (any channel > 6 of 255). A motif pattern covers a
+    // few percent of the body, so a mean over all of it says "barely there"
+    // about hearts that are plainly there; the share of pixels it touched
+    // does not.
+    const compare = (A, B, withOther)=>{
+      let sum = 0, n = 0, other = 0, nOther = 0, moved = 0;
+      for(let v=0; v<A.length; v++){
+        const a = A[v], b = B[v];
+        for(let i=0;i<a.img.length;i+=4){
+          const bodyA = a.id[i+3] && a.id[i] > 127, bodyB = b.id[i+3] && b.id[i] > 127;
+          const d = Math.abs(a.img[i]-b.img[i]) + Math.abs(a.img[i+1]-b.img[i+1]) + Math.abs(a.img[i+2]-b.img[i+2]);
+          const dm = Math.max(Math.abs(a.img[i]-b.img[i]), Math.abs(a.img[i+1]-b.img[i+1]), Math.abs(a.img[i+2]-b.img[i+2]));
+          if(bodyA && bodyB){ sum += d/3; n++; if(dm > 6) moved++; }
+          else if(withOther){
+            const x = (i/4) % PX, y = Math.floor(i/4/PX);
+            if(trimOnly(a.id, x, y) && trimOnly(b.id, x, y)){ nOther++; other = Math.max(other, d); }
+          }
+        }
+      }
+      return { body: n ? sum/n : 0, changed: n ? moved/n : 0, bodyPx: n, other, otherPx: nOther };
+    };
+    // Shares of body pixels. The weakest real pattern (hearts: eighteen small
+    // motifs) moves about 3% of the body; a pattern that does nothing moves 0.
+    const VIS = 0.01, PAIR = 0.01;
+    try{
+      renderer.toneMapping = THREE.NoToneMapping;
+      const white_ink = (p)=>p.ink === 'rgba(255,255,255,1)';
+      // A. every ink shows, and no two alike: a gradient base
+      const GRAD = SKIN_BY_ID.deepocean ? 'deepocean' : SKINS.find(s=>s.type==='gradient').id;
+      const plain = shots(GRAD, null), none = shots(GRAD, patternOf('none'));
+      const n0 = compare(plain, none, true);
+      if(n0.body > 0 || n0.other > 0) bad.push("'none' changes the " + GRAD + ' body by ' + n0.body.toFixed(2) + ' (it must add nothing)');
+      // the non-body comparison has to have something to compare, or it
+      // passes for having looked at nothing
+      if(n0.otherPx < 1500) bad.push('only ' + n0.otherPx + ' face/eye/hand/limb pixels were compared');
+      const R = {};
+      for(const p of PATTERNS){ if(p.id === 'none') continue; R[p.id] = shots(GRAD, p); }
+      const vis = [];
+      for(const id of Object.keys(R)){
+        const c = compare(none, R[id], true);
+        vis.push(id + ' ' + (c.changed*100).toFixed(0) + '%');
+        if(c.changed < VIS) bad.push(id + ' leaves the ' + GRAD + ' body as it was (' + (c.changed*100).toFixed(1) + '% of it changed)');
+        if(c.other > 0) bad.push(id + ' changes ' + c.otherPx + ' pixels that are not the body (face, eyes, hands, limbs) by up to ' + c.other);
+        if(c.bodyPx < 2000) bad.push(id + ': only ' + c.bodyPx + ' body pixels compared');
+      }
+      const ids = Object.keys(R); let worst = null;
+      for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++){
+        const c = compare(R[ids[i]], R[ids[j]], false);
+        if(!worst || c.changed < worst.d) worst = { d:c.changed, a:ids[i], b:ids[j] };
+        if(c.changed < PAIR) bad.push(ids[i] + ' and ' + ids[j] + ' look alike on ' + GRAD + ' (' + (c.changed*100).toFixed(1) + '% of the body differs)');
+      }
+      notes.push('body changed vs none on ' + GRAD + ': ' + vis.join(', ') + '; closest pair ' + (worst ? worst.a + '/' + worst.b + ' ' + (worst.d*100).toFixed(0) + '%' : '-'));
+      // B. a flat light skin: every dark/coloured ink must show
+      const cNone = shots('cream', patternOf('none')), hidden = [], creamVis = [];
+      for(const p of PATTERNS){
+        if(p.id === 'none') continue;
+        const c = compare(cNone, shots('cream', p), true);
+        if(c.other > 0) bad.push(p.id + ' on cream changes ' + c.otherPx + ' non-body pixels by up to ' + c.other);
+        creamVis.push(p.id + ' ' + (c.changed*100).toFixed(0) + '%');
+        if(white_ink(p)){ if(c.changed < VIS) hidden.push(p.id); continue; }
+        if(c.changed < VIS) bad.push(p.id + ' does not show on a cream body (' + (c.changed*100).toFixed(1) + '% of it changed)');
+      }
+      notes.push('on cream: ' + creamVis.join(', '));
+      if(hidden.length) notes.push('white-ink patterns that cannot show on a flat skin (canvas design, not uv): ' + hidden.join(', '));
+      // C. nothing failed on the way
+      const gl = renderer.getContext(), err = gl.getError();
+      if(err) bad.push('GL error 0x' + err.toString(16));
+      const broken = renderer.info.programs.filter(p=>p.diagnostics && !p.diagnostics.runnable);
+      if(broken.length) bad.push(broken.length + ' shader programs failed to compile (' + broken.map(p=>p.name).join(', ') + ')');
+    } finally {
+      renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
+      rt.dispose(); white.dispose(); black.dispose();
+    }
+    return { name:'Π every pattern is on the body, distinct, and nowhere else', pass: bad.length===0,
+             detail: bad.length ? bad.slice(0, 12).join('; ') + (bad.length > 12 ? '; +' + (bad.length-12) + ' more' : '')
+                                  + ' | ' + notes.join('; ') : notes.join('; ') };
+  }
+
   // ---------- ~: the lobby holds its pose, and the lobby chrome is there ----------
   // The home screen used to pick from a nine-act idle repertoire that included
   // a full 2*PI yaw and a full 2*PI pitch. On no input, several times a minute,
@@ -8048,19 +8220,23 @@
       //     per TYPE ('oil', 'rb'), and nothing else about them differs.
       //     Aurora differs from Rainbow only in how fast it cycles, which a
       //     still cannot show.
-      //   * The patterns are invisible because the mesh that wears the skin
-      //     material has no `uv` attribute (position, normal, color, skinIndex,
-      //     skinWeight), so every mapped skin and every pattern samples ONE
-      //     texel. A pattern either misses that texel (these) or tints the
-      //     whole bean flat. Fixing it changes how every racer looks, and a
-      //     racer's look does not change without approved screenshots.
+      //     They are the same DATA: Peacock is `type:'oil'` with nothing else
+      //     set, Spectrum is Rainbow's entry under another name, Prismatic
+      //     Void is Solar Flare's. A per-skin cache key would only reshuffle
+      //     Oil's random blobs; telling them apart needs a design change.
+      //   * The four white-ink patterns (stars, bubbles, circuit, lightning)
+      //     cannot show on the cream tile, or on any flat skin: a flat skin's
+      //     canvas is white and multiplies to the skin colour, and white ink
+      //     on white is white. That is the canvas's design, not a coordinate;
+      //     on a gradient or galaxy skin they show. [Π] asserts both halves.
+      // The other patterns used to be here too, because the bean had no uv.
+      // It has one now, so any of them coming out identical fails.
       // Anything else that comes out identical fails.
       const KNOWN_SAME = {
         'skin:aurora':'skin:rainbow', 'skin:spectrum':'skin:rainbow', 'skin:peacock':'skin:oil',
         'skin:prismvoid':'skin:solarflare',
-        'pattern:spots':'pattern:none', 'pattern:stars':'pattern:none', 'pattern:hearts':'pattern:none',
-        'pattern:bubbles':'pattern:none', 'pattern:circuit':'pattern:none', 'pattern:scales':'pattern:none',
-        'pattern:lightning':'pattern:none', 'pattern:glitch':'pattern:none'
+        'pattern:stars':'pattern:none', 'pattern:bubbles':'pattern:none', 'pattern:circuit':'pattern:none',
+        'pattern:lightning':'pattern:none'
       };
       const same = [];
       for(const [kind, list] of Object.entries(KINDS)){
@@ -9851,7 +10027,9 @@
       // until now nothing in this suite had ever run.
       ['{',checkJoinerPrepares],['}',checkJoinerFrames],
       // the camera and visual audit
-      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins]
+      ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins],
+      // a pattern is on the body, and only on the body
+      ['Π',checkPatternUv]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);

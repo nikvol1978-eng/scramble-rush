@@ -483,6 +483,38 @@
         col[i*3] = col[i*3+1] = col[i*3+2] = ao;
       }
       _beanGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      // TEXTURE COORDINATES, the lathe's own. v34 swapped the LatheGeometry
+      // for this sweep and the sweep never wrote a `uv`, so every skin canvas
+      // and every pattern sampled one texel for the whole bean: eight patterns
+      // vanished and the rest tinted it flat. These are the numbers the lathe
+      // wrote, read off the sweep's own (ring, column) grid rather than
+      // projected from a position -- so they are bound to the surface and
+      // cannot swim when it moves.
+      //   u: once round, 0 at the front centre and rising toward +x, so the
+      //      canvas reads the right way round from outside; the back is 0.5.
+      //   v: 0 at the hem to 1 at the crown, by distance travelled up the
+      //      surface. The lathe stepped v evenly in height, which gives the
+      //      nearly flat crown and hem almost no canvas and draws a spot on
+      //      the belly 1.8 times wider than it is tall; by arc length the belly
+      //      is 1.2-1.4 and every band of the body is closer to square.
+      // No column is duplicated to close the wrap: the vertex count stays
+      // exactly what it was. The one strip that crosses u = 0 is sampled
+      // seam-free by wrapAroundUv in 02_skinmat.js.
+      const uv = new Float32Array(n*2), up = [0];
+      for(let r=1;r<BEAN_RINGS;r++){
+        let s = 0;
+        for(let k=0;k<BEAN_SEG;k++){
+          const a = (r-1)*BEAN_SEG + k, b = r*BEAN_SEG + k;
+          s += Math.hypot(pos.getX(b)-pos.getX(a), pos.getY(b)-pos.getY(a), pos.getZ(b)-pos.getZ(a));
+        }
+        up.push(up[r-1] + s/BEAN_SEG);
+      }
+      for(let i=0;i<n;i++){
+        const ring = Math.floor(i / BEAN_SEG), k = i % BEAN_SEG;
+        const u = 0.25 - k/BEAN_SEG;
+        uv[i*2] = u - Math.floor(u); uv[i*2+1] = up[ring] / up[BEAN_RINGS-1];
+      }
+      _beanGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       // The bean is the only thing on the body mesh, so every vertex of it is
       // bound to one bone. That is the same for every racer, so it is baked in
       // here once and the geometry is shared by all twenty-four.
