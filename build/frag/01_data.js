@@ -199,13 +199,23 @@
     {id:'galaxy',    name:'Galaxy',       rarity:'legendary', type:'galaxy',  colors:['#0b0224','#6d28d9','#db2777'], unlock:{kind:'coins',cost:1400}},
     {id:'nebula',    name:'Nebula Drift', rarity:'legendary', type:'galaxy',  colors:['#04121f','#0891b2','#22d3ee'], unlock:{kind:'coins',cost:1400}},
     {id:'rainbow',   name:'Rainbow',      rarity:'legendary', type:'rainbow', unlock:{kind:'coins',cost:1600}},
-    {id:'aurora',    name:'Aurora',       rarity:'legendary', type:'rainbow', slow:true, unlock:{kind:'coins',cost:1600}},
-    {id:'prism',     name:'Prism Glow',   rarity:'legendary', type:'rainbowneon', unlock:{kind:'badge',badge:'level10'}},
+    // Aurora, Prism Glow, Champion Gold and Solar Flare drew as copies of a
+    // neighbour: Aurora was Rainbow at a slower scroll, Prism Glow and Solar
+    // Flare the same rainbowneon canvas, Champion Gold a flat yellow a shade
+    // off Custard. Each keeps its type, and so its material and draw calls,
+    // and is painted (`art`, 02_skinmat.js). Rainbow and Custard stay as they
+    // are: they are the plain originals the others were copies of.
+    {id:'aurora',    name:'Aurora',       rarity:'legendary', type:'rainbow', slow:true, art:'aurora', color:'#14b8a6', scroll:0,
+      swatch:'linear-gradient(180deg,#0b1f55 0,#7c3aed 16%,#14b8a6 42%,#4ade80 64%,#0b1f55 82%)', unlock:{kind:'coins',cost:1600}},
+    {id:'prism',     name:'Prism Glow',   rarity:'legendary', type:'rainbowneon', art:'prismglow', color:'#a78bfa', scroll:0, glow:0.3,
+      swatch:'conic-gradient(from 30deg,#fbcfe8,#fde68a,#bbf7d0,#bae6fd,#ddd6fe,#fbcfe8)', unlock:{kind:'badge',badge:'level10'}},
 
     // ---- SPECIAL: 1999 coins each, except Gold (100 wins) ----
-    {id:'gold',      name:'Champion Gold', rarity:'special', type:'metal', color:'#ffc93d', shine:220,
+    {id:'gold',      name:'Champion Gold', rarity:'special', type:'metal', art:'championgold', color:'#d9a41a', shine:220,
+      swatch:'linear-gradient(180deg,transparent 52%,#3d2302 52% 66%,transparent 66%),repeating-linear-gradient(180deg,#fff3b8 0,#ffd445 12.5%,#e2a312 17%,#9c6205 22%,#5a3402 25%)',
       unlock:{kind:'wins',count:100}, blurb:'Win 100 matches, or land it on the Daily Spin. Cannot be bought.'},
-    {id:'solarflare',name:'Solar Flare',   rarity:'special', type:'rainbowneon', unlock:{kind:'coins',cost:1999}},
+    {id:'solarflare',name:'Solar Flare',   rarity:'special', type:'rainbowneon', art:'solarflare', color:'#ff5a0a', scroll:0, glow:0.7,
+      swatch:'radial-gradient(circle at 50% 40%,#fff6c2,#ffc400 25%,#ff6a00 55%,#9b1400 90%)', unlock:{kind:'coins',cost:1999}},
     {id:'blackhole', name:'Event Horizon', rarity:'special', type:'galaxy', colors:['#000000','#1c1917','#f59e0b'], unlock:{kind:'coins',cost:1999}},
     {id:'diamond',   name:'Diamond Dust',  rarity:'special', type:'metal', color:'#bfefff', shine:250, unlock:{kind:'coins',cost:1999}}
 ,
