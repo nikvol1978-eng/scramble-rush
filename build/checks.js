@@ -6231,42 +6231,77 @@
                                   + ' | ' + notes.join('; ') : notes.join('; ') };
   }
 
-  // ---------- Σ: a painted skin looks like nothing else in the wardrobe ----------
-  // Peacock, Spectrum and Prismatic Void shipped as bare copies of Oil Slick,
-  // Rainbow and Solar Flare -- the same canvas, the same material -- and [λ]'s
-  // pixel hash could only list them as known look-alikes. A hash only says
-  // "not identical"; one level of difference passes it. This renders every
-  // skin in the wardrobe the same way and holds each painted one (`art`)
-  // apart from every other skin, two ways:
-  //   * colour: the mean difference over the body is large -- not a near-copy
-  //     that happens to differ by a few levels
-  //   * picture: the body's light and dark, with each render's own mean and
-  //     spread taken out, does not match -- the same picture in another
-  //     colour is not another design
-  // Any other pair that renders near-identical is reported, not failed: those
-  // are older catalogue entries this does not change.
+  // ---------- Σ: no two skins in the wardrobe look alike ----------
+  // Copies shipped twice. Peacock, Spectrum and Prismatic Void went out as
+  // bare copies of Oil Slick, Rainbow and Solar Flare; Aurora was Rainbow at
+  // a slower scroll, Prism Glow and Solar Flare one canvas, Champion Gold a
+  // flat yellow a shade off Custard. [λ]'s hash only says "not identical":
+  // one level of difference passes it. This renders every skin two ways --
+  // in an even-lit rig of its own, and through the REAL Locker tile rig, as
+  // the player sees it on the shelf (about the size a rival racer is in a
+  // race) -- and compares EVERY pair over the body pixels both share:
+  //   * look-alike: the MEDIAN per-pixel CIE76 delta E is under 5, or under
+  //     10 if either skin is painted (`art`). A median, not a mean: a mean is
+  //     carried by a small patch -- a belt, one stripe -- so a copy with a
+  //     mark on it would pass; half the body has to differ visibly to move a
+  //     median. And 5 is a difference seen side by side (2.3 is the least
+  //     anyone can see; 10 is seen at a glance), so a nudge of a few levels
+  //     does not pass either.
+  //   * a painted skin's picture: the body's light and dark, with each
+  //     render's own mean and spread taken out, may not match another skin's
+  //     (correlation over 0.8, even-lit rig). The same picture in another
+  //     colour is not another design, and a painting that only darkens where
+  //     the light already does shades like a flat colour (Champion Gold's
+  //     first painting, 0.95 against flat Bubblegum).
+  // Older look-alikes this does not fix are named in KNOWN_ALIKE and
+  // reported, not failed. Each must still measure alike, or the entry fails
+  // as stale, so the list only ever shrinks.
+  //
+  // The tile view is here because the even-lit rig misses dark collapses: a
+  // first Aurora was 10.6 from Obsidian there and 1.9 on the shelf. Galaxy
+  // and Oil Slick canvases scatter blobs with Math.random, so every render
+  // runs on a fixed seed -- a threshold over random pictures flakes (Titanium
+  // and Glacier moved from 6.9 to 8 between two unseeded runs).
   function checkSkinDistinct(){
     const bad = [], notes = [];
-    // delta E 10 is a difference anyone sees at a glance (2.3 is the least
-    // one can); every flat skin correlates ~1 with every other, being the
-    // same shading. Measured when the three were painted: nearest colour
-    // 20.9 (Prismatic Void/Obsidian), highest structure 0.71 (Peacock/Violet
-    // Drift); as copies they were 0.0 and 1.00.
-    const PX = 128, DIFF = 10, CORR = 0.8;
+    const PX = 128, NEAR = 5, PAINTED_NEAR = 10, CORR = 0.8;
+    // Measured when this was written, in these two views: Neon Tide is Neon
+    // Teal in the tile (0.1); Electric Lime is Neon Lime (3.9); Ember is
+    // Magma (4.2) and Clear Sky Deep Dive (4.8) in the even rig; on the shelf
+    // Ember Glow is Neon Ember (3.6), and Midnight, Charcoal, Obsidian and
+    // Prismatic Void's near-black void are one dark bean (3.4 - 6.1).
+    const KNOWN_ALIKE = ['neon_teal|neon_tide', 'neon_lime|electriclime', 'lavafade|ember', 'ocean|sky', 'neon_orange|emberglow',
+                         'ink|charcoal', 'charcoal|obsidian', 'ink|obsidian', 'obsidian|prismvoid', 'charcoal|prismvoid', 'ink|prismvoid'];
+    const pairKey = (a, b)=>[a, b].sort().join('|');
+    const known = new Map(KNOWN_ALIKE.map(k=>[pairKey(...k.split('|')), []]));
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
     const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(40, 80, 90); scene.add(key);
     const cam = new THREE.PerspectiveCamera(30, 1, 1, 1000);
     cam.position.set(Math.sin(0.35)*120, 8, Math.cos(0.35)*120); cam.lookAt(0, 1, 0);
     const rt = new THREE.WebGLRenderTarget(PX, PX);
-    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
+    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping, realRandom = Math.random;
     const white = new THREE.MeshBasicMaterial({color:0xffffff}), black = new THREE.MeshBasicMaterial({color:0x000000});
     const read = ()=>{ renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
       renderer.render(scene, cam); const px = new Uint8Array(PX*PX*4); renderer.readRenderTargetPixels(rt, 0, 0, PX, PX, px); return px; };
-    const R = {};
+    const TP = TILE_PX, tbuf = new Uint8Array(TP*TP*4);
+    // rows top-down, as the tile's ImageData has them
+    const readTile = ()=>{ renderer.setRenderTarget(tileRT); renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(tileScene, tileCam); renderer.readRenderTargetPixels(tileRT, 0, 0, TP, TP, tbuf);
+      const out = new Uint8Array(TP*TP*4); for(let y=0;y<TP;y++) out.set(tbuf.subarray((TP-1-y)*TP*4, (TP-y)*TP*4), y*TP*4); return out; };
+    const R = { even:{}, tile:{} };
+    let tileMoved = 0;
     try{
       renderer.toneMapping = THREE.NoToneMapping;
+      ensureTileRig();
       for(const s of SKINS){
+        // a fixed seed and fresh canvases for this skin, so a galaxy's blobs
+        // are the same blobs every run
+        let seed = 0x5EED1234 >>> 0;
+        Math.random = ()=>{ seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+        for(const k of Object.keys(canvasCache)) if(/^(gal_|oil$)/.test(k)) delete canvasCache[k];
+        delete skinTexCache[s.id + '|none'];
         const m = makeCharacter({ skin:s, pattern:patternOf('none'), hat:'none', eyes:'round' });
         m.neutral(); m.group.rotation.y = 0.3; m.group.updateMatrixWorld(true); scene.add(m.group);
         const img = read(), was = [m.body.material, m.trim.material];
@@ -6274,55 +6309,82 @@
         const id = read();
         m.body.material = was[0]; m.trim.material = was[1];
         scene.remove(m.group); disposeCharacter(m);
-        R[s.id] = { img, id };
+        R.even[s.id] = { img, id };
+        // The shelf: the tile exactly as the Locker draws it, and a body mask
+        // drawn in the same rig. The mask has to put the character where
+        // tilePixelsFor does; drawing the tile again beside it and getting the
+        // same pixels is what says it did.
+        tileCache.delete('skin:' + s.id);
+        const tile = tilePixelsFor('skin', s.id).data;
+        const t = makeCharacter(tileLook('skin', s.id));
+        t.group.rotation.y = 0.42; t.group.position.y = -2; tileScene.add(t.group);
+        const again = readTile(), twas = [t.body.material, t.trim.material];
+        t.body.material = white; t.trim.material = black;
+        const tid = readTile();
+        t.body.material = twas[0]; t.trim.material = twas[1];
+        tileScene.remove(t.group); disposeCharacter(t);
+        for(let i=0;i<again.length;i++) if(again[i] !== tile[i]){ tileMoved++; break; }
+        R.tile[s.id] = { img:tile, id:tid, srgb:true };
       }
     } finally {
+      Math.random = realRandom;
       renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
       rt.dispose(); white.dispose(); black.dispose();
     }
-    // Over the body pixels both renders share: the mean colour difference as
-    // CIE76 delta E -- an RGB mean calls dark teal and dark grey neighbours,
-    // Lab does not -- and the correlation of their lightness. The target
-    // holds linear values (no tone mapping, no output encoding).
-    const lab = (p, i)=>{
-      const r = p[i]/255, g = p[i+1]/255, b = p[i+2]/255;
-      const f = (t)=>t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
-      const x = f((0.4124*r + 0.3576*g + 0.1805*b)/0.9505), y = f(0.2126*r + 0.7152*g + 0.0722*b), z = f((0.0193*r + 0.1192*g + 0.9505*b)/1.089);
-      return [116*y - 16, 500*(x - y), 200*(y - z)];
-    };
+    if(tileMoved) bad.push(tileMoved + ' skins draw differently in the tile than in its mask rig: tilePixelsFor has moved the character, and this must move with it');
+    // CIE76 over the body pixels both renders share. The even rig's target
+    // holds linear values; a tile is put on a canvas as it is, so what the
+    // player sees is those bytes read as sRGB.
+    const LIN = new Float32Array(256), SRGB = new Float32Array(256);
+    for(let i=0;i<256;i++){ const v = i/255; LIN[i] = v; SRGB[i] = v <= 0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); }
+    const f = (t)=>t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+    const labOf = (S)=>{ const T = S.srgb ? SRGB : LIN, n = S.img.length/4, lab = new Float32Array(n*3), on = new Uint8Array(n);
+      for(let i=0;i<n;i++){ if(!(S.id[i*4+3] && S.id[i*4] > 127)) continue; on[i] = 1;
+        const r = T[S.img[i*4]], g = T[S.img[i*4+1]], b = T[S.img[i*4+2]];
+        const x = f((0.4124*r + 0.3576*g + 0.1805*b)/0.9505), y = f(0.2126*r + 0.7152*g + 0.0722*b), z = f((0.0193*r + 0.1192*g + 0.9505*b)/1.089);
+        lab[i*3] = 116*y - 16; lab[i*3+1] = 500*(x - y); lab[i*3+2] = 200*(y - z); }
+      return { lab, on }; };
     const pair = (A, B)=>{
-      const la = [], lb = []; let sum = 0;
-      for(let i=0;i<A.img.length;i+=4){
-        if(!(A.id[i+3] && A.id[i] > 127 && B.id[i+3] && B.id[i] > 127)) continue;
-        const a = lab(A.img, i), b = lab(B.img, i);
-        sum += Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
-        la.push(a[0]); lb.push(b[0]);
+      const hist = new Uint32Array(2000); let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let i=0;i<A.on.length;i++){
+        if(!(A.on[i] && B.on[i])) continue; const o = i*3;
+        const d = Math.hypot(A.lab[o]-B.lab[o], A.lab[o+1]-B.lab[o+1], A.lab[o+2]-B.lab[o+2]);
+        hist[Math.min(1999, Math.floor(d*10))]++; n++;
+        const a = A.lab[o], b = B.lab[o]; sa += a; sb += b; saa += a*a; sbb += b*b; sab += a*b;
       }
-      const n = la.length; if(!n) return { n, diff:0, corr:1 };
-      const ma = la.reduce((a,b)=>a+b)/n, mb = lb.reduce((a,b)=>a+b)/n;
-      let sab = 0, saa = 0, sbb = 0;
-      for(let k=0;k<n;k++){ const a = la[k]-ma, b = lb[k]-mb; sab += a*b; saa += a*a; sbb += b*b; }
-      return { n, diff: sum/n, corr: saa && sbb ? sab/Math.sqrt(saa*sbb) : 1 };
+      if(!n) return { n, med:0, corr:1 };
+      let c = 0, med = 0; for(let k=0;k<2000;k++){ c += hist[k]; if(c >= n/2){ med = (k+0.5)/10; break; } }
+      const va = saa - sa*sa/n, vb = sbb - sb*sb/n;
+      return { n, med, corr: va > 1e-6 && vb > 1e-6 ? (sab - sa*sb/n)/Math.sqrt(va*vb) : 1 };
     };
-    const ids = SKINS.map(s=>s.id), painted = SKINS.filter(s=>s.art).map(s=>s.id), twins = [];
-    const nearest = new Map(), likest = new Map();   // per painted skin: least colour difference, most structure
-    if(!painted.length) bad.push('no skin has a painting');
+    const ids = SKINS.map(s=>s.id), painted = new Set(SKINS.filter(s=>s.art).map(s=>s.id));
+    if(!painted.size) bad.push('no skin has a painting');
+    const L = { even:{}, tile:{} }; for(const v of ['even', 'tile']) for(const id of ids) L[v][id] = labOf(R[v][id]);
+    const nearest = new Map(), likest = new Map(), MIN_PX = { even:1000, tile:500 };
+    let pairs = 0;
     for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++){
-      const a = ids[i], b = ids[j], c = pair(R[a], R[b]);
-      if(c.n < 1000){ bad.push(a + '/' + b + ': only ' + c.n + ' body pixels compared'); continue; }
-      for(const [p, o] of [[a, b], [b, a]]){
-        if(!painted.includes(p)) continue;
-        if(!nearest.has(p) || c.diff < nearest.get(p).diff) nearest.set(p, { o, ...c });
-        if(!likest.has(p) || c.corr > likest.get(p).corr) likest.set(p, { o, ...c });
+      const a = ids[i], b = ids[j], pk = pairKey(a, b), art = painted.has(a) || painted.has(b), limit = art ? PAINTED_NEAR : NEAR;
+      for(const v of ['even', 'tile']){
+        const c = pair(L[v][a], L[v][b]); pairs++;
+        if(c.n < MIN_PX[v]){ bad.push(a + '/' + b + ': only ' + c.n + ' body pixels compared (' + v + ')'); continue; }
+        for(const [p, o] of [[a, b], [b, a]]){
+          if(!painted.has(p)) continue;
+          const nk = p + '@' + v; if(!nearest.has(nk) || c.med < nearest.get(nk).med) nearest.set(nk, { o, ...c });
+          if(v === 'even' && (!likest.has(p) || c.corr > likest.get(p).corr)) likest.set(p, { o, ...c });
+        }
+        if(c.med < limit){
+          if(known.has(pk)) known.get(pk).push(v + ' ' + c.med.toFixed(1));
+          else bad.push(a + ' and ' + b + ' look alike ' + (v === 'tile' ? 'on the shelf' : 'in the even rig') + ' (median delta E ' + c.med.toFixed(1) + ', under ' + limit + ')');
+        }
+        if(art && v === 'even' && c.corr > CORR) bad.push(a + ' and ' + b + ' are the same picture (structure ' + c.corr.toFixed(2) + ', over ' + CORR + ')');
       }
-      if(painted.includes(a) || painted.includes(b)){
-        if(c.diff < DIFF || c.corr > CORR) bad.push(a + ' and ' + b + ' look alike (delta E ' + c.diff.toFixed(1) + ', structure ' + c.corr.toFixed(2) + ')');
-      } else if(c.diff < 3) twins.push(a + '=' + b);
     }
-    const f = (x)=>x.o + ' (delta E ' + x.diff.toFixed(1) + ', structure ' + x.corr.toFixed(2) + ')';
-    for(const p of painted) if(nearest.has(p)) notes.push(p + ': nearest in colour ' + f(nearest.get(p)) + ', nearest in structure ' + f(likest.get(p)));
-    if(twins.length) notes.push('older pairs that render near-identical (not changed here): ' + twins.join(' '));
-    return { name:'Σ a painted skin looks like no other skin', pass: bad.length===0,
+    for(const [pk, seen] of known) if(!seen.length) bad.push('KNOWN_ALIKE ' + pk + ' no longer looks alike: take it off the list');
+    for(const p of painted) notes.push(p + ': nearest ' + ['even', 'tile'].map(v=>{ const x = nearest.get(p + '@' + v); return v + ' ' + x.o + ' ' + x.med.toFixed(1); }).join(', ')
+      + '; structure ' + likest.get(p).o + ' ' + likest.get(p).corr.toFixed(2));
+    notes.push('known older look-alikes (not changed here): ' + [...known].filter(([, s])=>s.length).map(([k, s])=>k + ' ' + s.join('/')).join('; '));
+    notes.push(ids.length + ' skins, ' + pairs + ' pair views');
+    return { name:'Σ no two skins look alike, on the shelf or up close', pass: bad.length===0,
              detail: bad.length ? bad.slice(0, 12).join('; ') + (bad.length > 12 ? '; +' + (bad.length-12) + ' more' : '')
                                   + ' | ' + notes.join('; ') : notes.join('; ') };
   }
@@ -8329,17 +8391,15 @@
       // renderer that is judged. A tile identical to another of its kind is
       // an item the player cannot tell apart from that one.
       //
-      // KNOWN, REPORTED, AND NOT FIXED HERE: Aurora is Rainbow's canvas and
-      // material, and differs only in how fast it cycles, which a still
-      // cannot show. It is pixel-identical in the tile.
-      // Peacock, Spectrum and Prismatic Void were here as copies of Oil
-      // Slick, Rainbow and Solar Flare, and the four white-ink patterns as
-      // copies of 'none' on the cream tile. They have their own paintings and
-      // light-and-dark inks now ([Σ], [Π]), and before that every other
-      // pattern left when the bean got its uv, so any of them coming out
-      // identical fails. Anything else that comes out identical fails.
-      const KNOWN_SAME = { 'skin:aurora':'skin:rainbow' };
-      const same = [];
+      // Nothing is excused. Aurora was here as Rainbow's canvas and material,
+      // differing only in how fast it cycled, which a still cannot show;
+      // Peacock, Spectrum and Prismatic Void as copies of Oil Slick, Rainbow
+      // and Solar Flare; the four white-ink patterns as copies of 'none' on
+      // the cream tile. Every one of them has its own painting or its own
+      // light-and-dark ink now, so a tile identical to another fails. This
+      // only catches EXACT copies -- a single level of difference passes a
+      // hash -- which is why [Σ] holds every skin apart from every other by
+      // what is actually drawn.
       for(const [kind, list] of Object.entries(KINDS)){
         const seen = new Map();
         for(const it of list){
@@ -8351,11 +8411,9 @@
           if(n < MIN_OPAQUE){ fail(key + ' preview has ' + n + ' opaque pixels of ' + TILE_PX*TILE_PX); continue; }
           const h = invHash(img.data);
           if(!seen.has(h)){ seen.set(h, key); continue; }
-          if(KNOWN_SAME[key] === seen.get(h)) same.push(it.id + '=' + seen.get(h).split(':')[1]);
-          else fail(key + ' renders pixel-identical to ' + seen.get(h));
+          fail(key + ' renders pixel-identical to ' + seen.get(h));
         }
       }
-      if(same.length) notes.push('KNOWN identical renders (not fixed here): ' + same.join(' '));
       for(const s of SKINS){ const sw = skinSwatch(s); if(typeof sw !== 'string' || !sw.trim()) fail('skin ' + s.id + ' has no swatch'); }
       for(const p of PATTERNS){
         let css = '';

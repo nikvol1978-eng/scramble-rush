@@ -84,6 +84,94 @@
       const dust=[]; for(let i=0;i<60;i++) dust.push([R()*W/2, 10+R()*(H-20), 0.6+R()*1.2, Math.floor(R()*360)]);
       for(const [x,y,r,hh] of dust) halfTurns(x, W, X=>{ g.fillStyle=hsl(hh,78,1); g.beginPath(); g.arc(X,y,r,0,Math.PI*2); g.fill(); });
       return c;
+    },
+    // Turned trophy gold. A painting that only darkened toward the hem shaded
+    // like a flat yellow bean -- the light already does that -- so the turning
+    // carries the picture: eight rings, each a polished lip rolling over into
+    // shadow above a cut groove, as a lathe leaves a trophy stem, and a deep
+    // engraved belt set with stars. The metal material adds the specular.
+    championgold(){
+      const c=blankCanvas(), g=c.getContext('2d'), W=TEX, H=TEX, n=8, step=H/n;
+      for(let i=0;i<n;i++){ const y=i*step, lg=g.createLinearGradient(0,y,0,y+step);
+        [[0,'#fff3b8'],[0.18,'#ffd445'],[0.55,'#e2a312'],[0.86,'#9c6205'],[1,'#5a3402']].forEach(([t,col])=>lg.addColorStop(t,col));
+        g.fillStyle=lg; g.fillRect(0,y,W,step+1);
+        g.fillStyle='rgba(58,32,0,0.9)'; g.fillRect(0,y+step-1.4,W,1.4); }
+      const by=H*0.6, bh=26;
+      g.fillStyle='#3d2302'; g.fillRect(0,by-bh/2,W,bh);
+      g.fillStyle='#ffe27a'; g.fillRect(0,by-bh/2-3,W,3); g.fillRect(0,by+bh/2,W,3);
+      g.lineJoin='round';
+      for(let k=0;k<4;k++) halfTurns(16+k*32, W, X=>{ g.beginPath();
+        for(let i=0;i<10;i++){ const a=i*Math.PI/5-Math.PI/2, r=i%2?3.4:8; g.lineTo(X+Math.cos(a)*r*0.8, by+Math.sin(a)*r); }
+        g.closePath(); g.fillStyle='#ffe89a'; g.fill(); g.strokeStyle='rgba(255,250,225,0.9)'; g.lineWidth=0.8; g.stroke(); });
+      return c;
+    },
+    // Night sky with the aurora hanging in it, the way a real one hangs: each
+    // curtain has a bright, sharp, wavy lower edge in green, rays rising from
+    // it and fading through teal to a violet fringe at the top. The sky is a
+    // deep blue, not black, and the curtains overlap round the whole body and
+    // add up as light does, so at race distance it still reads as green light
+    // on a night sky rather than a dark bean.
+    aurora(){
+      const c=blankCanvas(), g=c.getContext('2d'), R=mulberry32(0xA0B0CA), W=TEX, H=TEX;
+      const bg=g.createLinearGradient(0,0,0,H); bg.addColorStop(0,'#070d2e'); bg.addColorStop(0.55,'#0b1f55'); bg.addColorStop(1,'#0a2c52');
+      g.fillStyle=bg; g.fillRect(0,0,W,H);
+      const stars=[]; for(let i=0;i<24;i++) stars.push([R()*W/2, R()*H*0.8, 0.5+R()*0.8]);
+      for(const [x,y,r] of stars) halfTurns(x, W, X=>{ g.fillStyle='rgba(235,245,255,0.6)'; g.beginPath(); g.arc(X,y,r,0,Math.PI*2); g.fill(); });
+      const HUES=[138,152,128,160,144,168,134], cur=[];
+      for(let i=0;i<HUES.length;i++) cur.push({ x0:i*128/HUES.length+R()*8-4, w:34+R()*22, base:H*(0.5+R()*0.28), len:H*(0.34+R()*0.2), amp:5+R()*7, ph:R()*6, hue:HUES[i] });
+      g.globalCompositeOperation='lighter';
+      for(const k of cur) for(let x=0;x<k.w;x+=1.2){
+        const t=x/k.w, ray=0.55+0.45*Math.abs(Math.sin(x*0.9+k.ph*3)), fade=Math.pow(Math.sin(t*Math.PI),0.6)*ray;
+        const low=k.base+Math.sin(x/11+k.ph)*k.amp, top=low-k.len*(0.8+0.2*ray);
+        halfTurns(k.x0+x, W, X=>{ const lg=g.createLinearGradient(0,top,0,low+6);
+          lg.addColorStop(0,'hsla(285,80%,60%,0)'); lg.addColorStop(0.12,'hsla(285,80%,60%,'+(0.45*fade)+')');
+          lg.addColorStop(0.45,'hsla('+(k.hue+22)+',85%,48%,'+(0.4*fade)+')'); lg.addColorStop(0.9,'hsla('+k.hue+',95%,58%,'+(0.9*fade)+')');
+          lg.addColorStop(1,'hsla('+k.hue+',95%,58%,0)');
+          g.fillStyle=lg; g.fillRect(X,top,1.3,low+6-top); }); }
+      g.globalCompositeOperation='source-over';
+      return c;
+    },
+    // Light through cut crystal: a lattice of triangular facets with bright
+    // white edges, each facet cut in two tones, and the dispersion running
+    // diagonally across the lattice -- not round the body as a rainbow does.
+    prismglow(){
+      const c=blankCanvas(), g=c.getContext('2d'), W=TEX, H=TEX, s=W/12, rh=18;
+      g.fillStyle='#ffffff'; g.fillRect(0,0,W,H);
+      for(let row=0; row*rh<H+rh; row++) for(let k=-1; k<12; k++){
+        const x=k*s/2 + (row%2)*s/2, y=row*rh, up=((k+row)&1)===0;
+        const hue=((k+12)*30 + row*40)%360, light=up ? 81 : 68;
+        halfTurns(x, W, X=>{ g.beginPath();
+          if(up){ g.moveTo(X,y+rh); g.lineTo(X+s/2,y); g.lineTo(X+s,y+rh); } else { g.moveTo(X,y); g.lineTo(X+s,y); g.lineTo(X+s/2,y+rh); }
+          g.closePath(); g.fillStyle='hsl('+hue+',90%,'+light+'%)'; g.fill();
+          g.strokeStyle='rgba(255,255,255,0.95)'; g.lineWidth=2; g.stroke(); }); }
+      return c;
+    },
+    // Solar plasma: a deep red hem heating through orange to a white-hot band
+    // across the chest, the surface mottled by granulation -- soft darker
+    // lanes and brighter cells, no outlines, which read as bubbles -- and
+    // flare loops arcing off it. No sunspots: a dark oval on the belly, under
+    // the eyes, reads as a mouth.
+    solarflare(){
+      const c=blankCanvas(), g=c.getContext('2d'), R=mulberry32(0x50A12F), W=TEX, H=TEX;
+      const bg=g.createLinearGradient(0,0,0,H);
+      [[0,'#ff7a00'],[0.28,'#ffd84a'],[0.38,'#fff6c2'],[0.5,'#ffb000'],[0.75,'#ff4a00'],[1,'#b01800']].forEach(([t,col])=>bg.addColorStop(t,col));
+      g.fillStyle=bg; g.fillRect(0,0,W,H);
+      const blob=(x,y,r,col)=>halfTurns(x, W, X=>{ const rg=g.createRadialGradient(X,y,0,X,y,r);
+        rg.addColorStop(0,col); rg.addColorStop(1,col.replace(/[\d.]+\)$/,'0)')); g.fillStyle=rg; g.fillRect(X-r,y-r,2*r,2*r); });
+      const lanes=[]; for(let i=0;i<120;i++) lanes.push([R()*W/2, R()*H, 5+R()*6]);
+      for(const [x,y,r] of lanes) blob(x, y, r, 'rgba(150,22,0,0.5)');
+      const cells=[]; for(let i=0;i<160;i++) cells.push([R()*W/2, R()*H, 3+R()*4]);
+      for(const [x,y,r] of cells) blob(x, y, r, 'rgba(255,246,190,0.5)');
+      // many small loops, so they read as the surface and not as one feature
+      const loops=[]; for(let i=0;i<6;i++) loops.push([6+i*21+R()*8, H*(0.45+R()*0.45), 9+R()*6]);
+      g.lineCap='round';
+      for(const [x,y,r] of loops) halfTurns(x, W, X=>{
+        for(const [col,lw] of [['rgba(255,110,0,0.55)',6],['#fff0a0',2.2]]){ g.strokeStyle=col; g.lineWidth=lw;
+          g.beginPath(); g.ellipse(X,y,r*0.8,r*1.4,0,Math.PI,0); g.stroke(); } });
+      const streaks=[]; for(let i=0;i<14;i++) streaks.push([R()*W/2, H*(0.1+R()*0.8), 10+R()*18, R()<0.5]);
+      for(const [x,y,len,hot] of streaks) halfTurns(x, W, X=>{ g.strokeStyle= hot ? 'rgba(255,248,210,0.8)' : 'rgba(255,90,0,0.6)';
+        g.lineWidth=1.4; g.beginPath(); g.moveTo(X,y); g.quadraticCurveTo(X+len*0.4,y-len*0.5,X+len*0.2,y-len); g.stroke(); });
+      return c;
     }
   };
 
@@ -297,7 +385,8 @@
         break;
       }
       case 'metal': {
-        bodyMat = new THREE.MeshPhongMaterial({ color:new THREE.Color(baked ? 0xffffff : skin.color), map,
+        // a painted metal carries its colour in the map
+        bodyMat = new THREE.MeshPhongMaterial({ color:new THREE.Color((baked || skin.art) ? 0xffffff : skin.color), map,
           shininess:skin.shine||160, specular:0xffffff, reflectivity:1, vertexColors:true, transparent:true, opacity:1 });
         break;
       }
