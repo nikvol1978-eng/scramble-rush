@@ -90,9 +90,13 @@
       if(p) syncCamera(true);
     }catch(e){ /* no thumbnail is not a failure */ }
   }
+  // A joiner's map is the HOST's (pmClientRound hands its mapDef to pmShowMap),
+  // so its key and colours are a peer's words: only this build's own thumbnail
+  // and hex colours reach the style attribute (netColor, base.html).
   function cardArt(m){
-    return courseThumbs[m.key] ? `background-image:url(${courseThumbs[m.key]})`
-                               : `background:linear-gradient(160deg,${m.skyTop},${m.skyMid} 52%,${m.ground})`;
+    const thumb = Object.prototype.hasOwnProperty.call(courseThumbs, m.key) ? courseThumbs[m.key] : null;
+    return thumb ? `background-image:url(${thumb})`
+                 : `background:linear-gradient(160deg,${netColor(m.skyTop)},${netColor(m.skyMid)} 52%,${netColor(m.ground)})`;
   }
   function showMapLoader(map){
     const host=$('mapLoader'), strip=$('loaderStrip');
@@ -401,14 +405,15 @@
   function nameOf(r){ return r.isPlayer?(custom.name||'YOU'):r.name; }
   function dotFor(r){
     const s = r.isPlayer ? skinOf(custom.skin) : null;
-    const bg = s ? skinSwatch(s) : r.color;
+    // another racer's colour is a peer's word on a joiner: a hex colour or none
+    const bg = s ? skinSwatch(s) : netColor(r.color);
     return `<span style="width:14px;height:14px;border-radius:50%;background:${bg};border:2px solid var(--line);display:inline-block"></span>`;
   }
 
   function showResults(sorted,keepCount,onContinue,madeIt){
     const el=$('results'); el.classList.remove('hidden');
     const rows=sorted.map((r,i)=>{ const safe=i<keepCount; return `<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 10px;border-radius:10px;background:${safe?'rgba(35,230,201,0.25)':'rgba(255,90,77,0.2)'};${r.isPlayer?'outline:3px solid var(--gold);':''}">
-      <span style="font-weight:700;color:var(--line);display:flex;align-items:center;gap:8px;">${dotFor(r)}${i+1}. ${nameOf(r)}</span>
+      <span style="font-weight:700;color:var(--line);display:flex;align-items:center;gap:8px;">${dotFor(r)}</span>
       <span style="font-weight:600;color:var(--line);">${safe?'ADVANCES':'ELIMINATED'}</span></div>`; }).join('');
     const nextLabel = (round+1)===ROUNDS ? 'CONTINUE TO THE FINAL' : 'CONTINUE TO ROUND '+(round+1);
     const btnRow = mp.role==='client'
@@ -418,6 +423,10 @@
       <div class="subtitle">${keepCount} of ${sorted.length} advance</div>
       <div class="panel cardbox" style="padding:18px 22px;max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:6px;width:min(440px,92vw);">${rows}</div>
       ${btnRow}`;
+    // Names go in as TEXT, after the markup: on a joiner every name but its own
+    // is a peer's word. Same nodes as the template made for a normal name.
+    const box=el.querySelector('.cardbox');
+    sorted.forEach((r,i)=>{ const row=box && box.children[i]; if(row && row.firstElementChild) row.firstElementChild.appendChild(document.createTextNode((i+1)+'. '+nameOf(r))); });
     if(mp.role!=='client') $('continueBtn').onclick=()=>{ SFX.click(); el.classList.add('hidden'); onContinue(); };
     $('resQuit').onclick=()=>{ SFX.click(); goHome(); };
   }
@@ -459,14 +468,18 @@
     const btnRow = mp.role==='client'
       ? `<div class="row"><div class="lbl">Match over</div><button class="btn small blue" id="vicQuit">MENU</button></div>`
       : `<div class="row"><button class="btn gold" id="playAgainBtn">PLAY AGAIN</button><button class="btn small blue" id="vicQuit">MENU</button></div>`;
-    el.innerHTML=`<h1 class="title">${winner.isPlayer?'VICTORY!':nameOf(winner)+' WINS'}</h1>
+    el.innerHTML=`<h1 class="title"></h1>
       <div class="subtitle" style="color:var(--gold);">${winner.isPlayer?'You crossed the line first!':'You finished '+myRank+' of '+sorted.length+'.'}</div>
       <div class="podiumRow">
-        <div class="podiumStep p2"><div class="podiumName">${top3[1]?nameOf(top3[1]):''}</div><div class="podiumBlock">2</div></div>
-        <div class="podiumStep p1"><div class="podiumName">${nameOf(top3[0])}</div><div class="podiumBlock">1</div></div>
-        <div class="podiumStep p3"><div class="podiumName">${top3[2]?nameOf(top3[2]):''}</div><div class="podiumBlock">3</div></div>
+        <div class="podiumStep p2"><div class="podiumName"></div><div class="podiumBlock">2</div></div>
+        <div class="podiumStep p1"><div class="podiumName"></div><div class="podiumBlock">1</div></div>
+        <div class="podiumStep p3"><div class="podiumName"></div><div class="podiumBlock">3</div></div>
       </div>
       ${btnRow}`;
+    // the winner's and the podium's names as TEXT (see showResults)
+    el.querySelector('.title').textContent = winner.isPlayer?'VICTORY!':nameOf(winner)+' WINS';
+    const pn=el.querySelectorAll('.podiumName');
+    [top3[1],top3[0],top3[2]].forEach((r,k)=>{ if(r && pn[k]) pn[k].textContent=nameOf(r); });
     if(mp.role!=='client') $('playAgainBtn').onclick=()=>{ SFX.click(); el.classList.add('hidden'); startRound(1,null); };
     $('vicQuit').onclick=()=>{ SFX.click(); goHome(); };
   }

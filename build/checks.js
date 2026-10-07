@@ -7512,7 +7512,7 @@
     }
     bad.push(...geo);
     return { name:'γ daily spin: one wheel -- the names turn with their wedges, pointer and hub stay put',
-             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+             pass: bad.length===0, detail: bad.length ? bad.length+' problem(s): '+bad.slice(0,10).join('; ') : notes.join('; ') };
   }
 
   // ---- [ς] the prize waits for the wheel to stop ---------------------------
@@ -7640,7 +7640,7 @@
       try{ refreshCoinChips(); refreshDailyChip(); }catch(_){ /* best effort */ }
     }
     return { name:'ς daily spin: the prize and the glow wait for the wheel to stop',
-             pass: bad.length===0, detail: bad.length ? bad.slice(0,8).join('; ') : notes.join('; ') };
+             pass: bad.length===0, detail: bad.length ? bad.length+' problem(s): '+bad.slice(0,10).join('; ') : notes.join('; ') };
   }
 
 
@@ -10136,6 +10136,313 @@
              detail: (bad.length ? bad.slice(0,6).join('; ')+' || ' : '') + JSON.stringify(rep) };
   }
 
+  // ---------- Φ: a peer's name is text, never markup ----------
+  // (capital phi.) A friend's name went into innerHTML in the lobby roster and
+  // on the results and victory screens, and its colour into a style attribute,
+  // so a modified client called <img src=x onerror=...> ran code in the lobby
+  // of everyone in the room. This drives the real paths: setupHostConn's
+  // handler meeting hellos, the host's own lobby, the host's real roster
+  // broadcast landing on a joiner through handleClientData, makeRacers and the
+  // host's results and podium, a joiner's roundEnd, and a host frame whose map
+  // carries a hostile name and colours into the pre-match loader. Every
+  // rendered name must be the literal text (cut to 12 where the race cuts it),
+  // with no element made from it, nothing may run, and a normal name and a
+  // normal colour must produce exactly the markup the old templates did.
+  async function checkNamesAreText(){
+    const bad = [], notes = [];
+    const mp0 = mp, state0 = state, name0 = custom.name, color0 = custom.color;
+    const st0 = JSON.stringify(stats), cp0 = coinPops.slice();
+    const path0 = coursePath, script0 = courseScript, sock0 = pmSock;
+    // (the closing script tag is split: this file is inlined into a <script>)
+    const HOSTILE = ['<img src=x onerror=window.__pwned=1>', '<script>window.__pwned=1</'+'script>',
+                     '"><svg onload=window.__pwned=1>', 'Tom & "Jerry" <3', "'single' quotes", 'Zoë 🐸', '<b>b</b>&amp;'];
+    const COLOURS = ['red;background-image:url(x)', '"><img src=x onerror=window.__pwned=1>', 'url(x)', {}, 5];
+    const NAMES = HOSTILE.concat(['Ann']);              // and one ordinary friend
+    const MARKUP = 'img,script,svg,b,iframe,object,embed';
+    const list = $('rosterList'), res = $('results');
+    const okDot = (el)=>{ const s = el && el.getAttribute('style'); return s === null || /^background:#[0-9a-f]{3,8}$/i.test(s); };
+    // THE OLD TEMPLATES, kept here only as the reference for "a normal name
+    // renders exactly as before", parsed by the browser the way innerHTML did.
+    const parse = (html)=>{ const t = document.createElement('template'); t.innerHTML = html; return t.innerHTML; };
+    const legacyRow = (name,color,tag)=>parse('<div class="rosterRow"><span class="dotc" style="background:'+color+'"></span><span style="font-weight:700;color:var(--line);flex:1;">'+name+'</span>'+(tag ? '<span class="mpTag">'+tag+'</span>' : '')+'</div>');
+    const legacyResRow = (r,i,safe)=>{
+      const s = r.isPlayer ? skinOf(custom.skin) : null, bg = s ? skinSwatch(s) : r.color;
+      return '<div style="display:flex;justify-content:space-between;gap:16px;padding:6px 10px;border-radius:10px;background:'+(safe?'rgba(35,230,201,0.25)':'rgba(255,90,77,0.2)')+';'+(r.isPlayer?'outline:3px solid var(--gold);':'')+'">\n'
+        +'      <span style="font-weight:700;color:var(--line);display:flex;align-items:center;gap:8px;"><span style="width:14px;height:14px;border-radius:50%;background:'+bg+';border:2px solid var(--line);display:inline-block"></span>'+(i+1)+'. '+nameOf(r)+'</span>\n'
+        +'      <span style="font-weight:600;color:var(--line);">'+(safe?'ADVANCES':'ELIMINATED')+'</span></div>';
+    };
+    const lobbyRows = (who, expect)=>{
+      const rows = [...list.children];
+      if(rows.length !== expect.length + 1){ bad.push(who+': '+rows.length+' roster rows for '+(expect.length+1)+' players'); return; }
+      if(list.querySelectorAll(MARKUP).length) bad.push(who+': a name made '+list.querySelectorAll(MARKUP).length+' element(s) in the roster');
+      if(rows[0].outerHTML !== legacyRow('Bob', '#ff4fa3', 'HOST')) bad.push(who+': the host row is not the markup it always was: '+rows[0].outerHTML.slice(0,160));
+      expect.forEach((nm,i)=>{
+        const row = rows[i+1], txt = row.children[1] ? row.children[1].textContent : null;
+        if(txt !== nm) bad.push(who+': row '+(i+1)+' reads '+JSON.stringify(txt)+', not '+JSON.stringify(nm));
+        if(row.querySelectorAll('*').length !== 2) bad.push(who+': row '+(i+1)+' has '+row.querySelectorAll('*').length+' elements, wanted the dot and the name');
+        if(!okDot(row.children[0])) bad.push(who+': row '+(i+1)+'\'s dot carries style '+JSON.stringify(row.children[0].getAttribute('style')));
+      });
+      const ann = rows[rows.length-1];
+      if(ann.outerHTML !== legacyRow('Ann', '#60a5fa', '')) bad.push(who+': an ordinary friend\'s row changed: '+ann.outerHTML.slice(0,160));
+    };
+    let th0 = undefined, thKey = null;
+    // EVERY STAGE RUNS, and a stage that throws is a finding, not the end: on
+    // a build that pastes names into markup the first hostile name breaks the
+    // screen it lands on, and everything after it would go unmeasured.
+    const step = async (label, fn)=>{ try{ await fn(); }catch(e){ bad.push(label+' THREW: '+(e && e.message)); } };
+    let rosterMsg = null, hostConns = [], friends = [], others = [], sorted = [], wire = [], same = 0;
+    try{
+      delete window.__pwned;
+      custom.name = 'Bob'; custom.color = '#ff4fa3';
+      // ---- the host meets joiners with these names ----------------------------
+      await step('host lobby', ()=>{
+        mp = { role:'host', peer:null, conns:[], hostConn:null, code:'TESTN', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+        NAMES.forEach((name,i)=>{
+          const h = {};
+          const conn = { peer:'peerN'+i, open:true, on:(ev,fn)=>{ h[ev] = fn; }, send:(d)=>{ if(d && d.type==='roster') rosterMsg = d; } };
+          setupHostConn(conn);
+          h.data({ type:'hello', name, color: i < COLOURS.length ? COLOURS[i] : '#60a5fa', hat:'none', eyes:'round' });
+        });
+        hostConns = mp.conns.slice();
+        lobbyRows('host lobby', NAMES);
+      });
+      // ---- a joiner receives the host's real broadcast -------------------------
+      await step('joiner lobby', ()=>{
+        if(!rosterMsg){ bad.push('the host broadcast no roster'); return; }
+        mp = { role:'client', peer:{ id:'peerN0', destroy(){} }, conns:[], hostConn:{open:true, send(){}}, code:'TESTN', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+        handleClientData(JSON.parse(JSON.stringify(rosterMsg)));
+        lobbyRows('joiner lobby', NAMES);
+      });
+      // ---- the host races them: results and podium ------------------------------
+      await step('makeRacers', ()=>{
+        mp = { role:'host', peer:null, conns:hostConns, hostConn:null, code:'TESTN', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+        const field = makeRacers();
+        friends = field.filter(r=>r.remoteId); others = field.filter(r=>!r.remoteId);
+        friends.forEach((r,i)=>{ if(r.name !== NAMES[i].slice(0,12)) bad.push('makeRacers named friend '+i+' '+JSON.stringify(r.name)); });
+        sorted = friends.concat(others);
+      });
+      const resRows = (who, list2, keep)=>{
+        const box = res.querySelector('.cardbox');
+        if(!box){ bad.push(who+': no results panel'); return; }
+        if(res.querySelectorAll(MARKUP).length) bad.push(who+': a name made '+res.querySelectorAll(MARKUP).length+' element(s) on the results screen');
+        list2.forEach((r,i)=>{
+          const row = box.children[i], want = (i+1)+'. '+nameOf(r);
+          const got = row && row.firstElementChild ? row.firstElementChild.textContent : null;
+          if(got !== want) bad.push(who+': results row '+(i+1)+' reads '+JSON.stringify(got)+', not '+JSON.stringify(want));
+          // an ordinary racer's row is exactly the old template's
+          if(row && !NAMES.slice(0,7).some(h=>h.slice(0,12)===r.name) && row.outerHTML !== parse(legacyResRow(r,i,i<keep)))
+            bad.push(who+': an ordinary results row changed: '+row.outerHTML.slice(0,200));
+          const dot = row && row.firstElementChild && row.firstElementChild.firstElementChild;
+          if(dot && /url\(/i.test(dot.getAttribute('style')||'')) bad.push(who+': row '+(i+1)+'\'s dot loads a url');
+        });
+      };
+      await step('host results', ()=>{ showResults(sorted, 3, ()=>{}, true); resRows('host results', sorted, 3); });
+      const podium = (who, top)=>{
+        const t = res.querySelector('.title'), pn = [...res.querySelectorAll('.podiumName')].map(e=>e.textContent);
+        const wantT = top[0].isPlayer ? 'VICTORY!' : nameOf(top[0])+' WINS';
+        if(!t || t.textContent !== wantT) bad.push(who+': the title reads '+JSON.stringify(t && t.textContent)+', not '+JSON.stringify(wantT));
+        const wantP = [top[1], top[0], top[2]].map(r=>r ? nameOf(r) : '');
+        if(JSON.stringify(pn) !== JSON.stringify(wantP)) bad.push(who+': the podium reads '+JSON.stringify(pn)+', not '+JSON.stringify(wantP));
+        if(res.querySelectorAll(MARKUP).length) bad.push(who+': a name made '+res.querySelectorAll(MARKUP).length+' element(s) on the podium');
+      };
+      await step('host podium', ()=>{ showVictory(sorted); podium('host podium', sorted); });
+      // ...and an ordinary podium is the markup it always was
+      await step('ordinary podium', ()=>{
+        const plain = others.filter(r=>!r.isPlayer).slice(0,3);
+        showVictory(plain);
+        const pt = res.querySelector('.title');
+        if(!pt || pt.innerHTML !== parse(nameOf(plain[0])+' WINS'))
+          bad.push('an ordinary podium title changed: '+(pt ? pt.outerHTML : 'none'));
+      });
+      // ---- a joiner's roundEnd carries the same names ----------------------------
+      await step('joiner results', ()=>{
+        wire = JSON.parse(JSON.stringify(sorted.map(serializeRacer)));
+        mp = { role:'client', peer:{ id:'nobody', destroy(){} }, conns:[], hostConn:{open:true, send(){}}, code:'TESTN', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+        handleClientData({ type:'roundEnd', victory:false, keepCount:3, sorted:wire });
+        resRows('joiner results', wire, 3);
+      });
+      await step('joiner podium', ()=>{ handleClientData({ type:'roundEnd', victory:true, sorted:wire }); podium('joiner podium', wire); });
+      // ---- a host frame whose map is hostile, into the pre-match loader ----------
+      await step('pre-match loader', async ()=>{
+        const f = joinerHostFrame('neon');
+        if(!f){ bad.push('the host broadcast no frame for the loader half'); return; }
+        thKey = f.mapDef.key;
+        th0 = Object.prototype.hasOwnProperty.call(courseThumbs, thKey) ? courseThumbs[thKey] : undefined;
+        delete courseThumbs[thKey];
+        f.mapDef = Object.assign({}, f.mapDef, { name:HOSTILE[0], tip:HOSTILE[2],
+          skyTop:COLOURS[0], skyMid:COLOURS[1], ground:'#123456' });
+        const realError = console.error; console.error = function(){};
+        try{ await joinerFeed([f]); } finally { console.error = realError; }
+        const nm = $('mlName'), tip = $('mlTip'), art = $('mlArt'), msg = $('mlMsg');
+        if(!nm || nm.textContent !== HOSTILE[0].toUpperCase()) bad.push('the loader names the map '+JSON.stringify(nm && nm.textContent));
+        if(!tip || tip.textContent !== HOSTILE[2]) bad.push('the loader\'s tip reads '+JSON.stringify(tip && tip.textContent));
+        for(const e of [nm, tip, msg]) if(e && e.children.length) bad.push('#'+e.id+' grew '+e.children.length+' element(s) from the host\'s map');
+        const as = art ? (art.getAttribute('style')||'') : '';
+        if(/url\(|;|</i.test(as)) bad.push('the host\'s map colours reached the loader art as '+JSON.stringify(as.slice(0,120)));
+        // a hostile KEY reaches no inherited property either
+        for(const k of ['constructor','__proto__','toString']){
+          const s = cardArt({ key:k, skyTop:'#111111', skyMid:'#222222', ground:'#333333' });
+          if(/url\(/.test(s)) bad.push('a map keyed '+k+' drew '+s.slice(0,80));
+        }
+      });
+      // ---- and every real map's card is the art it always was -----------------------
+      await step('map cards', ()=>{
+        for(const m of [...MAPS, ...MINIGAMES]){
+          const old = courseThumbs[m.key] ? 'background-image:url('+courseThumbs[m.key]+')'
+                                          : 'background:linear-gradient(160deg,'+m.skyTop+','+m.skyMid+' 52%,'+m.ground+')';
+          if(cardArt(m) === old) same++; else bad.push(m.key+'\'s card art changed: '+cardArt(m).slice(0,90)+' vs '+old.slice(0,90));
+        }
+      });
+      // ---- no colour this build sends is one netColor drops -----------------------
+      // A racer's colour is skinBaseColor of a skin (the player, a friend,
+      // botLook) or one of BOT_COLORS; every one of them must pass unchanged.
+      await step('legit colours', ()=>{
+        const sent = Object.keys(SKIN_BY_ID).map(k=>skinBaseColor(skinOf(k))).concat(BOT_COLORS);
+        const dropped = sent.filter(c=>netColor(c) !== c);
+        if(dropped.length) bad.push(dropped.length+' colour(s) this build sends would be dropped: '+dropped.slice(0,5).join(', '));
+        else notes.push(sent.length+' sendable colours all pass');
+      });
+      // whatever an <img onerror> would have done, it has had time to do it
+      await new Promise(r=>setTimeout(r, 600));
+      if(window.__pwned !== undefined) bad.push('a peer\'s name RAN CODE (window.__pwned = '+window.__pwned+')');
+      notes.push(NAMES.length+' names through the host lobby, the joiner lobby, makeRacers, both results screens and both podiums; loader map text-only; '+same+' map cards unchanged; nothing ran');
+    } finally {
+      mp = mp0; state = state0; custom.name = name0; custom.color = color0;
+      pmSock = sock0; coursePath = path0; courseScript = script0;
+      if(thKey !== null && th0 !== undefined) courseThumbs[thKey] = th0;
+      if(pm.timer){ clearInterval(pm.timer); pm.timer = null; }
+      try{ pmClose(); }catch(e){}
+      window.__forceMap = null;
+      const o = JSON.parse(st0); for(const k of Object.keys(stats)) delete stats[k]; Object.assign(stats, o);
+      coinPops = cp0;
+      try{ await saveProfile(); }catch(e){}
+      try{ clearParticles(); }catch(e){}
+      try{ res.innerHTML = ''; res.classList.add('hidden'); }catch(e){}
+      try{ updateLobbyUI(); $('lobby').classList.add('hidden'); }catch(e){}
+      delete window.__pwned;
+    }
+    return { name:'Φ a peer\'s name and colour are text and a hex colour, never markup, on every screen that shows them',
+             pass: bad.length===0, detail: bad.length ? bad.length+' problem(s): '+bad.slice(0,10).join('; ') : notes.join('; ') };
+  }
+
+  // ---------- Ψ: a malformed message is ignored, not thrown on ----------
+  // (capital psi.) Both data handlers began `data.type === ...`, so a null
+  // from a peer threw inside the PeerJS callback; a state with no racer list
+  // threw in a for-of; a roundEnd with no `sorted` threw AFTER it had hidden
+  // the HUD and set the state; a roster that was a string was stored and then
+  // threw in the lobby; and a hello whose name was a number was stored and
+  // threw later, in makeRacers, when the host started the race. This fuzzes the
+  // REAL setupHostConn handler and the REAL handleClientData with junk: none
+  // may throw, and none may change anything -- the host's view of the friend,
+  // its inputs, the field, the roster, the state, lava, the banner, the screens.
+  // Malformed fields of a known message are sanitised where the message is
+  // still meaningful (a hello, a roster entry, a racer's name and colour), and
+  // well-formed messages still do exactly what they did.
+  async function checkMalformedMessages(){
+    const bad = [], notes = [];
+    const mp0 = mp, state0 = state, lava0 = lavaZ, bt0 = bannerTimer;
+    const bm = $('bannerMsg'), bmText0 = bm ? bm.textContent : null;
+    const desc = (v)=>{ try{ return v===undefined ? 'undefined' : typeof v==='number' ? String(v)
+      : JSON.stringify(v, (k,x)=>(typeof x==='number' && !isFinite(x)) ? String(x) : x===undefined ? 'undefined' : x); }catch(e){ return String(v); } };
+    const JUNK = [null, undefined, '', 0, 7, true, false, NaN, 'hello', [], [1,2], [{type:'hello'}], {}, {type:5}, {type:{}}, {type:null}, {type:'nope'}, {type:'__proto__'}];
+    try{
+      begin('sunny');
+      // ---- the host, with one well-formed friend ------------------------------
+      mp = { role:'host', peer:null, conns:[], hostConn:null, code:'TESTM', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+      const h = {}, sent = [];
+      const conn = { peer:'peerM', open:true, on:(ev,fn)=>{ h[ev] = fn; }, send:(d)=>sent.push(d) };
+      setupHostConn(conn);
+      h.data({ type:'hello', name:'Mo', color:'#60a5fa', hat:'none', eyes:'round' });
+      if(!conn.peerProfile || conn.peerProfile.name !== 'Mo' || conn.peerProfile.color !== '#60a5fa')
+        bad.push('a well-formed hello was not taken: '+desc(conn.peerProfile));
+      racers = makeRacers();
+      const friend = racers.find(r=>r.remoteId==='peerM');
+      if(!friend || friend.name !== 'Mo') bad.push('the host built no racer called Mo for a well-formed hello');
+      h.data({ type:'input', ix:0.5, iy:-0.25 });
+      if(desc(mp.remoteInput.peerM) !== desc({ix:0.5, iy:-0.25})) bad.push('a well-formed input was not taken: '+desc(mp.remoteInput.peerM));
+      const snapHost = ()=>desc([mp.role, mp.conns.length, conn.peerProfile, mp.remoteInput, state,
+        racers.map(r=>[r.remoteId||r._localId, r.x, r.y, r.h, r.vx, r.vy, r.vh, r.name, r.color, r.diveT, r.stumbleT, r.airDive])]);
+      const HOST_JUNK = JUNK.concat([{type:'input'}, {type:'input', ix:'x', iy:0}, {type:'input', ix:0.5}, {type:'input', ix:NaN, iy:0},
+        {type:'input', ix:Infinity, iy:0}, {type:'input', ix:{}, iy:[]}, {type:'action'}, {type:'action', action:{}}, {type:'action', action:'fly'}]);
+      let hostThrew = 0;
+      for(const m of HOST_JUNK){
+        const before = snapHost();
+        try{ h.data(m); }catch(e){ hostThrew++; bad.push('the host threw on '+desc(m)+': '+e.message); continue; }
+        if(snapHost() !== before) bad.push('the host changed state on '+desc(m));
+      }
+      // a hello with the wrong types is still a friend, with safe fields
+      for(const m of [{type:'hello', name:5, color:{}, hat:{}, eyes:7}, {type:'hello', name:{toString:null}, color:[1]}, {type:'hello'}]){
+        try{ h.data(m); }catch(e){ bad.push('the host threw on '+desc(m)+': '+e.message); continue; }
+        const p = conn.peerProfile || {};
+        if(typeof p.name !== 'string') bad.push('a hello of '+desc(m)+' left the name as '+typeof p.name);
+        if(p.color !== undefined) bad.push('a hello of '+desc(m)+' kept the colour '+desc(p.color));
+        let field = null;
+        try{ field = makeRacers(); }catch(e){ bad.push('after a hello of '+desc(m)+' the host cannot build the race: '+e.message); continue; }
+        const f = field.find(r=>r.remoteId==='peerM');
+        if(!f || f.name !== 'Friend' || f.color !== '#60a5fa') bad.push('after '+desc(m)+' the friend races as '+desc(f && [f.name, f.color]));
+        const ro = sent.filter(d=>d && d.type==='roster').pop();
+        if(!ro || !ro.roster.every(e=>typeof e.name==='string')) bad.push('after '+desc(m)+' the host broadcast a roster with a non-string name');
+      }
+      h.data({ type:'hello', name:'Mo', color:'#60a5fa', hat:'none', eyes:'round' });
+      racers = makeRacers();
+      // ---- a joiner, holding a real field and a real roster ---------------------
+      const host = racers, stateMsg = JSON.parse(JSON.stringify({ type:'state', lavaZ:0, racers:host.map(serializeRacer) }));
+      const rosterMsg = JSON.parse(JSON.stringify(sent.filter(d=>d && d.type==='roster').pop() || null));
+      mp = { role:'client', peer:{ id:'peerM', destroy(){} }, conns:[], hostConn:{open:true, send(){}}, code:'TESTM', tOffset:0, sendAccum:0, remoteInput:{}, roster:null };
+      racers = [];
+      handleClientData(stateMsg);
+      if(racers.length !== host.length) bad.push('a well-formed state built '+racers.length+' racers of '+host.length);
+      handleClientData(rosterMsg);
+      if(!Array.isArray(mp.roster) || mp.roster.length !== 2 || mp.roster[1].name !== 'Mo') bad.push('a well-formed roster was not taken: '+desc(mp.roster));
+      const one = stateMsg.racers[0];
+      const snapJoin = ()=>desc([state, lavaZ, bannerTimer, bm ? bm.textContent : null, mp.role, mp.roster, racers.length,
+        racers.map(r=>[r._netId, r.x, r.y, r.h, r.name, r.color, r.finished, r.falling, r.squash]),
+        $('results').classList.contains('hidden'), $('hud').classList.contains('hidden'), $('rosterList').innerHTML,
+        pm.phase, pm.startAt, pm.open]);
+      const JOIN_JUNK = JUNK.concat([
+        {type:'roster'}, {type:'roster', roster:'x'}, {type:'roster', roster:{length:2}}, {type:'roster', roster:null},
+        {type:'state'}, {type:'state', racers:'x'}, {type:'state', racers:{}}, {type:'state', racers:null},
+        {type:'state', racers:[null, {}, 5, 'x', [], {id:5, x:1, y:2}, {id:'z', x:'1', y:2}, {id:{}, x:1, y:1}]},
+        {type:'roundEnd'}, {type:'roundEnd', sorted:'x'}, {type:'roundEnd', sorted:[]}, {type:'roundEnd', sorted:[null], victory:true},
+        {type:'roundEnd', sorted:[{}], victory:true}, {type:'roundEnd', sorted:[one, 5], victory:true}, {type:'roundEnd', sorted:[one]},
+        {type:'banner'}, {type:'banner', text:{}, ms:500}, {type:'banner', text:'hi'}, {type:'banner', text:'hi', ms:'x'}, {type:'banner', text:'hi', ms:NaN},
+        {type:'raceStart'}, {type:'raceStart', hostAt:'5'}, {type:'raceStart', hostAt:NaN}, {type:'raceStart', hostAt:Infinity}]);
+      for(const m of JOIN_JUNK){
+        const before = snapJoin();
+        try{ handleClientData(m); }catch(e){ bad.push('the joiner threw on '+desc(m)+': '+e.message); continue; }
+        if(snapJoin() !== before) bad.push('the joiner changed state on '+desc(m));
+      }
+      // malformed parts of a meaningful message are made safe, not obeyed
+      try{
+        handleClientData({ type:'roster', roster:[null, 5, 'x', {name:{}, color:'url(x)', tag:{}}, {name:'Al', color:'#123456', tag:'HOST'}] });
+        if(desc(mp.roster) !== desc([{name:'Friend', color:undefined, tag:''}, {name:'Al', color:'#123456', tag:'HOST'}])) bad.push('a part-malformed roster became '+desc(mp.roster));
+        const rows = [...$('rosterList').children].map(r=>r.children[1] && r.children[1].textContent);
+        if(desc(rows) !== desc(['Friend','Al'])) bad.push('a part-malformed roster shows '+desc(rows));
+      }catch(e){ bad.push('the joiner threw on a part-malformed roster: '+e.message); }
+      try{
+        handleClientData({ type:'state', racers:[Object.assign({}, one, { name:{}, color:'url(x)', x:one.x+7 })] });
+        const r = racers.find(x=>x._netId===one.id);
+        if(!r || r.name !== 'Friend' || r.color !== undefined || r.x !== one.x+7) bad.push('a racer with a malformed name and colour became '+desc(r && [r.name, r.color, r.x]));
+      }catch(e){ bad.push('the joiner threw on a racer with a malformed name: '+e.message); }
+      // ...and the well-formed ones still do what they did
+      handleClientData(stateMsg);
+      const r0 = racers.find(x=>x._netId===one.id);
+      if(!r0 || r0.x !== one.x || r0.name !== one.name || r0.color !== one.color) bad.push('a well-formed state did not put racer '+one.id+' back');
+      handleClientData({ type:'banner', text:'GO', ms:500 });
+      if(!bm || bm.textContent !== 'GO' || bannerTimer !== 500) bad.push('a well-formed banner was not shown');
+      handleClientData({ type:'roundEnd', victory:false, keepCount:2, sorted:stateMsg.racers });
+      if($('results').classList.contains('hidden') || state !== 'roundEnd') bad.push('a well-formed roundEnd did not show the results');
+      notes.push(HOST_JUNK.length+' junk messages to the host and '+JOIN_JUNK.length+' to a joiner: no throw, no change; malformed hellos, roster entries and racer fields sanitised; well-formed hello, input, state, roster, banner and roundEnd unchanged');
+    } finally {
+      mp = mp0; state = state0; lavaZ = lava0; bannerTimer = bt0;
+      if(bm) bm.textContent = bmText0;
+      try{ $('results').innerHTML = ''; $('results').classList.add('hidden'); }catch(e){}
+      try{ updateLobbyUI(); $('lobby').classList.add('hidden'); }catch(e){}
+    }
+    return { name:'Ψ a malformed or hostile peer message is ignored without a throw, and a well-formed one still works',
+             pass: bad.length===0, detail: bad.length ? bad.length+' problem(s): '+bad.slice(0,10).join('; ') : notes.join('; ') };
+  }
+
   function checkRegistry(opts){
     opts = opts||{};
     const all = [
@@ -10188,7 +10495,9 @@
       // the camera and visual audit
       ['τ',checkRespawnCut],['υ',checkFallFadeWhole],['φ',checkFieldLayersFade],['χ',checkBoomSeesTheBody],['ψ',checkFeetOnDrawnFloor],['ω',checkNetSkins],
       // a pattern is on the body, and only on the body; a painted skin is its own
-      ['Π',checkPatternUv],['Σ',checkSkinDistinct]
+      ['Π',checkPatternUv],['Σ',checkSkinDistinct],
+      // a peer's words are data: names are text, and junk is ignored
+      ['Φ',checkNamesAreText],['Ψ',checkMalformedMessages]
     ];
     // slow: five layouts a map, so only when asked for
     if(opts.accept || (opts.only && opts.only.indexOf('+')>=0)) all.push(['+',()=>checkAccept(opts.maps)]);
