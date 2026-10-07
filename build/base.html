@@ -363,8 +363,45 @@
   // kept only if this build knows it: a peer is not trusted to name an object.
   function netSkinId(id){ return (typeof id==='string' && Object.prototype.hasOwnProperty.call(SKIN_BY_ID, id)) ? id : null; }
   function netPatternId(id){ return (typeof id==='string' && Object.prototype.hasOwnProperty.call(PATTERN_BY_ID, id)) ? id : null; }
+  // A PEER'S WORDS ARE DATA, NEVER MARKUP. Everything a peer sends comes from
+  // another browser, and a modified client can send anything: null, a number,
+  // an array, a name that is an <img onerror> tag, a colour that closes the
+  // style attribute. Names were pasted into innerHTML, so a friend called
+  // <img src=x onerror=...> ran code in every lobby and on every podium; and
+  // `data.type` on a null message threw inside the handler. So: a message is a
+  // plain object with a string type before a handler looks inside it, a name
+  // is drawn as text, a colour is used only when it is a hex colour (anything
+  // else is dropped, exactly as CSS drops an invalid value), and a malformed
+  // message is ignored whole. What this build sends passes through unchanged.
+  function netMsg(d){ return !!d && typeof d==='object' && !Array.isArray(d) && typeof d.type==='string'; }
+  function netName(v){ return typeof v==='string' ? v : 'Friend'; }
+  function netStr(v){ return typeof v==='string' ? v : undefined; }
+  function netColor(v){ return (typeof v==='string' && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) ? v : undefined; }
+  // One racer as serializeRacer wrote it, or null. Its id is undefined for a
+  // friend who has left (remoteId cleared, no _localId), so only its type is
+  // checked; x and y must be numbers or there is nothing to place.
+  function netRacer(e){
+    if(!e || typeof e!=='object' || Array.isArray(e)) return null;
+    if(e.id!=null && typeof e.id!=='string') return null;
+    if(typeof e.x!=='number' || typeof e.y!=='number') return null;
+    return Object.assign({}, e, {name:netName(e.name), color:netColor(e.color), hat:netStr(e.hat), eyes:netStr(e.eyes)});
+  }
+  // The shape of each message a joiner acts on. roundStart is not listed: its
+  // frame is checked field by field by pmFrameFault, which names the fault.
+  function netClientMsgOk(d){
+    if(!netMsg(d)) return false;
+    switch(d.type){
+      case 'roster':    return Array.isArray(d.roster);
+      case 'state':     return Array.isArray(d.racers);
+      case 'roundEnd':  return Array.isArray(d.sorted) && d.sorted.length>0 && d.sorted.every(e=>!!netRacer(e))
+                               && (!!d.victory || typeof d.keepCount==='number');
+      case 'banner':    return typeof d.text==='string' && typeof d.ms==='number' && isFinite(d.ms);
+      case 'raceStart': return typeof d.hostAt==='number' && isFinite(d.hostAt);
+      default:          return true;
+    }
+  }
   function helloPayload(){ return {type:'hello', name:custom.name||'YOU', color:custom.color, hat:custom.hat, eyes:custom.eyes, skin:custom.skin, pattern:custom.pattern}; }
-  function profileFromHello(d){ return {name:d.name, color:d.color, hat:d.hat, eyes:d.eyes, skin:netSkinId(d.skin), pattern:netPatternId(d.pattern)}; }
+  function profileFromHello(d){ return {name:netName(d.name), color:netColor(d.color), hat:netStr(d.hat), eyes:netStr(d.eyes), skin:netSkinId(d.skin), pattern:netPatternId(d.pattern)}; }
   function serializeRacer(r){
     return {id:r.remoteId||r._localId, x:r.x,y:r.y,h:r.h,facing:r.renderFacing,color:r.color,
       skinId:r.skinId||null, patternId:r.patternId||null,
@@ -384,9 +421,16 @@
   function updateLobbyUI(){
     const list=$('rosterList'); if(!list) return;
     list.innerHTML='';
+    // node by node, the name and tag as TEXT (see netMsg); a normal row is the
+    // same markup it always was
     const addRow=(name,color,tag)=>{
       const d=document.createElement('div'); d.className='rosterRow';
-      d.innerHTML=`<span class="dotc" style="background:${color}"></span><span style="font-weight:700;color:var(--line);flex:1;">${name}</span>${tag?`<span class="mpTag">${tag}</span>`:''}`;
+      const dot=document.createElement('span'); dot.className='dotc';
+      const c=netColor(color); if(c) dot.setAttribute('style','background:'+c);
+      const nm=document.createElement('span'); nm.setAttribute('style','font-weight:700;color:var(--line);flex:1;');
+      nm.textContent=name;
+      d.appendChild(dot); d.appendChild(nm);
+      if(tag){ const t=document.createElement('span'); t.className='mpTag'; t.textContent=tag; d.appendChild(t); }
       list.appendChild(d);
     };
     if(mp.role==='host'){
@@ -407,8 +451,12 @@
   }
   function setupHostConn(conn){
     conn.on('data', data=>{
+      if(!netMsg(data)) return;
       if(data.type==='hello'){ conn.peerProfile=profileFromHello(data); broadcastRoster(); updateLobbyUI(); }
-      else if(data.type==='input'){ mp.remoteInput[conn.peer]={ix:data.ix,iy:data.iy}; }
+      else if(data.type==='input'){
+        if(typeof data.ix==='number' && typeof data.iy==='number' && isFinite(data.ix) && isFinite(data.iy))
+          mp.remoteInput[conn.peer]={ix:data.ix,iy:data.iy};
+      }
       else if(data.type==='action'){
         const r=racers.find(x=>x.remoteId===conn.peer);
         if(r){ if(data.action==='jump') doJump(r); else if(data.action==='dive') doDive(r); }
@@ -450,7 +498,8 @@
     }catch(e){ mpErr('Could not connect on this device/browser.'); }
   }
   function applyNetworkState(list){
-    for(const entry of list){
+    for(const raw of list){
+      const entry=netRacer(raw); if(!entry) continue;
       let r = racers.find(x=>x._netId===entry.id);
       if(!r){
         r = Object.assign(baseRacer(), {_netId:entry.id, isPlayer:entry.id===(mp.peer&&mp.peer.id)});
@@ -469,7 +518,12 @@
     }
   }
   function handleClientData(data){
-    if(data.type==='roster'){ mp.roster=data.roster; updateLobbyUI(); }
+    if(!netClientMsgOk(data)) return;
+    if(data.type==='roster'){
+      mp.roster=data.roster.filter(p=>p && typeof p==='object' && !Array.isArray(p))
+        .map(p=>({name:netName(p.name), color:netColor(p.color), tag:typeof p.tag==='string' ? p.tag : ''}));
+      updateLobbyUI();
+    }
     else if(data.type==='roundStart'){
       clearGroup(racerGroup); clearGroup(courseGroup); clearParticles(); racers=[];
       obstacles=data.obstacles; trackLength=data.trackLength; round=data.round; currentMap=data.mapDef||MAPS[0];
@@ -497,7 +551,7 @@
     else if(data.type==='roundEnd'){
       state='roundEnd';
       $('hud').classList.add('hidden'); $('hint').classList.add('hidden'); $('pauseBtn').classList.add('hidden');
-      const remapped = data.sorted.map(r=>({...r, isPlayer: r.id===(mp.peer&&mp.peer.id)}));
+      const remapped = data.sorted.map(r=>({...netRacer(r), isPlayer: r.id===(mp.peer&&mp.peer.id)}));
       if(data.victory){ const w=remapped[0]; spawnConfetti(w.x, Math.min(w.y,trackLength)); showVictory(remapped); }
       else showResults(remapped, data.keepCount, ()=>{}, false);
     }
